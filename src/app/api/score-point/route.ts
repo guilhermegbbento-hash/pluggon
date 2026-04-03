@@ -453,19 +453,44 @@ Com base NESSES DADOS REAIS, analise as 80 variáveis e retorne o JSON com score
 // ---------- Parse Claude JSON response ----------
 
 function parseClaudeResponse(text: string): Record<string, unknown> | null {
+  // Strip markdown code fences the model sometimes adds
+  const cleaned = text
+    .replace(/```json\s*/g, "")
+    .replace(/```\s*/g, "")
+    .trim();
+
   try {
-    return JSON.parse(text);
+    return JSON.parse(cleaned);
   } catch {
     // ignore
   }
 
-  const objStart = text.indexOf("{");
-  const objEnd = text.lastIndexOf("}");
+  const objStart = cleaned.indexOf("{");
+  const objEnd = cleaned.lastIndexOf("}");
   if (objStart !== -1 && objEnd > objStart) {
     try {
-      return JSON.parse(text.slice(objStart, objEnd + 1));
+      return JSON.parse(cleaned.slice(objStart, objEnd + 1));
     } catch {
       // ignore
+    }
+  }
+
+  // Tentar recuperar JSON incompleto (truncado por max_tokens)
+  if (objStart !== -1) {
+    let truncated = cleaned.slice(objStart);
+    if (!truncated.endsWith('}')) {
+      const lastBrace = truncated.lastIndexOf('}');
+      if (lastBrace > 0) {
+        truncated = truncated.substring(0, lastBrace + 1) + ']}';
+        try {
+          return JSON.parse(truncated);
+        } catch { /* ignore */ }
+        // Tentar só fechando o objeto principal
+        truncated = cleaned.slice(objStart, cleaned.lastIndexOf('}') + 1) + '}';
+        try {
+          return JSON.parse(truncated);
+        } catch { /* ignore */ }
+      }
     }
   }
 

@@ -79,31 +79,37 @@ function buildClaudePrompt(city: string, state: string, population: number | nul
 // ---------- Parse Claude JSON response ----------
 
 function parseClaudeResponse(text: string): Record<string, unknown>[] {
+  // Strip markdown code fences the model sometimes adds
+  let cleaned = text
+    .replace(/```json\s*/g, "")
+    .replace(/```\s*/g, "")
+    .trim();
+
   // Try direct parse
   try {
-    const parsed = JSON.parse(text);
+    const parsed = JSON.parse(cleaned);
     return Array.isArray(parsed) ? parsed : parsed.points || [];
   } catch {
     // ignore
   }
 
   // Try extracting array
-  const arrStart = text.indexOf("[");
-  const arrEnd = text.lastIndexOf("]");
+  const arrStart = cleaned.indexOf("[");
+  const arrEnd = cleaned.lastIndexOf("]");
   if (arrStart !== -1 && arrEnd > arrStart) {
     try {
-      return JSON.parse(text.slice(arrStart, arrEnd + 1));
+      return JSON.parse(cleaned.slice(arrStart, arrEnd + 1));
     } catch {
       // ignore
     }
   }
 
   // Try extracting object with points
-  const objStart = text.indexOf("{");
-  const objEnd = text.lastIndexOf("}");
+  const objStart = cleaned.indexOf("{");
+  const objEnd = cleaned.lastIndexOf("}");
   if (objStart !== -1 && objEnd > objStart) {
     try {
-      const obj = JSON.parse(text.slice(objStart, objEnd + 1));
+      const obj = JSON.parse(cleaned.slice(objStart, objEnd + 1));
       return obj.points || [];
     } catch {
       // ignore
@@ -112,12 +118,23 @@ function parseClaudeResponse(text: string): Record<string, unknown>[] {
 
   // Last resort: truncated JSON - close at last complete object
   if (arrStart !== -1) {
-    let cleaned = text.slice(arrStart);
-    const lastComplete = cleaned.lastIndexOf("},");
+    let truncated = cleaned.slice(arrStart);
+    // Tentar fechar no último objeto completo com vírgula
+    const lastComplete = truncated.lastIndexOf("},");
     if (lastComplete !== -1) {
-      cleaned = cleaned.slice(0, lastComplete + 1) + "]";
+      truncated = truncated.slice(0, lastComplete + 1) + "]";
       try {
-        return JSON.parse(cleaned);
+        return JSON.parse(truncated);
+      } catch {
+        // ignore
+      }
+    }
+    // Tentar fechar no último } encontrado
+    const lastBrace = truncated.lastIndexOf("}");
+    if (lastBrace > 0) {
+      truncated = truncated.substring(0, lastBrace + 1) + "]";
+      try {
+        return JSON.parse(truncated);
       } catch {
         // ignore
       }

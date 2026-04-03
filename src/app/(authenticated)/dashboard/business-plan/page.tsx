@@ -1,12 +1,1176 @@
+"use client";
+
+import { useState, useEffect, useRef } from "react";
+import jsPDF from "jspdf";
+
+// ---------- Types ----------
+
+interface BPSection {
+  number: number;
+  title: string;
+  content: string;
+}
+
+interface BPResult {
+  sections: BPSection[];
+  ibge: {
+    population: number | null;
+    gdp_per_capita: number | null;
+    idhm: number | null;
+  };
+  chargers_count: number;
+}
+
+// ---------- Constants ----------
+
+const OBJECTIVE_OPTIONS = [
+  "Atrair clientes pro meu negócio",
+  "Criar empresa de eletropostos",
+  "Ser investidor gerar renda passiva",
+  "Agregar ao negócio de energia solar",
+];
+
+const CAPITAL_OPTIONS = [
+  "R$ 55.000",
+  "R$ 100.000",
+  "R$ 200.000",
+  "R$ 300.000",
+  "R$ 500.000+",
+];
+
+const STRATEGY_OPTIONS = [
+  "Começar pequeno e reinvestir",
+  "Implementar forte e dominar",
+  "Testar modelo e buscar investidor",
+  "Franchising",
+  "Parceria com grandes empresas",
+];
+
+const TIMELINE_OPTIONS = [
+  "Imediatamente",
+  "1-2 meses",
+  "2-3 meses",
+  "3-6 meses",
+];
+
+const MARKET_MOMENT_OPTIONS = ["Início", "Crescimento", "Maduro"];
+
+const DEMAND_OPTIONS = [
+  "Sim, com dados concretos",
+  "Sim, por intuição",
+  "Preciso fazer pesquisa",
+];
+
+const PRIORITY_OPTIONS = [
+  "Projeção financeira",
+  "Marketing",
+  "Operacional",
+  "Custos",
+  "Parcerias",
+  "Pitch investidores",
+];
+
+const LOADING_STEPS = [
+  { text: "Pesquisando dados da cidade no IBGE...", duration: 4000 },
+  { text: "Buscando carregadores existentes na região...", duration: 6000 },
+  { text: "Analisando concorrência e gaps de mercado...", duration: 5000 },
+  { text: "Gerando análise de mercado e sumário executivo...", duration: 20000 },
+  { text: "Calculando projeções financeiras...", duration: 15000 },
+  { text: "Elaborando estratégia de marketing...", duration: 10000 },
+  { text: "Montando plano de ação 90 dias...", duration: 8000 },
+  { text: "Finalizando Business Plan...", duration: 5000 },
+];
+
+const STATES = [
+  "AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA",
+  "PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO",
+];
+
+// ---------- Markdown renderer ----------
+
+function renderMarkdown(md: string) {
+  const lines = md.split("\n");
+  const elements: React.ReactNode[] = [];
+  let i = 0;
+  let key = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    if (line.startsWith("### ")) {
+      elements.push(
+        <h4 key={key++} className="mt-4 mb-2 text-base font-semibold text-white">
+          {renderInline(line.slice(4))}
+        </h4>
+      );
+      i++;
+      continue;
+    }
+    if (line.startsWith("## ")) {
+      elements.push(
+        <h3 key={key++} className="mt-5 mb-2 text-lg font-bold text-white">
+          {renderInline(line.slice(3))}
+        </h3>
+      );
+      i++;
+      continue;
+    }
+    if (line.startsWith("# ")) {
+      elements.push(
+        <h2 key={key++} className="mt-6 mb-3 text-xl font-bold text-white">
+          {renderInline(line.slice(2))}
+        </h2>
+      );
+      i++;
+      continue;
+    }
+
+    if (line.includes("|") && line.trim().startsWith("|")) {
+      const tableLines: string[] = [];
+      while (i < lines.length && lines[i].includes("|") && lines[i].trim().startsWith("|")) {
+        tableLines.push(lines[i]);
+        i++;
+      }
+      elements.push(renderTable(tableLines, key++));
+      continue;
+    }
+
+    if (line.match(/^\s*[-*]\s/)) {
+      const listItems: string[] = [];
+      while (i < lines.length && lines[i].match(/^\s*[-*]\s/)) {
+        listItems.push(lines[i].replace(/^\s*[-*]\s/, ""));
+        i++;
+      }
+      elements.push(
+        <ul key={key++} className="my-2 ml-4 list-disc space-y-1 text-[#C9D1D9]">
+          {listItems.map((item, idx) => (
+            <li key={idx}>{renderInline(item)}</li>
+          ))}
+        </ul>
+      );
+      continue;
+    }
+
+    if (line.match(/^\s*\d+\.\s/)) {
+      const listItems: string[] = [];
+      while (i < lines.length && lines[i].match(/^\s*\d+\.\s/)) {
+        listItems.push(lines[i].replace(/^\s*\d+\.\s/, ""));
+        i++;
+      }
+      elements.push(
+        <ol key={key++} className="my-2 ml-4 list-decimal space-y-1 text-[#C9D1D9]">
+          {listItems.map((item, idx) => (
+            <li key={idx}>{renderInline(item)}</li>
+          ))}
+        </ol>
+      );
+      continue;
+    }
+
+    if (line.trim() === "") {
+      i++;
+      continue;
+    }
+
+    elements.push(
+      <p key={key++} className="my-2 text-[#C9D1D9] leading-relaxed">
+        {renderInline(line)}
+      </p>
+    );
+    i++;
+  }
+
+  return <>{elements}</>;
+}
+
+function renderInline(text: string): React.ReactNode {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return parts.map((part, idx) => {
+    if (part.startsWith("**") && part.endsWith("**")) {
+      return (
+        <strong key={idx} className="text-white font-semibold">
+          {part.slice(2, -2)}
+        </strong>
+      );
+    }
+    return part;
+  });
+}
+
+function renderTable(lines: string[], key: number) {
+  const rows = lines
+    .filter((l) => !l.match(/^\|\s*[-:]+/))
+    .map((l) =>
+      l
+        .split("|")
+        .filter((c) => c.trim() !== "")
+        .map((c) => c.trim())
+    );
+
+  if (rows.length === 0) return null;
+
+  const header = rows[0];
+  const body = rows.slice(1);
+
+  return (
+    <div key={key} className="my-4 overflow-x-auto rounded-lg border border-[#30363D]">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-[#30363D] bg-[#0D1117]">
+            {header.map((cell, idx) => (
+              <th
+                key={idx}
+                className="px-3 py-2 text-left font-semibold text-[#00D97E] whitespace-nowrap"
+              >
+                {renderInline(cell)}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {body.map((row, rIdx) => (
+            <tr
+              key={rIdx}
+              className={`border-b border-[#30363D] ${
+                rIdx % 2 === 0 ? "bg-[#161B22]" : "bg-[#0D1117]/50"
+              }`}
+            >
+              {row.map((cell, cIdx) => (
+                <td key={cIdx} className="px-3 py-2 text-[#C9D1D9] whitespace-nowrap">
+                  {renderInline(cell)}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ---------- Section icon mapping ----------
+
+function getSectionIcon(num: number): string {
+  const icons: Record<number, string> = {
+    1: "📋", 2: "📊", 3: "💰", 4: "⚙️", 5: "📈",
+    6: "🔄", 7: "📣", 8: "📆", 9: "⚠️", 10: "🚀",
+  };
+  return icons[num] || "📄";
+}
+
+// ---------- PDF Generator ----------
+
+function generatePDF(result: BPResult, clientName: string, city: string, state: string) {
+  const doc = new jsPDF("p", "mm", "a4");
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const marginL = 20;
+  const marginR = 20;
+  const contentW = pageW - marginL - marginR;
+  const darkBlue = "#1a5276";
+  const lightBlue = "#2874a6";
+
+  // ---- Cover page ----
+  doc.setFillColor(26, 82, 118); // #1a5276
+  doc.rect(0, 0, pageW, pageH, "F");
+
+  // Decorative top bar
+  doc.setFillColor(40, 116, 166); // #2874a6
+  doc.rect(0, 0, pageW, 8, "F");
+
+  // BLEV logo text
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(48);
+  doc.setFont("helvetica", "bold");
+  doc.text("BLEV", pageW / 2, 80, { align: "center" });
+
+  doc.setFontSize(14);
+  doc.setFont("helvetica", "normal");
+  doc.text("Eletropostos & Mobilidade Eletrica", pageW / 2, 95, { align: "center" });
+
+  // Separator line
+  doc.setDrawColor(40, 116, 166);
+  doc.setLineWidth(0.8);
+  doc.line(pageW / 2 - 40, 110, pageW / 2 + 40, 110);
+
+  doc.setFontSize(28);
+  doc.setFont("helvetica", "bold");
+  doc.text("Business Plan", pageW / 2, 135, { align: "center" });
+
+  doc.setFontSize(16);
+  doc.setFont("helvetica", "normal");
+  doc.text(clientName, pageW / 2, 155, { align: "center" });
+  doc.text(`${city}/${state}`, pageW / 2, 165, { align: "center" });
+
+  // Date
+  const today = new Date();
+  const dateStr = today.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+  doc.setFontSize(12);
+  doc.text(dateStr.charAt(0).toUpperCase() + dateStr.slice(1), pageW / 2, 185, { align: "center" });
+
+  // Stats on cover
+  doc.setFontSize(10);
+  const statsY = 210;
+  doc.setFont("helvetica", "bold");
+  doc.text(`${result.sections.length} Secoes`, pageW / 2 - 40, statsY, { align: "center" });
+  doc.text(`${result.ibge.population?.toLocaleString("pt-BR") ?? "N/D"} Hab.`, pageW / 2, statsY, { align: "center" });
+  doc.text(`${result.chargers_count} Carregadores`, pageW / 2 + 40, statsY, { align: "center" });
+
+  // Bottom bar
+  doc.setFillColor(40, 116, 166);
+  doc.rect(0, pageH - 8, pageW, 8, "F");
+
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "normal");
+  doc.text("Documento confidencial - Gerado por BLEV Platform", pageW / 2, pageH - 12, { align: "center" });
+
+  // ---- Content pages ----
+  let y = 0;
+
+  function newPage() {
+    doc.addPage();
+    // Header bar
+    doc.setFillColor(26, 82, 118);
+    doc.rect(0, 0, pageW, 12, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "bold");
+    doc.text("BLEV - Business Plan", marginL, 8);
+    doc.setFont("helvetica", "normal");
+    doc.text(`${clientName} | ${city}/${state}`, pageW - marginR, 8, { align: "right" });
+    // Footer
+    doc.setFillColor(26, 82, 118);
+    doc.rect(0, pageH - 8, pageW, 8, "F");
+    doc.setTextColor(200, 200, 200);
+    doc.setFontSize(7);
+    doc.text(`Pagina ${doc.getNumberOfPages()}`, pageW / 2, pageH - 3, { align: "center" });
+    y = 22;
+    doc.setTextColor(50, 50, 50);
+  }
+
+  function checkPageBreak(needed: number) {
+    if (y + needed > pageH - 20) {
+      newPage();
+    }
+  }
+
+  // Strip markdown bold markers for PDF
+  function stripMd(text: string): string {
+    return text.replace(/\*\*/g, "");
+  }
+
+  for (const section of result.sections) {
+    newPage();
+
+    // Section header
+    doc.setFillColor(40, 116, 166);
+    doc.roundedRect(marginL, y, contentW, 12, 2, 2, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(13);
+    doc.setFont("helvetica", "bold");
+    doc.text(`${section.number}. ${stripMd(section.title)}`, marginL + 5, y + 8.5);
+    y += 18;
+
+    doc.setTextColor(50, 50, 50);
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+
+    const contentLines = section.content.split("\n");
+
+    for (const rawLine of contentLines) {
+      const line = rawLine.trim();
+      if (!line) {
+        y += 3;
+        continue;
+      }
+
+      // Table handling
+      if (line.startsWith("|")) {
+        // Collect table lines
+        const tableStart = contentLines.indexOf(rawLine);
+        const tableRows: string[][] = [];
+        let tIdx = tableStart;
+        while (tIdx < contentLines.length && contentLines[tIdx].trim().startsWith("|")) {
+          const row = contentLines[tIdx].trim();
+          if (!row.match(/^\|\s*[-:]+/)) {
+            const cells = row.split("|").filter((c) => c.trim() !== "").map((c) => stripMd(c.trim()));
+            tableRows.push(cells);
+          }
+          tIdx++;
+        }
+
+        if (tableRows.length > 0) {
+          const cols = tableRows[0].length;
+          const colW = contentW / cols;
+          checkPageBreak(8 * (tableRows.length + 1));
+
+          // Header row
+          doc.setFillColor(26, 82, 118);
+          doc.rect(marginL, y, contentW, 8, "F");
+          doc.setTextColor(255, 255, 255);
+          doc.setFontSize(9);
+          doc.setFont("helvetica", "bold");
+          for (let c = 0; c < cols; c++) {
+            doc.text(tableRows[0][c] || "", marginL + c * colW + 3, y + 5.5);
+          }
+          y += 8;
+
+          // Data rows
+          doc.setFont("helvetica", "normal");
+          for (let r = 1; r < tableRows.length; r++) {
+            const bg = r % 2 === 0 ? 245 : 235;
+            doc.setFillColor(bg, bg, bg);
+            doc.rect(marginL, y, contentW, 7, "F");
+            doc.setTextColor(50, 50, 50);
+            for (let c = 0; c < cols; c++) {
+              doc.text(tableRows[r][c] || "", marginL + c * colW + 3, y + 5);
+            }
+            y += 7;
+            checkPageBreak(7);
+          }
+          y += 4;
+        }
+        // Skip already processed table lines
+        continue;
+      }
+
+      // Headings
+      if (line.startsWith("### ")) {
+        checkPageBreak(12);
+        doc.setFontSize(11);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(40, 116, 166);
+        doc.text(stripMd(line.slice(4)), marginL, y + 5);
+        y += 10;
+        doc.setTextColor(50, 50, 50);
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "normal");
+        continue;
+      }
+      if (line.startsWith("## ")) {
+        checkPageBreak(14);
+        doc.setFontSize(12);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(26, 82, 118);
+        doc.text(stripMd(line.slice(3)), marginL, y + 5);
+        y += 12;
+        doc.setTextColor(50, 50, 50);
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "normal");
+        continue;
+      }
+
+      // Bullet points
+      if (line.match(/^[-*]\s/)) {
+        const bulletText = stripMd(line.replace(/^[-*]\s/, ""));
+        const wrapped = doc.splitTextToSize(bulletText, contentW - 8);
+        checkPageBreak(6 * wrapped.length);
+        doc.setFillColor(40, 116, 166);
+        doc.circle(marginL + 2, y + 3, 1, "F");
+        doc.setTextColor(50, 50, 50);
+        doc.text(wrapped, marginL + 6, y + 4.5);
+        y += 6 * wrapped.length;
+        continue;
+      }
+
+      // Numbered list
+      if (line.match(/^\d+\.\s/)) {
+        const numMatch = line.match(/^(\d+)\.\s(.*)/);
+        if (numMatch) {
+          const itemText = stripMd(numMatch[2]);
+          const wrapped = doc.splitTextToSize(itemText, contentW - 10);
+          checkPageBreak(6 * wrapped.length);
+          doc.setFont("helvetica", "bold");
+          doc.setTextColor(40, 116, 166);
+          doc.text(`${numMatch[1]}.`, marginL, y + 4.5);
+          doc.setFont("helvetica", "normal");
+          doc.setTextColor(50, 50, 50);
+          doc.text(wrapped, marginL + 8, y + 4.5);
+          y += 6 * wrapped.length;
+          continue;
+        }
+      }
+
+      // Regular paragraph
+      const cleanText = stripMd(line);
+      const wrapped = doc.splitTextToSize(cleanText, contentW);
+      checkPageBreak(5.5 * wrapped.length);
+      doc.text(wrapped, marginL, y + 4.5);
+      y += 5.5 * wrapped.length + 2;
+    }
+  }
+
+  // Save
+  const safeName = clientName.replace(/[^a-zA-Z0-9]/g, "_");
+  doc.save(`BusinessPlan_${safeName}.pdf`);
+}
+
+// ---------- Main Component ----------
+
 export default function BusinessPlanPage() {
+  const [step, setStep] = useState<"form" | "loading" | "result">("form");
+  const [inputMode, setInputMode] = useState<"form" | "tally">("form");
+  const [result, setResult] = useState<BPResult | null>(null);
+  const [error, setError] = useState("");
+  const [loadingStepIdx, setLoadingStepIdx] = useState(0);
+  const [expandedSections, setExpandedSections] = useState<Set<number>>(new Set());
+  const abortRef = useRef<AbortController | null>(null);
+
+  // Form state
+  const [clientName, setClientName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [city, setCity] = useState("");
+  const [state, setState] = useState("");
+  const [objective, setObjective] = useState("");
+  const [resources, setResources] = useState("");
+  const [capital, setCapital] = useState("");
+  const [financing, setFinancing] = useState("");
+  const [strategy, setStrategy] = useState("");
+  const [timeline, setTimeline] = useState("");
+  const [marketMoment, setMarketMoment] = useState("");
+  const [demandIdentified, setDemandIdentified] = useState("");
+  const [priorities, setPriorities] = useState<string[]>([]);
+  const [challenges, setChallenges] = useState("");
+
+  // Tally state
+  const [tallyText, setTallyText] = useState("");
+
+  // Loading step animation
+  useEffect(() => {
+    if (step !== "loading") return;
+
+    setLoadingStepIdx(0);
+
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    let accumulated = 0;
+
+    for (let i = 1; i < LOADING_STEPS.length; i++) {
+      accumulated += LOADING_STEPS[i - 1].duration;
+      const idx = i;
+      const timer = setTimeout(() => {
+        setLoadingStepIdx(idx);
+      }, accumulated);
+      timers.push(timer);
+    }
+
+    return () => timers.forEach(clearTimeout);
+  }, [step]);
+
+  function togglePriority(p: string) {
+    setPriorities((prev) =>
+      prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]
+    );
+  }
+
+  function toggleSection(num: number) {
+    setExpandedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(num)) {
+        next.delete(num);
+      } else {
+        next.add(num);
+      }
+      return next;
+    });
+  }
+
+  function expandAll() {
+    if (!result) return;
+    setExpandedSections(new Set(result.sections.map((s) => s.number)));
+  }
+
+  function collapseAll() {
+    setExpandedSections(new Set());
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    setStep("loading");
+
+    abortRef.current = new AbortController();
+
+    try {
+      const bodyPayload =
+        inputMode === "tally"
+          ? { tally_text: tallyText }
+          : {
+              client_name: clientName,
+              phone,
+              email,
+              city,
+              state,
+              objective,
+              resources,
+              capital,
+              financing,
+              strategy,
+              timeline,
+              market_moment: marketMoment,
+              demand_identified: demandIdentified,
+              priorities,
+              challenges,
+            };
+
+      const res = await fetch("/api/generate-bp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(bodyPayload),
+        signal: abortRef.current.signal,
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ error: "Erro desconhecido" }));
+        throw new Error(data.error || `Erro ${res.status}`);
+      }
+
+      const data: BPResult = await res.json();
+      setResult(data);
+      setExpandedSections(new Set(data.sections.slice(0, 3).map((s) => s.number)));
+      setStep("result");
+    } catch (err) {
+      if ((err as Error).name === "AbortError") return;
+      setError((err as Error).message);
+      setStep("form");
+    }
+  }
+
+  function handleNewPlan() {
+    setResult(null);
+    setStep("form");
+    setError("");
+  }
+
+  function handleDownloadPDF() {
+    if (!result) return;
+    const name = clientName || "Cliente";
+    const c = city || "Cidade";
+    const s = state || "UF";
+    generatePDF(result, name, c, s);
+  }
+
+  // ---------- Render: Form ----------
+
+  if (step === "form") {
+    return (
+      <div>
+        <h1 className="text-2xl font-bold text-white">Business Plan</h1>
+        <p className="mt-1 text-[#8B949E]">
+          Gere um plano de negocios completo e personalizado para eletroposto.
+        </p>
+
+        {error && (
+          <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-red-400">
+            {error}
+          </div>
+        )}
+
+        {/* Input mode tabs */}
+        <div className="mt-6 flex rounded-lg border border-[#30363D] bg-[#0D1117] p-1">
+          <button
+            type="button"
+            onClick={() => setInputMode("form")}
+            className={`flex-1 rounded-md px-4 py-2.5 text-sm font-medium transition-all ${
+              inputMode === "form"
+                ? "bg-[#00D97E]/15 text-[#00D97E] border border-[#00D97E]/30"
+                : "text-[#8B949E] hover:text-white"
+            }`}
+          >
+            Formulario
+          </button>
+          <button
+            type="button"
+            onClick={() => setInputMode("tally")}
+            className={`flex-1 rounded-md px-4 py-2.5 text-sm font-medium transition-all ${
+              inputMode === "tally"
+                ? "bg-[#00D97E]/15 text-[#00D97E] border border-[#00D97E]/30"
+                : "text-[#8B949E] hover:text-white"
+            }`}
+          >
+            Colar do Tally
+          </button>
+        </div>
+
+        {/* Tally mode */}
+        {inputMode === "tally" && (
+          <form onSubmit={handleSubmit} className="mt-6 space-y-6">
+            <div className="rounded-xl border border-[#30363D] bg-[#161B22] p-6">
+              <h2 className="mb-2 text-lg font-semibold text-white">Colar Respostas do Tally</h2>
+              <p className="mb-4 text-sm text-[#8B949E]">
+                Cole abaixo as respostas do formulario Tally. O sistema vai extrair automaticamente
+                nome, telefone, email, cidade, objetivo, capital, estrategia, desafios e demais campos.
+              </p>
+              <textarea
+                value={tallyText}
+                onChange={(e) => setTallyText(e.target.value)}
+                rows={14}
+                required
+                className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-3 text-white placeholder-[#484F58] focus:border-[#00D97E] focus:outline-none font-mono text-sm leading-relaxed"
+                placeholder={`Cole aqui as respostas do formulario Tally...\n\nExemplo:\nNome: Joao Silva\nTelefone: (11) 99999-9999\nEmail: joao@email.com\nCidade: Sao Paulo\nEstado: SP\nObjetivo: Criar empresa de eletropostos\nCapital disponivel: R$ 200.000\nEstrategia: Comecar pequeno e reinvestir\n...`}
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={!tallyText.trim()}
+              className="w-full rounded-lg bg-[#00D97E] px-6 py-3.5 text-base font-semibold text-[#0D1117] transition-colors hover:bg-[#00c06e] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Gerar Business Plan
+            </button>
+          </form>
+        )}
+
+        {/* Form mode */}
+        {inputMode === "form" && (
+          <form onSubmit={handleSubmit} className="mt-6 space-y-6">
+            {/* Dados Pessoais */}
+            <div className="rounded-xl border border-[#30363D] bg-[#161B22] p-6">
+              <h2 className="mb-4 text-lg font-semibold text-white">Dados Pessoais</h2>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm text-[#8B949E]">Nome completo *</label>
+                  <input
+                    type="text"
+                    value={clientName}
+                    onChange={(e) => setClientName(e.target.value)}
+                    required
+                    className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-2.5 text-white placeholder-[#484F58] focus:border-[#00D97E] focus:outline-none"
+                    placeholder="Seu nome completo"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm text-[#8B949E]">Telefone</label>
+                  <input
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-2.5 text-white placeholder-[#484F58] focus:border-[#00D97E] focus:outline-none"
+                    placeholder="(XX) XXXXX-XXXX"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm text-[#8B949E]">Email</label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-2.5 text-white placeholder-[#484F58] focus:border-[#00D97E] focus:outline-none"
+                    placeholder="seu@email.com"
+                  />
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="col-span-2">
+                    <label className="mb-1 block text-sm text-[#8B949E]">Cidade *</label>
+                    <input
+                      type="text"
+                      value={city}
+                      onChange={(e) => setCity(e.target.value)}
+                      required
+                      className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-2.5 text-white placeholder-[#484F58] focus:border-[#00D97E] focus:outline-none"
+                      placeholder="Sua cidade"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm text-[#8B949E]">UF *</label>
+                    <select
+                      value={state}
+                      onChange={(e) => setState(e.target.value)}
+                      required
+                      className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-2.5 text-white focus:border-[#00D97E] focus:outline-none"
+                    >
+                      <option value="">UF</option>
+                      {STATES.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Objetivo e Estrategia */}
+            <div className="rounded-xl border border-[#30363D] bg-[#161B22] p-6">
+              <h2 className="mb-4 text-lg font-semibold text-white">Objetivo e Estrategia</h2>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm text-[#8B949E]">Objetivo principal *</label>
+                  <select
+                    value={objective}
+                    onChange={(e) => setObjective(e.target.value)}
+                    required
+                    className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-2.5 text-white focus:border-[#00D97E] focus:outline-none"
+                  >
+                    <option value="">Selecione...</option>
+                    {OBJECTIVE_OPTIONS.map((o) => (
+                      <option key={o} value={o}>
+                        {o}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm text-[#8B949E]">Capital disponivel *</label>
+                  <select
+                    value={capital}
+                    onChange={(e) => setCapital(e.target.value)}
+                    required
+                    className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-2.5 text-white focus:border-[#00D97E] focus:outline-none"
+                  >
+                    <option value="">Selecione...</option>
+                    {CAPITAL_OPTIONS.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm text-[#8B949E]">Estrategia de crescimento *</label>
+                  <select
+                    value={strategy}
+                    onChange={(e) => setStrategy(e.target.value)}
+                    required
+                    className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-2.5 text-white focus:border-[#00D97E] focus:outline-none"
+                  >
+                    <option value="">Selecione...</option>
+                    {STRATEGY_OPTIONS.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm text-[#8B949E]">Quando pretende comecar *</label>
+                  <select
+                    value={timeline}
+                    onChange={(e) => setTimeline(e.target.value)}
+                    required
+                    className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-2.5 text-white focus:border-[#00D97E] focus:outline-none"
+                  >
+                    <option value="">Selecione...</option>
+                    {TIMELINE_OPTIONS.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="md:col-span-2">
+                  <label className="mb-1 block text-sm text-[#8B949E]">
+                    Recursos que possui (terreno, parceria, localizacao...)
+                  </label>
+                  <textarea
+                    value={resources}
+                    onChange={(e) => setResources(e.target.value)}
+                    rows={2}
+                    className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-2.5 text-white placeholder-[#484F58] focus:border-[#00D97E] focus:outline-none"
+                    placeholder="Ex: tenho um terreno na BR-101, parceria com um shopping..."
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="mb-1 block text-sm text-[#8B949E]">
+                    Tem acesso a financiamento ou socios?
+                  </label>
+                  <textarea
+                    value={financing}
+                    onChange={(e) => setFinancing(e.target.value)}
+                    rows={2}
+                    className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-2.5 text-white placeholder-[#484F58] focus:border-[#00D97E] focus:outline-none"
+                    placeholder="Ex: tenho um socio interessado, posso financiar via BNDES..."
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Mercado e Demanda */}
+            <div className="rounded-xl border border-[#30363D] bg-[#161B22] p-6">
+              <h2 className="mb-4 text-lg font-semibold text-white">Mercado e Demanda</h2>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm text-[#8B949E]">
+                    Momento do mercado na sua cidade *
+                  </label>
+                  <select
+                    value={marketMoment}
+                    onChange={(e) => setMarketMoment(e.target.value)}
+                    required
+                    className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-2.5 text-white focus:border-[#00D97E] focus:outline-none"
+                  >
+                    <option value="">Selecione...</option>
+                    {MARKET_MOMENT_OPTIONS.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm text-[#8B949E]">
+                    Ja identificou demanda real? *
+                  </label>
+                  <select
+                    value={demandIdentified}
+                    onChange={(e) => setDemandIdentified(e.target.value)}
+                    required
+                    className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-2.5 text-white focus:border-[#00D97E] focus:outline-none"
+                  >
+                    <option value="">Selecione...</option>
+                    {DEMAND_OPTIONS.map((d) => (
+                      <option key={d} value={d}>
+                        {d}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Prioridades */}
+            <div className="rounded-xl border border-[#30363D] bg-[#161B22] p-6">
+              <h2 className="mb-4 text-lg font-semibold text-white">Prioridades para o Business Plan</h2>
+              <p className="mb-3 text-sm text-[#8B949E]">Selecione as que mais importam para voce:</p>
+              <div className="flex flex-wrap gap-2">
+                {PRIORITY_OPTIONS.map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => togglePriority(p)}
+                    className={`rounded-full border px-4 py-2 text-sm transition-all ${
+                      priorities.includes(p)
+                        ? "border-[#00D97E] bg-[#00D97E]/15 text-[#00D97E]"
+                        : "border-[#30363D] bg-[#0D1117] text-[#8B949E] hover:border-[#484F58] hover:text-white"
+                    }`}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Desafios */}
+            <div className="rounded-xl border border-[#30363D] bg-[#161B22] p-6">
+              <h2 className="mb-4 text-lg font-semibold text-white">Maiores Desafios</h2>
+              <textarea
+                value={challenges}
+                onChange={(e) => setChallenges(e.target.value)}
+                rows={3}
+                className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-2.5 text-white placeholder-[#484F58] focus:border-[#00D97E] focus:outline-none"
+                placeholder="Quais sao seus maiores desafios hoje para entrar no mercado de eletropostos?"
+              />
+            </div>
+
+            {/* Submit */}
+            <button
+              type="submit"
+              disabled={!clientName || !city || !state || !objective || !capital || !strategy || !timeline || !marketMoment || !demandIdentified}
+              className="w-full rounded-lg bg-[#00D97E] px-6 py-3.5 text-base font-semibold text-[#0D1117] transition-colors hover:bg-[#00c06e] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Gerar Business Plan
+            </button>
+          </form>
+        )}
+      </div>
+    );
+  }
+
+  // ---------- Render: Loading ----------
+
+  if (step === "loading") {
+    return (
+      <div>
+        <h1 className="text-2xl font-bold text-white">Business Plan</h1>
+        <p className="mt-1 text-[#8B949E]">
+          Gerando seu plano de negocios personalizado...
+        </p>
+
+        <div className="mt-12 flex flex-col items-center">
+          <div className="relative mb-8">
+            <div className="h-20 w-20 animate-spin rounded-full border-4 border-[#30363D] border-t-[#00D97E]" />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span className="text-2xl">📊</span>
+            </div>
+          </div>
+
+          <div className="w-full max-w-md space-y-3">
+            {LOADING_STEPS.map((s, idx) => (
+              <div
+                key={idx}
+                className={`flex items-center gap-3 rounded-lg border p-3 transition-all duration-500 ${
+                  idx < loadingStepIdx
+                    ? "border-[#00D97E]/30 bg-[#00D97E]/5"
+                    : idx === loadingStepIdx
+                    ? "border-[#00D97E]/50 bg-[#161B22]"
+                    : "border-[#30363D]/50 bg-[#161B22]/50 opacity-40"
+                }`}
+              >
+                <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center">
+                  {idx < loadingStepIdx ? (
+                    <svg className="h-5 w-5 text-[#00D97E]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  ) : idx === loadingStepIdx ? (
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-[#30363D] border-t-[#00D97E]" />
+                  ) : (
+                    <div className="h-3 w-3 rounded-full bg-[#30363D]" />
+                  )}
+                </div>
+                <span
+                  className={`text-sm ${
+                    idx < loadingStepIdx
+                      ? "text-[#00D97E]"
+                      : idx === loadingStepIdx
+                      ? "text-white"
+                      : "text-[#484F58]"
+                  }`}
+                >
+                  {s.text}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <p className="mt-8 text-sm text-[#484F58]">
+            Isso pode levar 1-2 minutos. Estamos gerando um plano completo.
+          </p>
+
+          <button
+            onClick={() => {
+              abortRef.current?.abort();
+              setStep("form");
+            }}
+            className="mt-4 text-sm text-[#8B949E] hover:text-white"
+          >
+            Cancelar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ---------- Render: Result ----------
+
+  if (!result) return null;
+
   return (
     <div>
-      <h1 className="text-2xl font-bold text-white">Business Plan</h1>
-      <p className="mt-1 text-[#8B949E]">
-        Gere planos de negócios completos com projeções financeiras.
-      </p>
-      <div className="mt-8 flex items-center justify-center rounded-xl border border-[#30363D] bg-[#161B22] p-16">
-        <p className="text-lg text-[#8B949E]">Em breve</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Business Plan</h1>
+          <p className="mt-1 text-[#8B949E]">
+            {clientName || "Cliente"} — {city || "Cidade"}/{state || "UF"}
+          </p>
+        </div>
+        <div className="flex gap-3">
+          <button
+            onClick={handleNewPlan}
+            className="rounded-lg border border-[#30363D] bg-[#161B22] px-4 py-2 text-sm text-[#8B949E] transition-colors hover:border-[#484F58] hover:text-white"
+          >
+            Novo Plano
+          </button>
+          <button
+            onClick={handleDownloadPDF}
+            className="rounded-lg bg-[#00D97E] px-4 py-2 text-sm font-semibold text-[#0D1117] transition-colors hover:bg-[#00c06e]"
+          >
+            Baixar PDF
+          </button>
+        </div>
+      </div>
+
+      {/* Stats bar */}
+      <div className="mt-6 grid grid-cols-3 gap-4">
+        <div className="rounded-xl border border-[#30363D] bg-[#161B22] p-4 text-center">
+          <p className="text-2xl font-bold text-[#00D97E]">{result.sections.length}</p>
+          <p className="text-xs text-[#8B949E]">Secoes</p>
+        </div>
+        <div className="rounded-xl border border-[#30363D] bg-[#161B22] p-4 text-center">
+          <p className="text-2xl font-bold text-[#2196F3]">
+            {result.ibge.population?.toLocaleString("pt-BR") ?? "N/D"}
+          </p>
+          <p className="text-xs text-[#8B949E]">Habitantes</p>
+        </div>
+        <div className="rounded-xl border border-[#30363D] bg-[#161B22] p-4 text-center">
+          <p className="text-2xl font-bold text-[#FFC107]">{result.chargers_count}</p>
+          <p className="text-xs text-[#8B949E]">Carregadores na cidade</p>
+        </div>
+      </div>
+
+      {/* Expand/Collapse controls */}
+      <div className="mt-6 flex gap-2">
+        <button
+          onClick={expandAll}
+          className="rounded-lg border border-[#30363D] bg-[#161B22] px-3 py-1.5 text-xs text-[#8B949E] hover:text-white"
+        >
+          Expandir todas
+        </button>
+        <button
+          onClick={collapseAll}
+          className="rounded-lg border border-[#30363D] bg-[#161B22] px-3 py-1.5 text-xs text-[#8B949E] hover:text-white"
+        >
+          Recolher todas
+        </button>
+      </div>
+
+      {/* Sections */}
+      <div className="mt-4 space-y-3">
+        {result.sections.map((section) => {
+          const isExpanded = expandedSections.has(section.number);
+          return (
+            <div
+              key={section.number}
+              className="rounded-xl border border-[#30363D] bg-[#161B22] overflow-hidden"
+            >
+              <button
+                onClick={() => toggleSection(section.number)}
+                className="flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-[#21262D]"
+              >
+                <span className="text-lg">{getSectionIcon(section.number)}</span>
+                <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[#00D97E]/15 text-xs font-bold text-[#00D97E]">
+                  {section.number}
+                </span>
+                <span className="flex-1 font-semibold text-white">{section.title}</span>
+                <svg
+                  className={`h-5 w-5 text-[#8B949E] transition-transform ${
+                    isExpanded ? "rotate-180" : ""
+                  }`}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 9l-7 7-7-7"
+                  />
+                </svg>
+              </button>
+              {isExpanded && (
+                <div className="border-t border-[#30363D] px-6 py-5">
+                  {renderMarkdown(section.content)}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Bottom actions */}
+      <div className="mt-8 flex justify-center gap-4">
+        <button
+          onClick={handleNewPlan}
+          className="rounded-lg border border-[#30363D] bg-[#161B22] px-6 py-3 text-sm text-[#8B949E] transition-colors hover:border-[#484F58] hover:text-white"
+        >
+          Gerar Novo Plano
+        </button>
+        <button
+          onClick={handleDownloadPDF}
+          className="rounded-lg bg-[#00D97E] px-6 py-3 text-sm font-semibold text-[#0D1117] transition-colors hover:bg-[#00c06e]"
+        >
+          Baixar PDF
+        </button>
       </div>
     </div>
   );
