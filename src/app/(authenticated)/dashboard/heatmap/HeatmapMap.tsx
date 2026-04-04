@@ -16,6 +16,8 @@ interface PointData {
   tempo_permanencia: string;
   pontos_fortes: string[];
   pontos_atencao: string[];
+  region?: string;
+  chargers_in_2km?: number;
 }
 
 interface ChargerData {
@@ -23,9 +25,18 @@ interface ChargerData {
   lat: number;
   lng: number;
   address: string;
-  rating: number | null;
-  reviews: number | null;
   operator: string;
+  powerKW: number;
+  connectionType: string;
+  isFastCharge: boolean;
+  isOperational: boolean;
+  totalConnections: number;
+  usageCost: string;
+  levelName: string;
+  source?: string;
+  type?: string;
+  rating?: number;
+  reviews?: number;
 }
 
 interface MobilityZoneData {
@@ -273,8 +284,17 @@ export default function HeatmapMap({
         ? `<span style="background:#C9A84C20;color:#C9A84C;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:700;">24H</span>`
         : "";
 
+      const chargersIn2km = typeof point.chargers_in_2km === "number" ? point.chargers_in_2km : 0;
+      const chargerBadge = chargersIn2km > 0
+        ? `<span style="background:#F4433620;color:#F44336;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;">${chargersIn2km} DC em 2km</span>`
+        : `<span style="background:#66BB6A20;color:#66BB6A;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;">0 DC em 2km</span>`;
+
+      const encodedAddr = encodeURIComponent(point.address || point.name);
+      const scoreLink = `/dashboard/score?address=${encodedAddr}&type=${point.category}&name=${encodeURIComponent(point.name)}`;
+      const bpLink = `/dashboard/business-plan?address=${encodedAddr}&type=${point.category}&name=${encodeURIComponent(point.name)}`;
+
       marker.bindPopup(
-        `<div style="font-family:system-ui;min-width:260px;max-width:320px;">
+        `<div style="font-family:system-ui;min-width:260px;max-width:340px;">
           <div style="font-weight:700;font-size:14px;margin-bottom:2px;">${escapeHtml(point.name)}</div>
           ${point.subcategory ? `<div style="color:#8B949E;font-size:11px;margin-bottom:4px;">${escapeHtml(point.subcategory)}</div>` : ""}
           <div style="color:#666;font-size:12px;margin-bottom:8px;">${escapeHtml(point.address)}</div>
@@ -282,14 +302,19 @@ export default function HeatmapMap({
             <span style="background:${color}20;color:${color};padding:2px 8px;border-radius:4px;font-size:12px;font-weight:600;">${classLabel}</span>
             <span style="background:#f0f0f020;color:#ccc;padding:2px 8px;border-radius:4px;font-size:12px;">${catLabel}</span>
             ${badge24h}
+            ${chargerBadge}
             ${point.tempo_permanencia ? `<span style="background:#f0f0f020;color:#999;padding:2px 8px;border-radius:4px;font-size:11px;">${escapeHtml(point.tempo_permanencia)}</span>` : ""}
           </div>
           <div style="font-size:16px;font-weight:700;color:${color};margin-bottom:6px;">Score: ${point.score}/100</div>
           <div style="color:#ccc;font-size:11px;line-height:1.5;margin-bottom:8px;">${escapeHtml(point.justification)}</div>
           ${pontosFortes ? `<div style="margin-bottom:4px;font-size:11px;font-weight:600;color:#C9A84C;">Pontos Fortes:</div><ul style="margin:0 0 6px 16px;padding:0;font-size:11px;line-height:1.6;">${pontosFortes}</ul>` : ""}
-          ${pontosAtencao ? `<div style="margin-bottom:4px;font-size:11px;font-weight:600;color:#FF9800;">Atenção:</div><ul style="margin:0 0 0 16px;padding:0;font-size:11px;line-height:1.6;">${pontosAtencao}</ul>` : ""}
+          ${pontosAtencao ? `<div style="margin-bottom:4px;font-size:11px;font-weight:600;color:#FF9800;">Atenção:</div><ul style="margin:0 0 8px 16px;padding:0;font-size:11px;line-height:1.6;">${pontosAtencao}</ul>` : ""}
+          <div style="display:flex;gap:8px;margin-top:8px;border-top:1px solid #30363D;padding-top:8px;">
+            <a href="${scoreLink}" style="flex:1;text-align:center;background:#2196F320;color:#2196F3;padding:6px 8px;border-radius:6px;font-size:11px;font-weight:600;text-decoration:none;">Analisar Ponto</a>
+            <a href="${bpLink}" style="flex:1;text-align:center;background:#C9A84C20;color:#C9A84C;padding:6px 8px;border-radius:6px;font-size:11px;font-weight:600;text-decoration:none;">Gerar BP</a>
+          </div>
         </div>`,
-        { maxWidth: 340 }
+        { maxWidth: 360 }
       );
 
       marker.on("click", () => onSelectPoint(globalIdx));
@@ -322,9 +347,10 @@ export default function HeatmapMap({
     const chargerGroup = L.layerGroup();
 
     chargers.forEach((charger) => {
+      const chargerColor = charger.isFastCharge ? "#FF9800" : "#F44336";
       const icon = L.divIcon({
         html: `<div style="position:relative;width:22px;height:22px;">
-          <div style="background:#F44336;width:22px;height:22px;border-radius:50%;border:2px solid #0D1117;display:flex;align-items:center;justify-content:center;box-shadow:0 0 8px #F4433680;">
+          <div style="background:${chargerColor};width:22px;height:22px;border-radius:50%;border:2px solid #0D1117;display:flex;align-items:center;justify-content:center;box-shadow:0 0 8px ${chargerColor}80;">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
           </div>
         </div>`,
@@ -335,26 +361,48 @@ export default function HeatmapMap({
 
       const marker = L.marker([charger.lat, charger.lng], { icon });
 
-      const ratingStars = charger.rating
-        ? `<div style="margin-bottom:6px;">
-            <span style="color:#FF9800;font-weight:700;font-size:14px;">${charger.rating.toFixed(1)}</span>
-            <span style="color:#FF9800;font-size:12px;"> ${"★".repeat(Math.round(charger.rating))}${"☆".repeat(5 - Math.round(charger.rating))}</span>
-            ${charger.reviews ? `<span style="color:#999;font-size:11px;"> (${charger.reviews} avaliações)</span>` : ""}
-          </div>`
-        : "";
+      const statusBadge = charger.isOperational
+        ? `<span style="background:#66BB6A30;color:#66BB6A;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;">Operacional</span>`
+        : `<span style="background:#F4433630;color:#F44336;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;">Inativo</span>`;
+
+      const typeBadge = charger.isFastCharge
+        ? `<span style="background:#FF980030;color:#FF9800;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;">DC Rápido</span>`
+        : `<span style="background:#42A5F530;color:#42A5F5;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;">AC</span>`;
+
+      const sourceLabel = charger.source || "OpenChargeMap";
+      const sourceColor =
+        sourceLabel === "Google Places"
+          ? "#4285F4"
+          : sourceLabel === "carregados.com.br"
+            ? "#26A69A"
+            : "#F44336";
+      const chargerTypeLabel = charger.type || charger.levelName || "Verificar";
+      const ratingHtml =
+        charger.rating && charger.rating > 0
+          ? `<div style="color:#FFC107;font-size:11px;margin-bottom:4px;">★ ${charger.rating}${charger.reviews ? ` (${charger.reviews} avaliações)` : ""}</div>`
+          : "";
 
       marker.bindPopup(
-        `<div style="font-family:system-ui;min-width:220px;">
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+        `<div style="font-family:system-ui;min-width:240px;">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap;">
             <span style="background:#F4433630;color:#F44336;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;">CONCORRENTE</span>
+            ${typeBadge}
+            ${statusBadge}
           </div>
           <div style="font-weight:700;font-size:14px;margin-bottom:2px;">${escapeHtml(charger.name)}</div>
-          ${charger.operator ? `<div style="color:#8B949E;font-size:11px;margin-bottom:4px;">Operador: ${escapeHtml(charger.operator)}</div>` : ""}
-          <div style="color:#666;font-size:12px;margin-bottom:8px;">${escapeHtml(charger.address)}</div>
-          ${ratingStars}
-          <div style="color:#F44336;font-size:11px;font-style:italic;">Carregador existente (Google Places)</div>
+          <div style="color:#666;font-size:12px;margin-bottom:6px;">${escapeHtml(charger.address)}</div>
+          ${charger.operator && charger.operator !== "Desconhecido" && charger.operator !== "Verificar" ? `<div style="color:#8B949E;font-size:11px;margin-bottom:4px;">Operador: ${escapeHtml(charger.operator)}</div>` : ""}
+          <div style="display:flex;gap:12px;margin-bottom:6px;">
+            ${charger.powerKW > 0 ? `<div style="text-align:center;"><div style="color:#FF9800;font-weight:700;font-size:16px;">${charger.powerKW}</div><div style="color:#999;font-size:10px;">kW</div></div>` : ""}
+            <div style="text-align:center;">
+              <div style="color:#ccc;font-weight:700;font-size:14px;">${escapeHtml(chargerTypeLabel)}</div>
+              <div style="color:#999;font-size:10px;">tipo</div>
+            </div>
+          </div>
+          ${ratingHtml}
+          <div style="color:${sourceColor};font-size:10px;font-style:italic;margin-top:4px;">Fonte: ${escapeHtml(sourceLabel)}</div>
         </div>`,
-        { maxWidth: 300 }
+        { maxWidth: 340 }
       );
 
       chargerGroup.addLayer(marker);

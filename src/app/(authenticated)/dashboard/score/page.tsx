@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 
 // ---------- Types ----------
 
@@ -433,9 +434,18 @@ function VariableBar({ variable }: { variable: VariableData }) {
 // ---------- Main Page ----------
 
 export default function ScorePage() {
-  const [address, setAddress] = useState("");
-  const [establishmentType, setEstablishmentType] = useState("");
-  const [establishmentName, setEstablishmentName] = useState("");
+  return (
+    <Suspense fallback={<div className="p-8 text-[#8B949E]">Carregando...</div>}>
+      <ScorePageInner />
+    </Suspense>
+  );
+}
+
+function ScorePageInner() {
+  const searchParams = useSearchParams();
+  const [address, setAddress] = useState(searchParams.get("address") || "");
+  const [establishmentType, setEstablishmentType] = useState(searchParams.get("type") || "");
+  const [establishmentName, setEstablishmentName] = useState(searchParams.get("name") || "");
   const [loading, setLoading] = useState(false);
   const [loadingStep, setLoadingStep] = useState(0);
   const [error, setError] = useState("");

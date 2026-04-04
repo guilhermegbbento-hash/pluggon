@@ -1,5 +1,12 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@/lib/supabase/server";
+import {
+  fetchAllCompetitors,
+  classifyCompetitors,
+  countNearby,
+} from "@/lib/competitors";
+import { calculateScore } from "@/lib/scoring-engine";
+import type { ScoreInput } from "@/lib/scoring-engine";
 
 export const maxDuration = 120;
 
@@ -27,8 +34,10 @@ async function geocodeAddress(
     let city = "";
     let state = "";
     for (const comp of result.address_components || []) {
-      if (comp.types.includes("administrative_area_level_2")) city = comp.long_name;
-      if (comp.types.includes("administrative_area_level_1")) state = comp.short_name;
+      if (comp.types.includes("administrative_area_level_2"))
+        city = comp.long_name;
+      if (comp.types.includes("administrative_area_level_1"))
+        state = comp.short_name;
     }
 
     return { lat: loc.lat, lng: loc.lng, city, state };
@@ -188,10 +197,11 @@ async function fetchIBGEData(city: string, state: string): Promise<IBGEData> {
           const latestKey = Object.keys(series).sort().pop();
           if (latestKey) {
             const pibEmMil = parseFloat(series[latestKey]);
-            result.gdp_total = pibEmMil * 1000; // Converter de R$ 1.000 para R$
-            // Calcular PIB per capita = PIB total / população
+            result.gdp_total = pibEmMil * 1000;
             if (result.population && result.population > 0) {
-              result.gdp_per_capita = Math.round(result.gdp_total / result.population);
+              result.gdp_per_capita = Math.round(
+                result.gdp_total / result.population
+              );
             }
           }
         }
@@ -222,12 +232,14 @@ async function fetchIBGEData(city: string, state: string): Promise<IBGEData> {
   return result;
 }
 
-// ---------- Build Claude system prompt ----------
+// ---------- Build Claude system prompt (justificativas das 80 variáveis) ----------
 
 function buildSystemPrompt(): string {
   return `Você é a BLEV, plataforma líder em inteligência para eletromobilidade no Brasil. Analise este ponto para instalação de eletroposto DC rápido (150kW+).
 
-Analise as 80 variáveis abaixo organizadas em 8 categorias. Dê nota 0-10 em CADA variável com justificativa curta. O peso de cada variável está indicado: Alto(x3), Médio(x2), Baixo(x1). Score final ponderado 0-100.
+O SCORE GERAL JÁ FOI CALCULADO pelo sistema. Sua tarefa é APENAS gerar as justificativas detalhadas das 80 variáveis.
+
+Analise as 80 variáveis abaixo organizadas em 8 categorias. Dê nota 0-10 em CADA variável com justificativa curta. O peso de cada variável está indicado: Alto(x3), Médio(x2), Baixo(x1).
 
 CATEGORIAS E VARIÁVEIS (80 total):
 
@@ -331,7 +343,6 @@ SISTEMA DE PESOS:
 - Alto = multiplicador x3
 - Médio = multiplicador x2
 - Baixo = multiplicador x1
-- Score final = soma(nota × peso) / soma(pesos) × 10, normalizado para 0-100
 
 CLASSIFICAÇÕES:
 - Premium: 85-100 (dourado #C9A84C)
@@ -350,8 +361,6 @@ CALIBRAÇÃO OBRIGATÓRIA:
 
 IMPORTANTE: Retorne TODAS as 80 variáveis. Responda APENAS com JSON válido, sem markdown, sem texto extra. Formato:
 {
-  "overall_score": 78,
-  "classification": "ESTRATEGICO",
   "variables": [
     {
       "name": "volume_veiculos_dia",
@@ -376,12 +385,17 @@ function buildUserPrompt(
   establishmentType: string,
   establishmentName: string,
   nearbyPOIs: NearbyPlace[],
-  chargersIn2km: NearbyPlace[],
-  chargersIn5km: NearbyPlace[],
+  chargersIn2km: number,
+  chargersIn200m: number,
+  chargersInCity: number,
+  dcChargersInCity: number,
+  chargerOperators: string[],
   ibgeData: IBGEData,
   city: string,
   state: string,
-  poiCounts: Record<string, number>
+  poiCounts: Record<string, number>,
+  calculatedScore: number,
+  calculatedClassification: string
 ): string {
   const poiSummary = nearbyPOIs.length
     ? nearbyPOIs
@@ -392,25 +406,10 @@ function buildUserPrompt(
         .join("\n")
     : "Nenhum POI encontrado.";
 
-  const charger2kmSummary = chargersIn2km.length
-    ? chargersIn2km
-        .map(
-          (c) =>
-            `- ${c.name} (${c.distance_m}m, rating: ${c.rating ?? "N/A"}, reviews: ${c.reviews ?? 0})`
-        )
-        .join("\n")
-    : "Nenhum carregador EV encontrado no raio de 2km.";
-
-  const charger5kmSummary = chargersIn5km.length
-    ? chargersIn5km
-        .map(
-          (c) =>
-            `- ${c.name} (${c.distance_m}m, rating: ${c.rating ?? "N/A"}, reviews: ${c.reviews ?? 0})`
-        )
-        .join("\n")
-    : "Nenhum carregador EV encontrado no raio de 5km.";
-
   return `ANALISE ESTE PONTO:
+
+SCORE JÁ CALCULADO PELO SISTEMA: ${calculatedScore}/100 — ${calculatedClassification}
+(Baseado em dados reais de concorrência OpenChargeMap + dados IBGE + tipo de estabelecimento)
 
 DADOS REAIS COLETADOS:
 - Endereço: ${address}
@@ -425,7 +424,14 @@ DADOS IBGE DA CIDADE:
 - PIB total: R$ ${ibgeData.gdp_total?.toLocaleString("pt-BR", { minimumFractionDigits: 2 }) ?? "N/D"}
 - IDHM: ${ibgeData.idhm ?? "N/D"}
 
-CONTAGEM DE POIs POR CATEGORIA:
+DADOS REAIS DE CONCORRÊNCIA (Google Places + carregados.com.br):
+- Total de carregadores na cidade: ${chargersInCity}
+- Carregadores DC rápidos na cidade: ${dcChargersInCity}
+- Concorrentes diretos (<200m): ${chargersIn200m}
+- Carregadores no raio de 2km: ${chargersIn2km}
+- Operadores na cidade: ${chargerOperators.join(", ") || "Nenhum"}
+
+CONTAGEM DE POIs POR CATEGORIA (Google Places):
 - Restaurantes em 500m: ${poiCounts.restaurantes} encontrados
 - Farmácias em 500m: ${poiCounts.farmacias} encontrados
 - Postos de gasolina em 500m: ${poiCounts.postos} encontrados
@@ -434,70 +440,63 @@ CONTAGEM DE POIs POR CATEGORIA:
 - Hospitais em 1km: ${poiCounts.hospitais} encontrados
 - Estacionamentos em 500m: ${poiCounts.estacionamentos} encontrados
 
-CARREGADORES EV (CONCORRÊNCIA):
-- Carregadores em 2km: ${poiCounts.carregadores_2km} encontrados
-- Carregadores em 5km: ${poiCounts.carregadores_5km} encontrados
-
 LISTA DETALHADA DE POIs:
 ${poiSummary}
 
-CARREGADORES EV NO RAIO DE 2km:
-${charger2kmSummary}
-
-CARREGADORES EV NO RAIO DE 5km:
-${charger5kmSummary}
-
-Com base NESSES DADOS REAIS, analise as 80 variáveis e retorne o JSON com score, classificação, variáveis detalhadas, pontos fortes, pontos de atenção e recomendação.`;
+Com base NESSES DADOS REAIS, gere as justificativas detalhadas das 80 variáveis. O score geral (${calculatedScore}) já foi calculado — foque nas notas individuais e justificativas de cada variável.`;
 }
 
 // ---------- Parse Claude JSON response ----------
 
 function parseClaudeJSON(raw: string): any {
   let text = raw;
-  // Remover markdown code blocks
-  text = text.replace(/```json\s*/gi, '');
-  text = text.replace(/```\s*/gi, '');
+  text = text.replace(/```json\s*/gi, "");
+  text = text.replace(/```\s*/gi, "");
   text = text.trim();
-  // Encontrar o primeiro { ou [
-  const startBrace = text.indexOf('{');
-  const startBracket = text.indexOf('[');
+  const startBrace = text.indexOf("{");
+  const startBracket = text.indexOf("[");
   let start = -1;
   if (startBrace === -1) start = startBracket;
   else if (startBracket === -1) start = startBrace;
   else start = Math.min(startBrace, startBracket);
   if (start > 0) text = text.substring(start);
-  // Encontrar o último } ou ]
-  const endBrace = text.lastIndexOf('}');
-  const endBracket = text.lastIndexOf(']');
+  const endBrace = text.lastIndexOf("}");
+  const endBracket = text.lastIndexOf("]");
   const end = Math.max(endBrace, endBracket);
   if (end > 0) text = text.substring(0, end + 1);
   try {
     return JSON.parse(text);
-  } catch(e) {
-    // Tentar fechar JSON incompleto
+  } catch (e) {
     if (text.includes('"sections"')) {
-      const lastComplete = text.lastIndexOf('}');
+      const lastComplete = text.lastIndexOf("}");
       if (lastComplete > 0) {
-        const fixed = text.substring(0, lastComplete + 1) + ']}';
+        const fixed = text.substring(0, lastComplete + 1) + "]}";
         return JSON.parse(fixed);
       }
     }
-    console.error('JSON raw:', text.substring(0, 200));
-    throw new Error('Failed to parse JSON: ' + (e as Error).message);
+    console.error("JSON raw:", text.substring(0, 200));
+    throw new Error("Failed to parse JSON: " + (e as Error).message);
   }
 }
 
 // ---------- Claude retry helper ----------
 
-async function callClaudeWithRetry(params: Anthropic.MessageCreateParamsNonStreaming): Promise<Anthropic.Message> {
+async function callClaudeWithRetry(
+  params: Anthropic.MessageCreateParamsNonStreaming
+): Promise<Anthropic.Message> {
   for (let attempt = 0; attempt < 2; attempt++) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 110000);
     try {
-      const msg = await anthropic.messages.create(params, { signal: controller.signal });
+      const msg = await anthropic.messages.create(params, {
+        signal: controller.signal,
+      });
       return msg;
     } catch (err) {
-      console.warn(`Chamada Claude falhou (tentativa ${attempt + 1}):`, err instanceof Error ? err.message : err);
+      console.warn(
+        `Chamada Claude falhou (tentativa ${attempt + 1}):`,
+        err instanceof Error ? err.message : err
+      );
       if (attempt === 1) throw err;
     } finally {
       clearTimeout(timeout);
@@ -524,34 +523,110 @@ export async function POST(request: Request) {
     const geo = await geocodeAddress(address);
     if (!geo) {
       return Response.json(
-        { error: "Não foi possível geocodificar o endereço. Verifique e tente novamente." },
+        {
+          error:
+            "Não foi possível geocodificar o endereço. Verifique e tente novamente.",
+        },
         { status: 400 }
       );
     }
 
-    // 2-4. Parallel: POIs (múltiplas categorias), Chargers (2km e 5km), IBGE
+    // 2. Validate the point itself via Google Places to get rating/reviews
+    let pointRating = 0;
+    let pointReviews = 0;
+    if (GOOGLE_MAPS_API_KEY && (establishment_name || address)) {
+      try {
+        const placeRes = await fetch(
+          "https://places.googleapis.com/v1/places:searchText",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Goog-Api-Key": GOOGLE_MAPS_API_KEY,
+              "X-Goog-FieldMask":
+                "places.rating,places.userRatingCount",
+            },
+            body: JSON.stringify({
+              textQuery:
+                (establishment_name || "") +
+                " " +
+                address,
+              maxResultCount: 1,
+            }),
+          }
+        );
+        if (placeRes.ok) {
+          const placeData = await placeRes.json();
+          const place = placeData.places?.[0];
+          if (place) {
+            pointRating = place.rating || 0;
+            pointReviews = place.userRatingCount || 0;
+          }
+        }
+      } catch {
+        // continue without rating
+      }
+    }
+
+    // 3. Parallel: POIs (Google Places), Competitors (3 fontes), IBGE
     const [
-      restaurants, pharmacies, gasStations, supermarkets,
-      shoppings, hospitals, parking,
-      chargers2km, chargers5km,
+      restaurants,
+      pharmacies,
+      gasStations,
+      supermarkets,
+      shoppings,
+      hospitals,
+      parking,
+      allCompetitors,
       ibgeData,
     ] = await Promise.all([
       searchNearbyPlaces(geo.lat, geo.lng, "restaurante", "restaurante", 500),
       searchNearbyPlaces(geo.lat, geo.lng, "farmácia", "farmacia", 500),
-      searchNearbyPlaces(geo.lat, geo.lng, "posto de gasolina", "posto", 500),
-      searchNearbyPlaces(geo.lat, geo.lng, "supermercado", "supermercado", 500),
-      searchNearbyPlaces(geo.lat, geo.lng, "shopping center", "shopping", 1000),
+      searchNearbyPlaces(
+        geo.lat,
+        geo.lng,
+        "posto de gasolina",
+        "posto",
+        500
+      ),
+      searchNearbyPlaces(
+        geo.lat,
+        geo.lng,
+        "supermercado",
+        "supermercado",
+        500
+      ),
+      searchNearbyPlaces(
+        geo.lat,
+        geo.lng,
+        "shopping center",
+        "shopping",
+        1000
+      ),
       searchNearbyPlaces(geo.lat, geo.lng, "hospital", "hospital", 1000),
-      searchNearbyPlaces(geo.lat, geo.lng, "estacionamento", "estacionamento", 500),
-      searchNearbyPlaces(geo.lat, geo.lng, "eletroposto OR ev charging", "carregador_ev", 2000),
-      searchNearbyPlaces(geo.lat, geo.lng, "eletroposto OR ev charging", "carregador_ev", 5000),
+      searchNearbyPlaces(
+        geo.lat,
+        geo.lng,
+        "estacionamento",
+        "estacionamento",
+        500
+      ),
+      fetchAllCompetitors(geo.city, geo.state, geo.lat, geo.lng).then(r => r.competitors), // Google Places + carregados.com.br
       fetchIBGEData(geo.city, geo.state),
     ]);
 
     // Deduplicate POIs
     const allPOIs: NearbyPlace[] = [];
     const seen = new Set<string>();
-    for (const list of [restaurants, pharmacies, gasStations, supermarkets, shoppings, hospitals, parking]) {
+    for (const list of [
+      restaurants,
+      pharmacies,
+      gasStations,
+      supermarkets,
+      shoppings,
+      hospitals,
+      parking,
+    ]) {
       for (const p of list) {
         const key = `${p.lat.toFixed(4)},${p.lng.toFixed(4)}`;
         if (!seen.has(key)) {
@@ -561,20 +636,10 @@ export async function POST(request: Request) {
       }
     }
 
-    // Deduplicate chargers 5km (includes 2km results)
-    const allChargers: NearbyPlace[] = [];
-    const seenChargers = new Set<string>();
-    for (const list of [chargers2km, chargers5km]) {
-      for (const c of list) {
-        const key = `${c.lat.toFixed(4)},${c.lng.toFixed(4)}`;
-        if (!seenChargers.has(key)) {
-          seenChargers.add(key);
-          allChargers.push(c);
-        }
-      }
-    }
-    const chargersIn2km = allChargers.filter((c) => c.distance_m <= 2000);
-    const chargersIn5km = allChargers.filter((c) => c.distance_m <= 5000);
+    // Count competitors by radius
+    const chargersIn200m = countNearby(geo.lat, geo.lng, allCompetitors, 200);
+    const chargersIn2km = countNearby(geo.lat, geo.lng, allCompetitors, 2000);
+    const chargerInfo = classifyCompetitors(allCompetitors);
 
     // POI counts by category
     const poiCounts = {
@@ -585,11 +650,49 @@ export async function POST(request: Request) {
       shoppings: shoppings.length,
       hospitais: hospitals.length,
       estacionamentos: parking.length,
-      carregadores_2km: chargersIn2km.length,
-      carregadores_5km: chargersIn5km.length,
+      carregadores_200m: chargersIn200m,
+      carregadores_2km: chargersIn2km,
     };
 
-    // 5. Claude analysis
+    // 3. Calcular score com scoring-engine (MESMA fórmula do heatmap)
+    // Inferir qualidade do bairro pelo PIB per capita da cidade
+    const gdpPC = ibgeData.gdp_per_capita || 30000;
+    const nbQuality =
+      gdpPC > 70000
+        ? "premium"
+        : gdpPC > 50000
+          ? "alto"
+          : gdpPC > 25000
+            ? "medio"
+            : "baixo";
+
+    const scoreInput: ScoreInput = {
+      population: ibgeData.population || 200000,
+      gdpPerCapita: gdpPC,
+      establishmentType: establishment_type || "outro",
+      is24h: [
+        "posto_24h",
+        "hospital_24h",
+        "farmacia_24h",
+        "aeroporto",
+      ].includes(establishment_type || ""),
+      neighborhoodQuality: nbQuality,
+      chargersInCity: chargerInfo.total,
+      dcChargersInCity: chargerInfo.dc,
+      chargersIn200m,
+      chargersIn2km,
+      restaurantsNearby: restaurants.length,
+      hospitalsNearby: hospitals.length,
+      shoppingNearby: shoppings.length,
+      gasStationsNearby: gasStations.length,
+      parkingNearby: parking.length,
+      rating: pointRating,
+      reviews: pointReviews,
+    };
+
+    const scoreResult = calculateScore(scoreInput);
+
+    // 4. Claude analysis - apenas justificativas das 80 variáveis
     const userPrompt = buildUserPrompt(
       address,
       geo.lat,
@@ -598,11 +701,16 @@ export async function POST(request: Request) {
       establishment_name || "",
       allPOIs,
       chargersIn2km,
-      chargersIn5km,
+      chargersIn200m,
+      chargerInfo.total,
+      chargerInfo.dc,
+      chargerInfo.operators,
       ibgeData,
       geo.city,
       geo.state,
-      poiCounts
+      poiCounts,
+      scoreResult.overallScore,
+      scoreResult.classification
     );
 
     let analysisResult: Record<string, unknown> | null = null;
@@ -616,31 +724,35 @@ export async function POST(request: Request) {
 
       const textBlock = message.content.find((b) => b.type === "text");
       if (!textBlock || textBlock.type !== "text") {
-        return Response.json({ error: "Resposta vazia da IA" }, { status: 500 });
+        return Response.json(
+          { error: "Resposta vazia da IA" },
+          { status: 500 }
+        );
       }
 
       analysisResult = parseClaudeJSON(textBlock.text);
       if (!analysisResult) {
-        console.error("score-point: parse error. Response:", textBlock.text.slice(0, 500));
+        console.error(
+          "score-point: parse error. Response:",
+          textBlock.text.slice(0, 500)
+        );
         return Response.json(
           { error: "Erro ao processar resposta da IA. Tente novamente." },
           { status: 500 }
         );
       }
     } catch (err) {
-      console.error("score-point: erro na chamada Claude:", err instanceof Error ? err.message : err);
+      console.error(
+        "score-point: erro na chamada Claude:",
+        err instanceof Error ? err.message : err
+      );
       return Response.json(
         { error: "Tente novamente em 1 minuto." },
         { status: 500 }
       );
     }
 
-    // 6. Save to DB
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
+    // 5. Montar resposta com score do scoring-engine + variáveis do Claude
     const responseData = {
       address,
       lat: geo.lat,
@@ -649,16 +761,48 @@ export async function POST(request: Request) {
       state: geo.state,
       establishment_type: establishment_type || "outro",
       establishment_name: establishment_name || "",
-      overall_score: analysisResult.overall_score as number,
-      classification: analysisResult.classification as string,
-      variables: analysisResult.variables as unknown[],
+      overall_score: scoreResult.overallScore,
+      classification: scoreResult.classification,
+      scoring_variables: scoreResult.variables, // variáveis do scoring-engine
+      variables: analysisResult.variables as unknown[], // 80 variáveis detalhadas do Claude
       strengths: analysisResult.strengths as string[],
       weaknesses: analysisResult.weaknesses as string[],
       recommendation: analysisResult.recommendation as string,
       nearby_pois: allPOIs,
-      nearby_chargers: chargersIn5km,
+      nearby_chargers: allCompetitors
+        .filter(
+          (c) => haversineDistance(geo.lat, geo.lng, c.lat, c.lng) <= 5000
+        )
+        .map((c) => ({
+          name: c.name,
+          lat: c.lat,
+          lng: c.lng,
+          address: c.address,
+          operator: c.operator,
+          powerKW: c.powerKW,
+          type: c.type,
+          source: c.source,
+          isFastCharge: c.isFastCharge,
+          isOperational: c.isOperational,
+          rating: c.rating,
+          reviews: c.reviews,
+        })),
       ibge_data: ibgeData,
+      charger_summary: {
+        total: chargerInfo.total,
+        dc: chargerInfo.dc,
+        ac: chargerInfo.ac,
+        in_200m: chargersIn200m,
+        in_2km: chargersIn2km,
+        operators: chargerInfo.operators,
+      },
     };
+
+    // 6. Save to DB
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
     if (user) {
       await supabase.from("point_scores").insert({
@@ -670,8 +814,8 @@ export async function POST(request: Request) {
         state: geo.state,
         establishment_type: establishment_type || "outro",
         establishment_name: establishment_name || "",
-        overall_score: analysisResult.overall_score,
-        classification: analysisResult.classification,
+        overall_score: scoreResult.overallScore,
+        classification: scoreResult.classification,
         variables_json: analysisResult.variables,
         strengths: analysisResult.strengths,
         weaknesses: analysisResult.weaknesses,
