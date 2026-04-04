@@ -47,7 +47,7 @@ interface HeatmapMapProps {
 }
 
 const CLASSIFICATION_COLORS: Record<string, string> = {
-  PREMIUM: "#00D97E",
+  PREMIUM: "#C9A84C",
   ESTRATEGICO: "#2196F3",
   VIAVEL: "#FFC107",
   MARGINAL: "#FF9800",
@@ -196,7 +196,7 @@ export default function HeatmapMap({
         heatLayerRef.current;
     }
     if (markersRef.current) {
-      overlays[`<span style="color:#00D97E;">&#9679;</span> Pontos Sugeridos`] =
+      overlays[`<span style="color:#C9A84C;">&#9679;</span> Pontos Sugeridos`] =
         markersRef.current;
     }
     if (chargersLayerRef.current) {
@@ -264,13 +264,13 @@ export default function HeatmapMap({
       const marker = L.marker([point.lat, point.lng], { icon });
 
       const pontosFortes = (point.pontos_fortes || [])
-        .map((p) => `<li style="color:#00D97E;">${escapeHtml(p)}</li>`)
+        .map((p) => `<li style="color:#C9A84C;">${escapeHtml(p)}</li>`)
         .join("");
       const pontosAtencao = (point.pontos_atencao || [])
         .map((p) => `<li style="color:#FF9800;">${escapeHtml(p)}</li>`)
         .join("");
       const badge24h = point.operacao_24h
-        ? `<span style="background:#00D97E20;color:#00D97E;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:700;">24H</span>`
+        ? `<span style="background:#C9A84C20;color:#C9A84C;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:700;">24H</span>`
         : "";
 
       marker.bindPopup(
@@ -286,7 +286,7 @@ export default function HeatmapMap({
           </div>
           <div style="font-size:16px;font-weight:700;color:${color};margin-bottom:6px;">Score: ${point.score}/100</div>
           <div style="color:#ccc;font-size:11px;line-height:1.5;margin-bottom:8px;">${escapeHtml(point.justification)}</div>
-          ${pontosFortes ? `<div style="margin-bottom:4px;font-size:11px;font-weight:600;color:#00D97E;">Pontos Fortes:</div><ul style="margin:0 0 6px 16px;padding:0;font-size:11px;line-height:1.6;">${pontosFortes}</ul>` : ""}
+          ${pontosFortes ? `<div style="margin-bottom:4px;font-size:11px;font-weight:600;color:#C9A84C;">Pontos Fortes:</div><ul style="margin:0 0 6px 16px;padding:0;font-size:11px;line-height:1.6;">${pontosFortes}</ul>` : ""}
           ${pontosAtencao ? `<div style="margin-bottom:4px;font-size:11px;font-weight:600;color:#FF9800;">Atenção:</div><ul style="margin:0 0 0 16px;padding:0;font-size:11px;line-height:1.6;">${pontosAtencao}</ul>` : ""}
         </div>`,
         { maxWidth: 340 }

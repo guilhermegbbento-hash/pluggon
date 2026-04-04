@@ -73,7 +73,7 @@ const CLASSIFICATION_CONFIG: Record<
   string,
   { label: string; color: string; min: number }
 > = {
-  PREMIUM: { label: "Premium", color: "#00D97E", min: 85 },
+  PREMIUM: { label: "Premium", color: "#C9A84C", min: 85 },
   ESTRATEGICO: { label: "Estratégico", color: "#2196F3", min: 70 },
   VIAVEL: { label: "Viável", color: "#FFC107", min: 55 },
   MARGINAL: { label: "Marginal", color: "#FF9800", min: 40 },
@@ -207,7 +207,7 @@ function getClassificationColor(classification: string): string {
 }
 
 function getScoreColor(score: number): string {
-  if (score >= 8.5) return "#00D97E";
+  if (score >= 8.5) return "#C9A84C";
   if (score >= 7) return "#2196F3";
   if (score >= 5.5) return "#FFC107";
   if (score >= 4) return "#FF9800";
@@ -337,8 +337,8 @@ function MiniMap({
     // 500m radius circle
     L.circle([lat, lng], {
       radius: 500,
-      color: "#00D97E",
-      fillColor: "#00D97E",
+      color: "#C9A84C",
+      fillColor: "#C9A84C",
       fillOpacity: 0.05,
       weight: 1,
       dashArray: "5,5",
@@ -346,7 +346,7 @@ function MiniMap({
 
     // Main point marker
     const mainIcon = L.divIcon({
-      html: `<div style="width:20px;height:20px;background:#00D97E;border:3px solid white;border-radius:50%;box-shadow:0 0 10px rgba(0,217,126,0.5);"></div>`,
+      html: `<div style="width:20px;height:20px;background:#C9A84C;border:3px solid white;border-radius:50%;box-shadow:0 0 10px rgba(0,217,126,0.5);"></div>`,
       iconSize: [20, 20] as unknown as Record<string, unknown>,
       iconAnchor: [10, 10] as unknown as Record<string, unknown>,
       className: "",
@@ -542,7 +542,7 @@ export default function ScorePage() {
               value={address}
               onChange={(e) => setAddress(e.target.value)}
               placeholder="Ex: Av. Paulista, 1000, São Paulo, SP"
-              className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-3 text-white placeholder-[#484F58] outline-none transition-colors focus:border-[#00D97E]"
+              className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-3 text-white placeholder-[#484F58] outline-none transition-colors focus:border-[#C9A84C]"
               disabled={loading}
               required
             />
@@ -555,7 +555,7 @@ export default function ScorePage() {
             <select
               value={establishmentType}
               onChange={(e) => setEstablishmentType(e.target.value)}
-              className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-3 text-white outline-none transition-colors focus:border-[#00D97E]"
+              className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-3 text-white outline-none transition-colors focus:border-[#C9A84C]"
               disabled={loading}
               required
             >
@@ -578,7 +578,7 @@ export default function ScorePage() {
               value={establishmentName}
               onChange={(e) => setEstablishmentName(e.target.value)}
               placeholder="Ex: Posto Shell Av. Paulista"
-              className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-3 text-white placeholder-[#484F58] outline-none transition-colors focus:border-[#00D97E]"
+              className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-3 text-white placeholder-[#484F58] outline-none transition-colors focus:border-[#C9A84C]"
               disabled={loading}
             />
           </div>
@@ -593,7 +593,7 @@ export default function ScorePage() {
         <button
           type="submit"
           disabled={loading || !address.trim() || !establishmentType}
-          className="mt-5 flex w-full items-center justify-center gap-2 rounded-lg bg-[#00D97E] px-6 py-3 font-semibold text-[#0D1117] transition-colors hover:bg-[#00c06e] disabled:cursor-not-allowed disabled:opacity-50"
+          className="mt-5 flex w-full items-center justify-center gap-2 rounded-lg bg-[#C9A84C] px-6 py-3 font-semibold text-[#0D1117] transition-colors hover:bg-[#B89443] disabled:cursor-not-allowed disabled:opacity-50"
         >
           {loading ? (
             <>
@@ -630,12 +630,12 @@ export default function ScorePage() {
                     width="16"
                     height="16"
                     viewBox="0 0 16 16"
-                    fill="#00D97E"
+                    fill="#C9A84C"
                   >
                     <path d="M8 0a8 8 0 110 16A8 8 0 018 0zm3.78 5.22a.75.75 0 00-1.06 0L7 8.94 5.28 7.22a.75.75 0 00-1.06 1.06l2.25 2.25a.75.75 0 001.06 0l4.25-4.25a.75.75 0 000-1.06z" />
                   </svg>
                 ) : i === loadingStep ? (
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-[#00D97E] border-t-transparent" />
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-[#C9A84C] border-t-transparent" />
                 ) : (
                   <div className="h-4 w-4 rounded-full border border-[#30363D]" />
                 )}
@@ -682,7 +682,7 @@ export default function ScorePage() {
                   <span className="flex items-center gap-1">
                     <span
                       className="inline-block h-2.5 w-2.5 rounded-full"
-                      style={{ backgroundColor: "#00D97E" }}
+                      style={{ backgroundColor: "#C9A84C" }}
                     />
                     Ponto
                   </span>
@@ -772,14 +772,14 @@ export default function ScorePage() {
           {/* Strengths + Weaknesses + Recommendation */}
           <div className="grid gap-6 md:grid-cols-2">
             {/* Strengths */}
-            <div className="rounded-xl border border-[#00D97E]/30 bg-[#00D97E]/5 p-5">
-              <h3 className="mb-3 flex items-center gap-2 text-base font-semibold text-[#00D97E]">
+            <div className="rounded-xl border border-[#C9A84C]/30 bg-[#C9A84C]/5 p-5">
+              <h3 className="mb-3 flex items-center gap-2 text-base font-semibold text-[#C9A84C]">
                 <svg
                   width="20"
                   height="20"
                   fill="none"
                   viewBox="0 0 24 24"
-                  stroke="#00D97E"
+                  stroke="#C9A84C"
                   strokeWidth={2}
                 >
                   <path
@@ -796,7 +796,7 @@ export default function ScorePage() {
                     key={i}
                     className="flex items-start gap-2 text-sm text-[#C9D1D9]"
                   >
-                    <span className="mt-1 text-[#00D97E]">•</span>
+                    <span className="mt-1 text-[#C9A84C]">•</span>
                     {s}
                   </li>
                 ))}
@@ -864,7 +864,7 @@ export default function ScorePage() {
           <div className="flex justify-center">
             <a
               href={`/dashboard/business-plan?lat=${result.lat}&lng=${result.lng}&address=${encodeURIComponent(result.address)}&city=${encodeURIComponent(result.city)}&state=${encodeURIComponent(result.state)}&score=${result.overall_score}&classification=${result.classification}&establishment_type=${result.establishment_type}&establishment_name=${encodeURIComponent(result.establishment_name)}`}
-              className="flex items-center gap-2 rounded-lg border border-[#00D97E] bg-[#00D97E]/10 px-6 py-3 font-semibold text-[#00D97E] transition-colors hover:bg-[#00D97E]/20"
+              className="flex items-center gap-2 rounded-lg border border-[#C9A84C] bg-[#C9A84C]/10 px-6 py-3 font-semibold text-[#C9A84C] transition-colors hover:bg-[#C9A84C]/20"
             >
               <svg
                 width="20"

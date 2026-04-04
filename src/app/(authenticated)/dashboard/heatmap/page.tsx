@@ -50,7 +50,7 @@ interface AnalysisResult {
 
 // ---------- Constants ----------
 const CLASSIFICATION_COLORS: Record<string, string> = {
-  PREMIUM: "#00D97E",
+  PREMIUM: "#C9A84C",
   ESTRATEGICO: "#2196F3",
   VIAVEL: "#FFC107",
   MARGINAL: "#FF9800",
@@ -106,7 +106,7 @@ const LOADING_STEPS = [
 
 // ---------- Helpers ----------
 function getScoreColor(score: number): string {
-  if (score >= 80) return "#00D97E";
+  if (score >= 80) return "#C9A84C";
   if (score >= 60) return "#2196F3";
   if (score >= 40) return "#FFC107";
   if (score >= 20) return "#FF9800";
@@ -323,7 +323,7 @@ export default function HeatmapPage() {
                   onChange={(e) => setCity(e.target.value)}
                   placeholder="Ex: São Paulo"
                   required
-                  className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-3 text-white placeholder-[#484F58] outline-none transition-colors focus:border-[#00D97E]"
+                  className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-3 text-white placeholder-[#484F58] outline-none transition-colors focus:border-[#C9A84C]"
                 />
               </div>
               <div>
@@ -337,7 +337,7 @@ export default function HeatmapPage() {
                   placeholder="Ex: SP"
                   maxLength={2}
                   required
-                  className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-3 text-white placeholder-[#484F58] outline-none transition-colors focus:border-[#00D97E]"
+                  className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-3 text-white placeholder-[#484F58] outline-none transition-colors focus:border-[#C9A84C]"
                 />
               </div>
             </div>
@@ -346,7 +346,7 @@ export default function HeatmapPage() {
 
             <button
               type="submit"
-              className="mt-6 w-full rounded-lg bg-[#00D97E] px-4 py-3 font-semibold text-[#0D1117] transition-colors hover:bg-[#00c06e]"
+              className="mt-6 w-full rounded-lg bg-[#C9A84C] px-4 py-3 font-semibold text-[#0D1117] transition-colors hover:bg-[#B89443]"
             >
               Analisar Cidade
             </button>
@@ -368,7 +368,7 @@ export default function HeatmapPage() {
         <div className="mt-16 flex flex-col items-center justify-center gap-8">
           <div className="relative h-20 w-20">
             <div className="absolute inset-0 rounded-full border-4 border-[#30363D]" />
-            <div className="absolute inset-0 animate-spin rounded-full border-4 border-transparent border-t-[#00D97E]" />
+            <div className="absolute inset-0 animate-spin rounded-full border-4 border-transparent border-t-[#C9A84C]" />
           </div>
 
           <div className="space-y-3 text-center">
@@ -379,7 +379,7 @@ export default function HeatmapPage() {
                   i <= loadingStep
                     ? "text-white opacity-100"
                     : "text-[#8B949E] opacity-40"
-                } ${i === loadingStep ? "text-[#00D97E] font-medium scale-105" : ""}`}
+                } ${i === loadingStep ? "text-[#C9A84C] font-medium scale-105" : ""}`}
               >
                 {i < loadingStep ? "✓ " : i === loadingStep ? "● " : "○ "}
                 {step}
@@ -423,7 +423,7 @@ export default function HeatmapPage() {
             setCity("");
             setState("");
           }}
-          className="rounded-lg border border-[#30363D] px-4 py-2 text-sm text-[#8B949E] transition-colors hover:border-[#00D97E] hover:text-white"
+          className="rounded-lg border border-[#30363D] px-4 py-2 text-sm text-[#8B949E] transition-colors hover:border-[#C9A84C] hover:text-white"
         >
           Nova Análise
         </button>
@@ -434,7 +434,7 @@ export default function HeatmapPage() {
         <div className="mt-4 grid grid-cols-7 gap-2">
           {[
             { label: "Pontos", value: stats.total, color: "text-white" },
-            { label: "Premium", value: stats.premium, color: "text-[#00D97E]" },
+            { label: "Premium", value: stats.premium, color: "text-[#C9A84C]" },
             {
               label: "Estratégicos",
               value: stats.strategic,
@@ -444,7 +444,7 @@ export default function HeatmapPage() {
             {
               label: "Score Médio",
               value: stats.avgScore,
-              color: "text-[#00D97E]",
+              color: "text-[#C9A84C]",
             },
             {
               label: "Concorrentes",
@@ -478,7 +478,7 @@ export default function HeatmapPage() {
               onClick={() => setSidebarTab("pontos")}
               className={`flex-1 px-2 py-2.5 text-[11px] font-medium transition-colors ${
                 sidebarTab === "pontos"
-                  ? "border-b-2 border-[#00D97E] text-[#00D97E]"
+                  ? "border-b-2 border-[#C9A84C] text-[#C9A84C]"
                   : "text-[#8B949E] hover:text-white"
               }`}
             >
@@ -518,7 +518,7 @@ export default function HeatmapPage() {
                     onClick={() => setCategoryFilter(null)}
                     className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                       categoryFilter === null
-                        ? "bg-[#00D97E] text-[#0D1117]"
+                        ? "bg-[#C9A84C] text-[#0D1117]"
                         : "bg-[#21262D] text-[#8B949E] hover:text-white"
                     }`}
                   >
@@ -538,7 +538,7 @@ export default function HeatmapPage() {
                         }
                         className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                           categoryFilter === cat
-                            ? "bg-[#00D97E] text-[#0D1117]"
+                            ? "bg-[#C9A84C] text-[#0D1117]"
                             : "bg-[#21262D] text-[#8B949E] hover:text-white"
                         }`}
                       >
@@ -561,7 +561,7 @@ export default function HeatmapPage() {
                       onClick={() => setSelectedPointIdx(globalIdx)}
                       className={`w-full border-b border-[#30363D] p-3 text-left transition-colors hover:bg-[#21262D] ${
                         selectedPointIdx === globalIdx
-                          ? "bg-[#21262D] border-l-2 border-l-[#00D97E]"
+                          ? "bg-[#21262D] border-l-2 border-l-[#C9A84C]"
                           : ""
                       }`}
                     >
@@ -589,7 +589,7 @@ export default function HeatmapPage() {
                                 point.classification}
                             </span>
                             {point.operacao_24h && (
-                              <span className="rounded bg-[#00D97E20] px-1.5 py-0.5 text-[10px] font-bold text-[#00D97E]">
+                              <span className="rounded bg-[#C9A84C20] px-1.5 py-0.5 text-[10px] font-bold text-[#C9A84C]">
                                 24H
                               </span>
                             )}

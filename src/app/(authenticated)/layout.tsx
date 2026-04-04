@@ -73,8 +73,9 @@ export default function AuthenticatedLayout({
       <aside className="fixed left-0 top-0 flex h-screen w-64 flex-col border-r border-[#30363D] bg-[#161B22]">
         {/* Logo */}
         <div className="flex h-16 items-center px-6 border-b border-[#30363D]">
-          <span className="text-xl font-bold text-[#00D97E] tracking-tight">
-            PLUGGON
+          <span className="text-xl font-bold text-[#C9A84C] tracking-tight">
+            BLEV
+            <span className="block text-xs text-[#8B949E] font-normal tracking-normal">Intelligence</span>
           </span>
         </div>
 
@@ -92,7 +93,7 @@ export default function AuthenticatedLayout({
                 href={item.href}
                 className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
                   isActive
-                    ? "bg-[#00D97E]/10 text-[#00D97E]"
+                    ? "bg-[#C9A84C] text-[#0D1117]"
                     : "text-[#8B949E] hover:bg-[#21262D] hover:text-white"
                 }`}
               >

@@ -35,11 +35,14 @@ export default function LoginPage() {
     <div className="flex min-h-screen flex-col items-center justify-center bg-[#0D1117] px-4">
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
-          <h1 className="text-5xl font-bold text-[#00D97E] tracking-tight">
-            PLUGGON
+          <h1 className="text-5xl font-bold text-[#C9A84C] tracking-tight">
+            BLEV
           </h1>
-          <p className="mt-3 text-lg text-[#8B949E]">
-            Inteligência para Eletropostos
+          <p className="mt-3 text-lg text-white">
+            Intelligence
+          </p>
+          <p className="mt-1 text-sm text-[#8B949E]">
+            Plataforma de Inteligência para Eletropostos
           </p>
         </div>
 
@@ -60,7 +63,7 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-3 text-white placeholder-[#484F58] outline-none transition-colors focus:border-[#00D97E]"
+                className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-3 text-white placeholder-[#484F58] outline-none transition-colors focus:border-[#C9A84C]"
                 placeholder="seu@email.com"
               />
             </div>
@@ -78,7 +81,7 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-3 text-white placeholder-[#484F58] outline-none transition-colors focus:border-[#00D97E]"
+                className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-3 text-white placeholder-[#484F58] outline-none transition-colors focus:border-[#C9A84C]"
                 placeholder="••••••••"
               />
             </div>
@@ -90,7 +93,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full rounded-lg bg-[#00D97E] px-4 py-3 font-semibold text-[#0D1117] transition-colors hover:bg-[#00c06e] disabled:opacity-50"
+              className="w-full rounded-lg bg-[#C9A84C] px-4 py-3 font-semibold text-[#0D1117] transition-colors hover:bg-[#B89443] disabled:opacity-50"
             >
               {loading ? "Entrando..." : "Entrar"}
             </button>

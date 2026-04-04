@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import jsPDF from "jspdf";
 
 // ---------- Types ----------
 
@@ -19,6 +18,11 @@ interface BPResult {
     idhm: number | null;
   };
   chargers_count: number;
+  client_name?: string;
+  city?: string;
+  state?: string;
+  capex?: number;
+  bp_id?: string;
 }
 
 // ---------- Constants ----------
@@ -36,14 +40,6 @@ const CAPITAL_OPTIONS = [
   "R$ 200.000",
   "R$ 300.000",
   "R$ 500.000+",
-];
-
-const STRATEGY_OPTIONS = [
-  "Começar pequeno e reinvestir",
-  "Implementar forte e dominar",
-  "Testar modelo e buscar investidor",
-  "Franchising",
-  "Parceria com grandes empresas",
 ];
 
 const TIMELINE_OPTIONS = [
@@ -220,7 +216,7 @@ function renderTable(lines: string[], key: number) {
             {header.map((cell, idx) => (
               <th
                 key={idx}
-                className="px-3 py-2 text-left font-semibold text-[#00D97E] whitespace-nowrap"
+                className="px-3 py-2 text-left font-semibold text-[#C9A84C] whitespace-nowrap"
               >
                 {renderInline(cell)}
               </th>
@@ -258,253 +254,6 @@ function getSectionIcon(num: number): string {
   return icons[num] || "📄";
 }
 
-// ---------- PDF Generator ----------
-
-function generatePDF(result: BPResult, clientName: string, city: string, state: string) {
-  const doc = new jsPDF("p", "mm", "a4");
-  const pageW = doc.internal.pageSize.getWidth();
-  const pageH = doc.internal.pageSize.getHeight();
-  const marginL = 20;
-  const marginR = 20;
-  const contentW = pageW - marginL - marginR;
-  const darkBlue = "#1a5276";
-  const lightBlue = "#2874a6";
-
-  // ---- Cover page ----
-  doc.setFillColor(26, 82, 118); // #1a5276
-  doc.rect(0, 0, pageW, pageH, "F");
-
-  // Decorative top bar
-  doc.setFillColor(40, 116, 166); // #2874a6
-  doc.rect(0, 0, pageW, 8, "F");
-
-  // BLEV logo text
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(48);
-  doc.setFont("helvetica", "bold");
-  doc.text("BLEV", pageW / 2, 80, { align: "center" });
-
-  doc.setFontSize(14);
-  doc.setFont("helvetica", "normal");
-  doc.text("Eletropostos & Mobilidade Eletrica", pageW / 2, 95, { align: "center" });
-
-  // Separator line
-  doc.setDrawColor(40, 116, 166);
-  doc.setLineWidth(0.8);
-  doc.line(pageW / 2 - 40, 110, pageW / 2 + 40, 110);
-
-  doc.setFontSize(28);
-  doc.setFont("helvetica", "bold");
-  doc.text("Business Plan", pageW / 2, 135, { align: "center" });
-
-  doc.setFontSize(16);
-  doc.setFont("helvetica", "normal");
-  doc.text(clientName, pageW / 2, 155, { align: "center" });
-  doc.text(`${city}/${state}`, pageW / 2, 165, { align: "center" });
-
-  // Date
-  const today = new Date();
-  const dateStr = today.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
-  doc.setFontSize(12);
-  doc.text(dateStr.charAt(0).toUpperCase() + dateStr.slice(1), pageW / 2, 185, { align: "center" });
-
-  // Stats on cover
-  doc.setFontSize(10);
-  const statsY = 210;
-  doc.setFont("helvetica", "bold");
-  doc.text(`${result.sections.length} Secoes`, pageW / 2 - 40, statsY, { align: "center" });
-  doc.text(`${result.ibge.population?.toLocaleString("pt-BR") ?? "N/D"} Hab.`, pageW / 2, statsY, { align: "center" });
-  doc.text(`${result.chargers_count} Carregadores`, pageW / 2 + 40, statsY, { align: "center" });
-
-  // Bottom bar
-  doc.setFillColor(40, 116, 166);
-  doc.rect(0, pageH - 8, pageW, 8, "F");
-
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "normal");
-  doc.text("Documento confidencial - Gerado por BLEV Platform", pageW / 2, pageH - 12, { align: "center" });
-
-  // ---- Content pages ----
-  let y = 0;
-
-  function newPage() {
-    doc.addPage();
-    // Header bar
-    doc.setFillColor(26, 82, 118);
-    doc.rect(0, 0, pageW, 12, "F");
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(8);
-    doc.setFont("helvetica", "bold");
-    doc.text("BLEV - Business Plan", marginL, 8);
-    doc.setFont("helvetica", "normal");
-    doc.text(`${clientName} | ${city}/${state}`, pageW - marginR, 8, { align: "right" });
-    // Footer
-    doc.setFillColor(26, 82, 118);
-    doc.rect(0, pageH - 8, pageW, 8, "F");
-    doc.setTextColor(200, 200, 200);
-    doc.setFontSize(7);
-    doc.text(`Pagina ${doc.getNumberOfPages()}`, pageW / 2, pageH - 3, { align: "center" });
-    y = 22;
-    doc.setTextColor(50, 50, 50);
-  }
-
-  function checkPageBreak(needed: number) {
-    if (y + needed > pageH - 20) {
-      newPage();
-    }
-  }
-
-  // Strip markdown bold markers for PDF
-  function stripMd(text: string): string {
-    return text.replace(/\*\*/g, "");
-  }
-
-  for (const section of result.sections) {
-    newPage();
-
-    // Section header
-    doc.setFillColor(40, 116, 166);
-    doc.roundedRect(marginL, y, contentW, 12, 2, 2, "F");
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(13);
-    doc.setFont("helvetica", "bold");
-    doc.text(`${section.number}. ${stripMd(section.title)}`, marginL + 5, y + 8.5);
-    y += 18;
-
-    doc.setTextColor(50, 50, 50);
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
-
-    const contentLines = section.content.split("\n");
-
-    for (const rawLine of contentLines) {
-      const line = rawLine.trim();
-      if (!line) {
-        y += 3;
-        continue;
-      }
-
-      // Table handling
-      if (line.startsWith("|")) {
-        // Collect table lines
-        const tableStart = contentLines.indexOf(rawLine);
-        const tableRows: string[][] = [];
-        let tIdx = tableStart;
-        while (tIdx < contentLines.length && contentLines[tIdx].trim().startsWith("|")) {
-          const row = contentLines[tIdx].trim();
-          if (!row.match(/^\|\s*[-:]+/)) {
-            const cells = row.split("|").filter((c) => c.trim() !== "").map((c) => stripMd(c.trim()));
-            tableRows.push(cells);
-          }
-          tIdx++;
-        }
-
-        if (tableRows.length > 0) {
-          const cols = tableRows[0].length;
-          const colW = contentW / cols;
-          checkPageBreak(8 * (tableRows.length + 1));
-
-          // Header row
-          doc.setFillColor(26, 82, 118);
-          doc.rect(marginL, y, contentW, 8, "F");
-          doc.setTextColor(255, 255, 255);
-          doc.setFontSize(9);
-          doc.setFont("helvetica", "bold");
-          for (let c = 0; c < cols; c++) {
-            doc.text(tableRows[0][c] || "", marginL + c * colW + 3, y + 5.5);
-          }
-          y += 8;
-
-          // Data rows
-          doc.setFont("helvetica", "normal");
-          for (let r = 1; r < tableRows.length; r++) {
-            const bg = r % 2 === 0 ? 245 : 235;
-            doc.setFillColor(bg, bg, bg);
-            doc.rect(marginL, y, contentW, 7, "F");
-            doc.setTextColor(50, 50, 50);
-            for (let c = 0; c < cols; c++) {
-              doc.text(tableRows[r][c] || "", marginL + c * colW + 3, y + 5);
-            }
-            y += 7;
-            checkPageBreak(7);
-          }
-          y += 4;
-        }
-        // Skip already processed table lines
-        continue;
-      }
-
-      // Headings
-      if (line.startsWith("### ")) {
-        checkPageBreak(12);
-        doc.setFontSize(11);
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(40, 116, 166);
-        doc.text(stripMd(line.slice(4)), marginL, y + 5);
-        y += 10;
-        doc.setTextColor(50, 50, 50);
-        doc.setFontSize(10);
-        doc.setFont("helvetica", "normal");
-        continue;
-      }
-      if (line.startsWith("## ")) {
-        checkPageBreak(14);
-        doc.setFontSize(12);
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(26, 82, 118);
-        doc.text(stripMd(line.slice(3)), marginL, y + 5);
-        y += 12;
-        doc.setTextColor(50, 50, 50);
-        doc.setFontSize(10);
-        doc.setFont("helvetica", "normal");
-        continue;
-      }
-
-      // Bullet points
-      if (line.match(/^[-*]\s/)) {
-        const bulletText = stripMd(line.replace(/^[-*]\s/, ""));
-        const wrapped = doc.splitTextToSize(bulletText, contentW - 8);
-        checkPageBreak(6 * wrapped.length);
-        doc.setFillColor(40, 116, 166);
-        doc.circle(marginL + 2, y + 3, 1, "F");
-        doc.setTextColor(50, 50, 50);
-        doc.text(wrapped, marginL + 6, y + 4.5);
-        y += 6 * wrapped.length;
-        continue;
-      }
-
-      // Numbered list
-      if (line.match(/^\d+\.\s/)) {
-        const numMatch = line.match(/^(\d+)\.\s(.*)/);
-        if (numMatch) {
-          const itemText = stripMd(numMatch[2]);
-          const wrapped = doc.splitTextToSize(itemText, contentW - 10);
-          checkPageBreak(6 * wrapped.length);
-          doc.setFont("helvetica", "bold");
-          doc.setTextColor(40, 116, 166);
-          doc.text(`${numMatch[1]}.`, marginL, y + 4.5);
-          doc.setFont("helvetica", "normal");
-          doc.setTextColor(50, 50, 50);
-          doc.text(wrapped, marginL + 8, y + 4.5);
-          y += 6 * wrapped.length;
-          continue;
-        }
-      }
-
-      // Regular paragraph
-      const cleanText = stripMd(line);
-      const wrapped = doc.splitTextToSize(cleanText, contentW);
-      checkPageBreak(5.5 * wrapped.length);
-      doc.text(wrapped, marginL, y + 4.5);
-      y += 5.5 * wrapped.length + 2;
-    }
-  }
-
-  // Save
-  const safeName = clientName.replace(/[^a-zA-Z0-9]/g, "_");
-  doc.save(`BusinessPlan_${safeName}.pdf`);
-}
-
 // ---------- Main Component ----------
 
 export default function BusinessPlanPage() {
@@ -525,8 +274,7 @@ export default function BusinessPlanPage() {
   const [objective, setObjective] = useState("");
   const [resources, setResources] = useState("");
   const [capital, setCapital] = useState("");
-  const [financing, setFinancing] = useState("");
-  const [strategy, setStrategy] = useState("");
+  const [observations, setObservations] = useState("");
   const [timeline, setTimeline] = useState("");
   const [marketMoment, setMarketMoment] = useState("");
   const [demandIdentified, setDemandIdentified] = useState("");
@@ -604,8 +352,7 @@ export default function BusinessPlanPage() {
               objective,
               resources,
               capital,
-              financing,
-              strategy,
+              observations,
               timeline,
               market_moment: marketMoment,
               demand_identified: demandIdentified,
@@ -643,11 +390,8 @@ export default function BusinessPlanPage() {
   }
 
   function handleDownloadPDF() {
-    if (!result) return;
-    const name = clientName || "Cliente";
-    const c = city || "Cidade";
-    const s = state || "UF";
-    generatePDF(result, name, c, s);
+    if (!result?.bp_id) return;
+    window.open(`/bp-print/${result.bp_id}`, "_blank");
   }
 
   // ---------- Render: Form ----------
@@ -673,7 +417,7 @@ export default function BusinessPlanPage() {
             onClick={() => setInputMode("form")}
             className={`flex-1 rounded-md px-4 py-2.5 text-sm font-medium transition-all ${
               inputMode === "form"
-                ? "bg-[#00D97E]/15 text-[#00D97E] border border-[#00D97E]/30"
+                ? "bg-[#C9A84C]/15 text-[#C9A84C] border border-[#C9A84C]/30"
                 : "text-[#8B949E] hover:text-white"
             }`}
           >
@@ -684,7 +428,7 @@ export default function BusinessPlanPage() {
             onClick={() => setInputMode("tally")}
             className={`flex-1 rounded-md px-4 py-2.5 text-sm font-medium transition-all ${
               inputMode === "tally"
-                ? "bg-[#00D97E]/15 text-[#00D97E] border border-[#00D97E]/30"
+                ? "bg-[#C9A84C]/15 text-[#C9A84C] border border-[#C9A84C]/30"
                 : "text-[#8B949E] hover:text-white"
             }`}
           >
@@ -706,14 +450,14 @@ export default function BusinessPlanPage() {
                 onChange={(e) => setTallyText(e.target.value)}
                 rows={14}
                 required
-                className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-3 text-white placeholder-[#484F58] focus:border-[#00D97E] focus:outline-none font-mono text-sm leading-relaxed"
+                className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-3 text-white placeholder-[#484F58] focus:border-[#C9A84C] focus:outline-none font-mono text-sm leading-relaxed"
                 placeholder={`Cole aqui as respostas do formulario Tally...\n\nExemplo:\nNome: Joao Silva\nTelefone: (11) 99999-9999\nEmail: joao@email.com\nCidade: Sao Paulo\nEstado: SP\nObjetivo: Criar empresa de eletropostos\nCapital disponivel: R$ 200.000\nEstrategia: Comecar pequeno e reinvestir\n...`}
               />
             </div>
             <button
               type="submit"
               disabled={!tallyText.trim()}
-              className="w-full rounded-lg bg-[#00D97E] px-6 py-3.5 text-base font-semibold text-[#0D1117] transition-colors hover:bg-[#00c06e] disabled:cursor-not-allowed disabled:opacity-40"
+              className="w-full rounded-lg bg-[#C9A84C] px-6 py-3.5 text-base font-semibold text-[#0D1117] transition-colors hover:bg-[#B89443] disabled:cursor-not-allowed disabled:opacity-40"
             >
               Gerar Business Plan
             </button>
@@ -734,7 +478,7 @@ export default function BusinessPlanPage() {
                     value={clientName}
                     onChange={(e) => setClientName(e.target.value)}
                     required
-                    className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-2.5 text-white placeholder-[#484F58] focus:border-[#00D97E] focus:outline-none"
+                    className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-2.5 text-white placeholder-[#484F58] focus:border-[#C9A84C] focus:outline-none"
                     placeholder="Seu nome completo"
                   />
                 </div>
@@ -744,7 +488,7 @@ export default function BusinessPlanPage() {
                     type="tel"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-2.5 text-white placeholder-[#484F58] focus:border-[#00D97E] focus:outline-none"
+                    className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-2.5 text-white placeholder-[#484F58] focus:border-[#C9A84C] focus:outline-none"
                     placeholder="(XX) XXXXX-XXXX"
                   />
                 </div>
@@ -754,7 +498,7 @@ export default function BusinessPlanPage() {
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-2.5 text-white placeholder-[#484F58] focus:border-[#00D97E] focus:outline-none"
+                    className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-2.5 text-white placeholder-[#484F58] focus:border-[#C9A84C] focus:outline-none"
                     placeholder="seu@email.com"
                   />
                 </div>
@@ -766,7 +510,7 @@ export default function BusinessPlanPage() {
                       value={city}
                       onChange={(e) => setCity(e.target.value)}
                       required
-                      className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-2.5 text-white placeholder-[#484F58] focus:border-[#00D97E] focus:outline-none"
+                      className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-2.5 text-white placeholder-[#484F58] focus:border-[#C9A84C] focus:outline-none"
                       placeholder="Sua cidade"
                     />
                   </div>
@@ -776,7 +520,7 @@ export default function BusinessPlanPage() {
                       value={state}
                       onChange={(e) => setState(e.target.value)}
                       required
-                      className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-2.5 text-white focus:border-[#00D97E] focus:outline-none"
+                      className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-2.5 text-white focus:border-[#C9A84C] focus:outline-none"
                     >
                       <option value="">UF</option>
                       {STATES.map((s) => (
@@ -800,7 +544,7 @@ export default function BusinessPlanPage() {
                     value={objective}
                     onChange={(e) => setObjective(e.target.value)}
                     required
-                    className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-2.5 text-white focus:border-[#00D97E] focus:outline-none"
+                    className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-2.5 text-white focus:border-[#C9A84C] focus:outline-none"
                   >
                     <option value="">Selecione...</option>
                     {OBJECTIVE_OPTIONS.map((o) => (
@@ -816,7 +560,7 @@ export default function BusinessPlanPage() {
                     value={capital}
                     onChange={(e) => setCapital(e.target.value)}
                     required
-                    className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-2.5 text-white focus:border-[#00D97E] focus:outline-none"
+                    className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-2.5 text-white focus:border-[#C9A84C] focus:outline-none"
                   >
                     <option value="">Selecione...</option>
                     {CAPITAL_OPTIONS.map((c) => (
@@ -827,28 +571,12 @@ export default function BusinessPlanPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="mb-1 block text-sm text-[#8B949E]">Estrategia de crescimento *</label>
-                  <select
-                    value={strategy}
-                    onChange={(e) => setStrategy(e.target.value)}
-                    required
-                    className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-2.5 text-white focus:border-[#00D97E] focus:outline-none"
-                  >
-                    <option value="">Selecione...</option>
-                    {STRATEGY_OPTIONS.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
                   <label className="mb-1 block text-sm text-[#8B949E]">Quando pretende comecar *</label>
                   <select
                     value={timeline}
                     onChange={(e) => setTimeline(e.target.value)}
                     required
-                    className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-2.5 text-white focus:border-[#00D97E] focus:outline-none"
+                    className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-2.5 text-white focus:border-[#C9A84C] focus:outline-none"
                   >
                     <option value="">Selecione...</option>
                     {TIMELINE_OPTIONS.map((t) => (
@@ -866,20 +594,20 @@ export default function BusinessPlanPage() {
                     value={resources}
                     onChange={(e) => setResources(e.target.value)}
                     rows={2}
-                    className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-2.5 text-white placeholder-[#484F58] focus:border-[#00D97E] focus:outline-none"
+                    className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-2.5 text-white placeholder-[#484F58] focus:border-[#C9A84C] focus:outline-none"
                     placeholder="Ex: tenho um terreno na BR-101, parceria com um shopping..."
                   />
                 </div>
                 <div className="md:col-span-2">
                   <label className="mb-1 block text-sm text-[#8B949E]">
-                    Tem acesso a financiamento ou socios?
+                    Observações adicionais (opcional)
                   </label>
                   <textarea
-                    value={financing}
-                    onChange={(e) => setFinancing(e.target.value)}
+                    value={observations}
+                    onChange={(e) => setObservations(e.target.value)}
                     rows={2}
-                    className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-2.5 text-white placeholder-[#484F58] focus:border-[#00D97E] focus:outline-none"
-                    placeholder="Ex: tenho um socio interessado, posso financiar via BNDES..."
+                    className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-2.5 text-white placeholder-[#484F58] focus:border-[#C9A84C] focus:outline-none"
+                    placeholder="Informações adicionais que considere relevantes para o plano..."
                   />
                 </div>
               </div>
@@ -897,7 +625,7 @@ export default function BusinessPlanPage() {
                     value={marketMoment}
                     onChange={(e) => setMarketMoment(e.target.value)}
                     required
-                    className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-2.5 text-white focus:border-[#00D97E] focus:outline-none"
+                    className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-2.5 text-white focus:border-[#C9A84C] focus:outline-none"
                   >
                     <option value="">Selecione...</option>
                     {MARKET_MOMENT_OPTIONS.map((m) => (
@@ -915,7 +643,7 @@ export default function BusinessPlanPage() {
                     value={demandIdentified}
                     onChange={(e) => setDemandIdentified(e.target.value)}
                     required
-                    className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-2.5 text-white focus:border-[#00D97E] focus:outline-none"
+                    className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-2.5 text-white focus:border-[#C9A84C] focus:outline-none"
                   >
                     <option value="">Selecione...</option>
                     {DEMAND_OPTIONS.map((d) => (
@@ -940,7 +668,7 @@ export default function BusinessPlanPage() {
                     onClick={() => togglePriority(p)}
                     className={`rounded-full border px-4 py-2 text-sm transition-all ${
                       priorities.includes(p)
-                        ? "border-[#00D97E] bg-[#00D97E]/15 text-[#00D97E]"
+                        ? "border-[#C9A84C] bg-[#C9A84C]/15 text-[#C9A84C]"
                         : "border-[#30363D] bg-[#0D1117] text-[#8B949E] hover:border-[#484F58] hover:text-white"
                     }`}
                   >
@@ -957,7 +685,7 @@ export default function BusinessPlanPage() {
                 value={challenges}
                 onChange={(e) => setChallenges(e.target.value)}
                 rows={3}
-                className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-2.5 text-white placeholder-[#484F58] focus:border-[#00D97E] focus:outline-none"
+                className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-2.5 text-white placeholder-[#484F58] focus:border-[#C9A84C] focus:outline-none"
                 placeholder="Quais sao seus maiores desafios hoje para entrar no mercado de eletropostos?"
               />
             </div>
@@ -965,8 +693,8 @@ export default function BusinessPlanPage() {
             {/* Submit */}
             <button
               type="submit"
-              disabled={!clientName || !city || !state || !objective || !capital || !strategy || !timeline || !marketMoment || !demandIdentified}
-              className="w-full rounded-lg bg-[#00D97E] px-6 py-3.5 text-base font-semibold text-[#0D1117] transition-colors hover:bg-[#00c06e] disabled:cursor-not-allowed disabled:opacity-40"
+              disabled={!clientName || !city || !state || !objective || !capital || !timeline || !marketMoment || !demandIdentified}
+              className="w-full rounded-lg bg-[#C9A84C] px-6 py-3.5 text-base font-semibold text-[#0D1117] transition-colors hover:bg-[#B89443] disabled:cursor-not-allowed disabled:opacity-40"
             >
               Gerar Business Plan
             </button>
@@ -988,7 +716,7 @@ export default function BusinessPlanPage() {
 
         <div className="mt-12 flex flex-col items-center">
           <div className="relative mb-8">
-            <div className="h-20 w-20 animate-spin rounded-full border-4 border-[#30363D] border-t-[#00D97E]" />
+            <div className="h-20 w-20 animate-spin rounded-full border-4 border-[#30363D] border-t-[#C9A84C]" />
             <div className="absolute inset-0 flex items-center justify-center">
               <span className="text-2xl">📊</span>
             </div>
@@ -1000,19 +728,19 @@ export default function BusinessPlanPage() {
                 key={idx}
                 className={`flex items-center gap-3 rounded-lg border p-3 transition-all duration-500 ${
                   idx < loadingStepIdx
-                    ? "border-[#00D97E]/30 bg-[#00D97E]/5"
+                    ? "border-[#C9A84C]/30 bg-[#C9A84C]/5"
                     : idx === loadingStepIdx
-                    ? "border-[#00D97E]/50 bg-[#161B22]"
+                    ? "border-[#C9A84C]/50 bg-[#161B22]"
                     : "border-[#30363D]/50 bg-[#161B22]/50 opacity-40"
                 }`}
               >
                 <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center">
                   {idx < loadingStepIdx ? (
-                    <svg className="h-5 w-5 text-[#00D97E]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg className="h-5 w-5 text-[#C9A84C]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                     </svg>
                   ) : idx === loadingStepIdx ? (
-                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-[#30363D] border-t-[#00D97E]" />
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-[#30363D] border-t-[#C9A84C]" />
                   ) : (
                     <div className="h-3 w-3 rounded-full bg-[#30363D]" />
                   )}
@@ -1020,7 +748,7 @@ export default function BusinessPlanPage() {
                 <span
                   className={`text-sm ${
                     idx < loadingStepIdx
-                      ? "text-[#00D97E]"
+                      ? "text-[#C9A84C]"
                       : idx === loadingStepIdx
                       ? "text-white"
                       : "text-[#484F58]"
@@ -1072,7 +800,7 @@ export default function BusinessPlanPage() {
           </button>
           <button
             onClick={handleDownloadPDF}
-            className="rounded-lg bg-[#00D97E] px-4 py-2 text-sm font-semibold text-[#0D1117] transition-colors hover:bg-[#00c06e]"
+            className="rounded-lg bg-[#C9A84C] px-4 py-2 text-sm font-semibold text-[#0D1117] transition-colors hover:bg-[#B89443]"
           >
             Baixar PDF
           </button>
@@ -1082,7 +810,7 @@ export default function BusinessPlanPage() {
       {/* Stats bar */}
       <div className="mt-6 grid grid-cols-3 gap-4">
         <div className="rounded-xl border border-[#30363D] bg-[#161B22] p-4 text-center">
-          <p className="text-2xl font-bold text-[#00D97E]">{result.sections.length}</p>
+          <p className="text-2xl font-bold text-[#C9A84C]">{result.sections.length}</p>
           <p className="text-xs text-[#8B949E]">Secoes</p>
         </div>
         <div className="rounded-xl border border-[#30363D] bg-[#161B22] p-4 text-center">
@@ -1115,7 +843,7 @@ export default function BusinessPlanPage() {
 
       {/* Sections */}
       <div className="mt-4 space-y-3">
-        {result.sections.map((section) => {
+        {result.sections.filter(s => s.content && s.content.trim().length > 10).map((section) => {
           const isExpanded = expandedSections.has(section.number);
           return (
             <div
@@ -1127,7 +855,7 @@ export default function BusinessPlanPage() {
                 className="flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-[#21262D]"
               >
                 <span className="text-lg">{getSectionIcon(section.number)}</span>
-                <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[#00D97E]/15 text-xs font-bold text-[#00D97E]">
+                <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[#C9A84C]/15 text-xs font-bold text-[#C9A84C]">
                   {section.number}
                 </span>
                 <span className="flex-1 font-semibold text-white">{section.title}</span>
@@ -1167,7 +895,7 @@ export default function BusinessPlanPage() {
         </button>
         <button
           onClick={handleDownloadPDF}
-          className="rounded-lg bg-[#00D97E] px-6 py-3 text-sm font-semibold text-[#0D1117] transition-colors hover:bg-[#00c06e]"
+          className="rounded-lg bg-[#C9A84C] px-6 py-3 text-sm font-semibold text-[#0D1117] transition-colors hover:bg-[#B89443]"
         >
           Baixar PDF
         </button>

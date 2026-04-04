@@ -78,70 +78,58 @@ function buildClaudePrompt(city: string, state: string, population: number | nul
 
 // ---------- Parse Claude JSON response ----------
 
-function parseClaudeResponse(text: string): Record<string, unknown>[] {
-  // Strip markdown code fences the model sometimes adds
-  let cleaned = text
-    .replace(/```json\s*/g, "")
-    .replace(/```\s*/g, "")
-    .trim();
-
-  // Try direct parse
+function parseClaudeJSON(raw: string): any {
+  let text = raw;
+  // Remover markdown code blocks
+  text = text.replace(/```json\s*/gi, '');
+  text = text.replace(/```\s*/gi, '');
+  text = text.trim();
+  // Encontrar o primeiro { ou [
+  const startBrace = text.indexOf('{');
+  const startBracket = text.indexOf('[');
+  let start = -1;
+  if (startBrace === -1) start = startBracket;
+  else if (startBracket === -1) start = startBrace;
+  else start = Math.min(startBrace, startBracket);
+  if (start > 0) text = text.substring(start);
+  // Encontrar o último } ou ]
+  const endBrace = text.lastIndexOf('}');
+  const endBracket = text.lastIndexOf(']');
+  const end = Math.max(endBrace, endBracket);
+  if (end > 0) text = text.substring(0, end + 1);
   try {
-    const parsed = JSON.parse(cleaned);
-    return Array.isArray(parsed) ? parsed : parsed.points || [];
-  } catch {
-    // ignore
-  }
-
-  // Try extracting array
-  const arrStart = cleaned.indexOf("[");
-  const arrEnd = cleaned.lastIndexOf("]");
-  if (arrStart !== -1 && arrEnd > arrStart) {
-    try {
-      return JSON.parse(cleaned.slice(arrStart, arrEnd + 1));
-    } catch {
-      // ignore
-    }
-  }
-
-  // Try extracting object with points
-  const objStart = cleaned.indexOf("{");
-  const objEnd = cleaned.lastIndexOf("}");
-  if (objStart !== -1 && objEnd > objStart) {
-    try {
-      const obj = JSON.parse(cleaned.slice(objStart, objEnd + 1));
-      return obj.points || [];
-    } catch {
-      // ignore
-    }
-  }
-
-  // Last resort: truncated JSON - close at last complete object
-  if (arrStart !== -1) {
-    let truncated = cleaned.slice(arrStart);
-    // Tentar fechar no último objeto completo com vírgula
-    const lastComplete = truncated.lastIndexOf("},");
-    if (lastComplete !== -1) {
-      truncated = truncated.slice(0, lastComplete + 1) + "]";
-      try {
-        return JSON.parse(truncated);
-      } catch {
-        // ignore
+    return JSON.parse(text);
+  } catch(e) {
+    // Tentar fechar JSON incompleto
+    if (text.includes('"sections"')) {
+      const lastComplete = text.lastIndexOf('}');
+      if (lastComplete > 0) {
+        const fixed = text.substring(0, lastComplete + 1) + ']}';
+        return JSON.parse(fixed);
       }
     }
-    // Tentar fechar no último } encontrado
-    const lastBrace = truncated.lastIndexOf("}");
-    if (lastBrace > 0) {
-      truncated = truncated.substring(0, lastBrace + 1) + "]";
-      try {
-        return JSON.parse(truncated);
-      } catch {
-        // ignore
-      }
+    console.error('JSON raw:', text.substring(0, 200));
+    throw new Error('Failed to parse JSON: ' + (e as Error).message);
+  }
+}
+
+// ---------- Claude retry helper ----------
+
+async function callClaudeWithRetry(params: Anthropic.MessageCreateParamsNonStreaming): Promise<Anthropic.Message> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 110000);
+    try {
+      const msg = await anthropic.messages.create(params, { signal: controller.signal });
+      return msg;
+    } catch (err) {
+      console.warn(`Chamada Claude falhou (tentativa ${attempt + 1}):`, err instanceof Error ? err.message : err);
+      if (attempt === 1) throw err;
+    } finally {
+      clearTimeout(timeout);
     }
   }
-
-  return [];
+  throw new Error("Falha após 2 tentativas");
 }
 
 // ---------- Main handler ----------
@@ -160,33 +148,29 @@ export async function POST(request: Request) {
     // Buscar população (necessária pro prompt do Claude)
     const population = await fetchPopulation(city, state);
 
-    // Chamada ao Claude com timeout de 120s
+    // Chamada ao Claude com retry
     const claudePrompt = buildClaudePrompt(city, state, population);
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 120000);
 
     let rawPoints: Record<string, unknown>[] = [];
     try {
-      const message = await anthropic.messages.create(
-        {
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 16000,
-          messages: [
-            {
-              role: "user",
-              content: claudePrompt,
-            },
-          ],
-        },
-        { signal: controller.signal }
-      );
+      const message = await callClaudeWithRetry({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 4096,
+        messages: [
+          {
+            role: "user",
+            content: claudePrompt,
+          },
+        ],
+      });
 
       const textBlock = message.content.find((b) => b.type === "text");
       if (!textBlock || textBlock.type !== "text") {
         return Response.json({ error: "Resposta vazia da IA" }, { status: 500 });
       }
 
-      rawPoints = parseClaudeResponse(textBlock.text);
+      const parsed = parseClaudeJSON(textBlock.text);
+      rawPoints = Array.isArray(parsed) ? parsed : parsed?.points || [];
       if (rawPoints.length === 0) {
         console.error("analyze-city: Claude retornou 0 pontos. Resposta:", textBlock.text.slice(0, 500));
         return Response.json(
@@ -195,23 +179,11 @@ export async function POST(request: Request) {
         );
       }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      const errorName = (err as Error).name || "";
-      console.error("analyze-city: erro na chamada Claude:", {
-        name: errorName,
-        message: errorMessage,
-        aborted: controller.signal.aborted,
-        stack: err instanceof Error ? err.stack : undefined,
-      });
-      if (errorName === "AbortError" || controller.signal.aborted) {
-        return Response.json(
-          { error: "Análise demorou mais que o esperado. Tente novamente." },
-          { status: 504 }
-        );
-      }
-      throw err;
-    } finally {
-      clearTimeout(timeout);
+      console.error("analyze-city: erro na chamada Claude:", err instanceof Error ? err.message : err);
+      return Response.json(
+        { error: "Tente novamente em 1 minuto." },
+        { status: 500 }
+      );
     }
 
     // Normalizar pontos

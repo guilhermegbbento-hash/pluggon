@@ -225,7 +225,7 @@ async function fetchIBGEData(city: string, state: string): Promise<IBGEData> {
 // ---------- Build Claude system prompt ----------
 
 function buildSystemPrompt(): string {
-  return `Você é a PLUGGON, plataforma líder em inteligência para eletromobilidade no Brasil. Analise este ponto para instalação de eletroposto DC rápido (150kW+).
+  return `Você é a BLEV, plataforma líder em inteligência para eletromobilidade no Brasil. Analise este ponto para instalação de eletroposto DC rápido (150kW+).
 
 Analise as 80 variáveis abaixo organizadas em 8 categorias. Dê nota 0-10 em CADA variável com justificativa curta. O peso de cada variável está indicado: Alto(x3), Médio(x2), Baixo(x1). Score final ponderado 0-100.
 
@@ -334,7 +334,7 @@ SISTEMA DE PESOS:
 - Score final = soma(nota × peso) / soma(pesos) × 10, normalizado para 0-100
 
 CLASSIFICAÇÕES:
-- Premium: 85-100 (verde #00D97E)
+- Premium: 85-100 (dourado #C9A84C)
 - Estratégico: 70-84 (azul #2196F3)
 - Viável: 55-69 (amarelo #FFC107)
 - Marginal: 40-54 (laranja #FF9800)
@@ -452,49 +452,58 @@ Com base NESSES DADOS REAIS, analise as 80 variáveis e retorne o JSON com score
 
 // ---------- Parse Claude JSON response ----------
 
-function parseClaudeResponse(text: string): Record<string, unknown> | null {
-  // Strip markdown code fences the model sometimes adds
-  const cleaned = text
-    .replace(/```json\s*/g, "")
-    .replace(/```\s*/g, "")
-    .trim();
-
+function parseClaudeJSON(raw: string): any {
+  let text = raw;
+  // Remover markdown code blocks
+  text = text.replace(/```json\s*/gi, '');
+  text = text.replace(/```\s*/gi, '');
+  text = text.trim();
+  // Encontrar o primeiro { ou [
+  const startBrace = text.indexOf('{');
+  const startBracket = text.indexOf('[');
+  let start = -1;
+  if (startBrace === -1) start = startBracket;
+  else if (startBracket === -1) start = startBrace;
+  else start = Math.min(startBrace, startBracket);
+  if (start > 0) text = text.substring(start);
+  // Encontrar o último } ou ]
+  const endBrace = text.lastIndexOf('}');
+  const endBracket = text.lastIndexOf(']');
+  const end = Math.max(endBrace, endBracket);
+  if (end > 0) text = text.substring(0, end + 1);
   try {
-    return JSON.parse(cleaned);
-  } catch {
-    // ignore
-  }
-
-  const objStart = cleaned.indexOf("{");
-  const objEnd = cleaned.lastIndexOf("}");
-  if (objStart !== -1 && objEnd > objStart) {
-    try {
-      return JSON.parse(cleaned.slice(objStart, objEnd + 1));
-    } catch {
-      // ignore
-    }
-  }
-
-  // Tentar recuperar JSON incompleto (truncado por max_tokens)
-  if (objStart !== -1) {
-    let truncated = cleaned.slice(objStart);
-    if (!truncated.endsWith('}')) {
-      const lastBrace = truncated.lastIndexOf('}');
-      if (lastBrace > 0) {
-        truncated = truncated.substring(0, lastBrace + 1) + ']}';
-        try {
-          return JSON.parse(truncated);
-        } catch { /* ignore */ }
-        // Tentar só fechando o objeto principal
-        truncated = cleaned.slice(objStart, cleaned.lastIndexOf('}') + 1) + '}';
-        try {
-          return JSON.parse(truncated);
-        } catch { /* ignore */ }
+    return JSON.parse(text);
+  } catch(e) {
+    // Tentar fechar JSON incompleto
+    if (text.includes('"sections"')) {
+      const lastComplete = text.lastIndexOf('}');
+      if (lastComplete > 0) {
+        const fixed = text.substring(0, lastComplete + 1) + ']}';
+        return JSON.parse(fixed);
       }
     }
+    console.error('JSON raw:', text.substring(0, 200));
+    throw new Error('Failed to parse JSON: ' + (e as Error).message);
   }
+}
 
-  return null;
+// ---------- Claude retry helper ----------
+
+async function callClaudeWithRetry(params: Anthropic.MessageCreateParamsNonStreaming): Promise<Anthropic.Message> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 110000);
+    try {
+      const msg = await anthropic.messages.create(params, { signal: controller.signal });
+      return msg;
+    } catch (err) {
+      console.warn(`Chamada Claude falhou (tentativa ${attempt + 1}):`, err instanceof Error ? err.message : err);
+      if (attempt === 1) throw err;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  throw new Error("Falha após 2 tentativas");
 }
 
 // ---------- Main handler ----------
@@ -596,27 +605,21 @@ export async function POST(request: Request) {
       poiCounts
     );
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 120000);
-
     let analysisResult: Record<string, unknown> | null = null;
     try {
-      const message = await anthropic.messages.create(
-        {
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 16000,
-          system: buildSystemPrompt(),
-          messages: [{ role: "user", content: userPrompt }],
-        },
-        { signal: controller.signal }
-      );
+      const message = await callClaudeWithRetry({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 4096,
+        system: buildSystemPrompt(),
+        messages: [{ role: "user", content: userPrompt }],
+      });
 
       const textBlock = message.content.find((b) => b.type === "text");
       if (!textBlock || textBlock.type !== "text") {
         return Response.json({ error: "Resposta vazia da IA" }, { status: 500 });
       }
 
-      analysisResult = parseClaudeResponse(textBlock.text);
+      analysisResult = parseClaudeJSON(textBlock.text);
       if (!analysisResult) {
         console.error("score-point: parse error. Response:", textBlock.text.slice(0, 500));
         return Response.json(
@@ -625,16 +628,11 @@ export async function POST(request: Request) {
         );
       }
     } catch (err) {
-      const errorName = (err as Error).name || "";
-      if (errorName === "AbortError" || controller.signal.aborted) {
-        return Response.json(
-          { error: "Análise demorou mais que o esperado. Tente novamente." },
-          { status: 504 }
-        );
-      }
-      throw err;
-    } finally {
-      clearTimeout(timeout);
+      console.error("score-point: erro na chamada Claude:", err instanceof Error ? err.message : err);
+      return Response.json(
+        { error: "Tente novamente em 1 minuto." },
+        { status: 500 }
+      );
     }
 
     // 6. Save to DB
