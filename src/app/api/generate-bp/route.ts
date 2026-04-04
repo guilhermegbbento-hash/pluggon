@@ -88,8 +88,8 @@ function parseTallyText(rawText: string): FormData {
   const whenMatch = text.match(/Quando pretende começar\n(.+?)\n/i);
   const momentMatch = text.match(/momento na sua cidade\??\n(.+?)\n/i);
   const demandMatch = text.match(/demanda real\n(.+?)\n/i);
-  const prioMatch = text.match(/Prioridades.*?\n(.+?)\n\d+/s);
-  const chalMatch = text.match(/(?:maiores desafios|desafios hoje)\n(.+?)$/is);
+  const prioMatch = text.match(/Prioridades[^\n]*\n([^\n]+)/i);
+  const chalMatch = text.match(/(?:maiores desafios|desafios hoje)\n([^\n]+)/i);
 
   return {
     client_name: nameMatch ? nameMatch[1].trim() : "Cliente",
