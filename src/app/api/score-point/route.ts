@@ -359,7 +359,7 @@ CALIBRAÇÃO OBRIGATÓRIA:
 - Se a cidade tem PIB per capita acima de R$ 50.000 e mais de 500k habitantes, as variáveis demográficas e econômicas devem refletir isso com notas altas (7-9).
 - Se não há carregadores no raio de 2km, a variável de saturação deve ser muito favorável (8-10) pois indica oportunidade de mercado.
 
-IMPORTANTE: Retorne TODAS as 80 variáveis. Responda APENAS com JSON válido, sem markdown, sem texto extra. Formato:
+IMPORTANTE: Retorne TODAS as 80 variáveis. Justificativas com MÁXIMO 10 palavras cada. Seja extremamente conciso. Responda APENAS com JSON válido, sem markdown, sem texto extra. Formato:
 {
   "variables": [
     {
@@ -449,34 +449,66 @@ Com base NESSES DADOS REAIS, gere as justificativas detalhadas das 80 variáveis
 // ---------- Parse Claude JSON response ----------
 
 function parseClaudeJSON(raw: string): any {
-  let text = raw;
-  text = text.replace(/```json\s*/gi, "");
-  text = text.replace(/```\s*/gi, "");
-  text = text.trim();
-  const startBrace = text.indexOf("{");
-  const startBracket = text.indexOf("[");
-  let start = -1;
-  if (startBrace === -1) start = startBracket;
-  else if (startBracket === -1) start = startBrace;
-  else start = Math.min(startBrace, startBracket);
+  let text = raw.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
+  const start = text.indexOf("{");
   if (start > 0) text = text.substring(start);
-  const endBrace = text.lastIndexOf("}");
-  const endBracket = text.lastIndexOf("]");
-  const end = Math.max(endBrace, endBracket);
-  if (end > 0) text = text.substring(0, end + 1);
+
   try {
     return JSON.parse(text);
-  } catch (e) {
-    if (text.includes('"sections"')) {
-      const lastComplete = text.lastIndexOf("}");
-      if (lastComplete > 0) {
-        const fixed = text.substring(0, lastComplete + 1) + "]}";
-        return JSON.parse(fixed);
+  } catch {
+    // continue to recovery
+  }
+
+  // JSON cortado - recuperar variáveis completas
+  try {
+    const varsMatch = text.match(/"variables"\s*:\s*\[/);
+    if (varsMatch) {
+      const variables: Array<{
+        name: string;
+        category: string;
+        score: number;
+        weight: string;
+        justification: string;
+      }> = [];
+      const regex =
+        /\{\s*"name"\s*:\s*"([^"]+)"\s*,\s*"category"\s*:\s*"([^"]+)"\s*,\s*"score"\s*:\s*(\d+)\s*,\s*"weight"\s*:\s*"([^"]+)"\s*,\s*"justification"\s*:\s*"([^"]*?)"\s*\}/g;
+      let match;
+      while ((match = regex.exec(text)) !== null) {
+        variables.push({
+          name: match[1],
+          category: match[2],
+          score: parseInt(match[3], 10),
+          weight: match[4],
+          justification: match[5],
+        });
+      }
+
+      if (variables.length > 0) {
+        console.log(
+          "parseClaudeJSON: recuperou " +
+            variables.length +
+            " variáveis de JSON cortado"
+        );
+
+        const overallMatch = text.match(/"overall_score"\s*:\s*(\d+)/);
+        const classMatch = text.match(/"classification"\s*:\s*"([^"]+)"/);
+
+        return {
+          variables,
+          overall_score: overallMatch ? parseInt(overallMatch[1], 10) : null,
+          classification: classMatch ? classMatch[1] : null,
+          strengths: [],
+          weaknesses: [],
+          recommendation:
+            "Análise gerada com dados parciais. Consulte o Score do Ponto na plataforma para detalhes.",
+        };
       }
     }
-    console.error("JSON raw:", text.substring(0, 200));
-    throw new Error("Failed to parse JSON: " + (e as Error).message);
+  } catch (e2) {
+    console.error("Recuperação falhou:", e2);
   }
+
+  throw new Error("Failed to parse JSON: " + text.substring(0, 100));
 }
 
 // ---------- Claude retry helper ----------
@@ -717,7 +749,7 @@ export async function POST(request: Request) {
     try {
       const message = await callClaudeWithRetry({
         model: "claude-sonnet-4-20250514",
-        max_tokens: 4096,
+        max_tokens: 8192,
         system: buildSystemPrompt(),
         messages: [{ role: "user", content: userPrompt }],
       });
