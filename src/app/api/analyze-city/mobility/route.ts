@@ -1,6 +1,6 @@
 import { searchPlaces, deduplicatePlaces } from "@/lib/google-places";
 
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 interface MobilityZone {
   name: string;

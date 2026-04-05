@@ -1,7 +1,7 @@
 import { fetchChargers, classifyChargers } from "@/lib/openchargemap";
 import type { ChargerStation } from "@/lib/openchargemap";
 
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY || "";
 

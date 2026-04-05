@@ -355,7 +355,7 @@ async function callClaudeWithRetry(
 ): Promise<Anthropic.Message> {
   for (let attempt = 0; attempt < 2; attempt++) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 110000);
+    const timeout = setTimeout(() => controller.abort(), 280000);
     try {
       const msg = await anthropic.messages.create(params, {
         signal: controller.signal,

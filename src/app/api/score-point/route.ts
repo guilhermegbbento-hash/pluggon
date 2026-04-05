@@ -8,7 +8,7 @@ import {
 import { calculateScore } from "@/lib/scoring-engine";
 import type { ScoreInput } from "@/lib/scoring-engine";
 
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 const anthropic = new Anthropic();
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY || "";
@@ -486,7 +486,7 @@ async function callClaudeWithRetry(
 ): Promise<Anthropic.Message> {
   for (let attempt = 0; attempt < 2; attempt++) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 110000);
+    const timeout = setTimeout(() => controller.abort(), 280000);
     try {
       const msg = await anthropic.messages.create(params, {
         signal: controller.signal,

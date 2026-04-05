@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { MENTOR_SYSTEM_PROMPT } from "@/lib/mentor-knowledge";
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 

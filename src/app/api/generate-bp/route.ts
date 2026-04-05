@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@/lib/supabase/server";
 import { searchPlaces, deduplicatePlaces } from "@/lib/google-places";
 
-export const maxDuration = 90;
+export const maxDuration = 300;
 
 const anthropic = new Anthropic();
 
