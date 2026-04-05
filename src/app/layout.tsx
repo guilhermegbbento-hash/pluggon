@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Pluggon - Inteligência para Eletropostos",
+  title: "Pluggon — Inteligência para Eletropostos",
   description: "Plataforma de inteligência para eletropostos",
 };
 

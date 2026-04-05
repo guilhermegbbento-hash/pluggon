@@ -62,9 +62,9 @@ export default function MentorPage() {
     <div className="mx-auto flex h-[calc(100vh-4rem)] max-w-4xl flex-col">
       {/* Header */}
       <div className="mb-6">
-        <h1 className="text-3xl font-bold text-white">Mentor IA</h1>
+        <h1 className="text-3xl font-bold text-white">Mentor BLEV</h1>
         <p className="mt-1 text-sm text-[#8B949E]">
-          Converse com a mente do Guilherme Bento. Dúvidas sobre eletropostos, números, negociação e estratégia.
+          Converse com o Mentor IA da BLEV Educação. Dúvidas sobre eletropostos, números, negociação e estratégia.
         </p>
       </div>
 
@@ -72,11 +72,13 @@ export default function MentorPage() {
       <div className="flex flex-1 flex-col overflow-hidden rounded-2xl border border-[#30363D] bg-[#0D1117]">
         {/* Chat header */}
         <div className="flex items-center gap-3 border-b border-[#30363D] bg-[#161B22] px-5 py-4">
-          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-[#E4C368] to-[#C9A84C] text-base font-bold text-[#0D1117] shadow-[0_0_20px_rgba(201,168,76,0.3)]">
-            GB
+          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-[#E4C368] to-[#C9A84C] text-[#0D1117] shadow-[0_0_20px_rgba(201,168,76,0.3)]">
+            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
           </div>
           <div className="flex-1">
-            <div className="text-sm font-semibold text-white">Guilherme Bento — Mentor IA BLEV</div>
+            <div className="text-sm font-semibold text-white">Mentor IA — BLEV Educação</div>
             <div className="flex items-center gap-1.5 text-xs text-[#8B949E]">
               <span className="h-1.5 w-1.5 rounded-full bg-[#3FB950]" />
               Online • Responde em segundos
@@ -89,12 +91,14 @@ export default function MentorPage() {
           {messages.length === 0 && (
             <div className="space-y-5">
               <div className="flex gap-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#E4C368] to-[#C9A84C] text-xs font-bold text-[#0D1117]">
-                  GB
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#E4C368] to-[#C9A84C] text-[#0D1117]">
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
                 </div>
                 <div className="max-w-[80%] rounded-2xl rounded-tl-sm bg-[#161B22] px-4 py-3 text-sm leading-relaxed text-[#E6EDF3]">
-                  E aí, tudo certo? Sou o Guilherme Bento. Pode mandar qualquer dúvida sobre eletroposto —
-                  investimento, ponto, contrato, precificação, payback. Vou responder direto, sem enrolação.
+                  Olá! Sou o Mentor IA da BLEV Educação. Pode mandar qualquer dúvida sobre eletroposto —
+                  investimento, ponto, contrato, precificação, payback. Respondo direto, com dados reais da metodologia BLEV.
                 </div>
               </div>
 
@@ -124,8 +128,10 @@ export default function MentorPage() {
 
           {loading && (
             <div className="flex gap-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#E4C368] to-[#C9A84C] text-xs font-bold text-[#0D1117]">
-                GB
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#E4C368] to-[#C9A84C] text-[#0D1117]">
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
               </div>
               <div className="rounded-2xl rounded-tl-sm bg-[#161B22] px-4 py-3">
                 <div className="flex gap-1">
@@ -156,7 +162,7 @@ export default function MentorPage() {
                   send(input);
                 }
               }}
-              placeholder="Pergunta pro Guilherme..."
+              placeholder="Pergunta pro Mentor BLEV..."
               rows={1}
               disabled={loading}
               className="max-h-32 min-h-[44px] flex-1 resize-none rounded-xl border border-[#30363D] bg-[#0D1117] px-4 py-2.5 text-sm text-white placeholder-[#6e7681] outline-none transition-colors focus:border-[#C9A84C] disabled:opacity-60"
@@ -191,8 +197,10 @@ function MessageBubble({ message }: { message: ChatMessage }) {
   }
   return (
     <div className="flex gap-3">
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#E4C368] to-[#C9A84C] text-xs font-bold text-[#0D1117]">
-        GB
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#E4C368] to-[#C9A84C] text-[#0D1117]">
+        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+        </svg>
       </div>
       <div className="max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-tl-sm bg-[#161B22] px-4 py-3 text-sm leading-relaxed text-[#E6EDF3]">
         {message.content}

@@ -35,13 +35,13 @@ export default function LoginPage() {
     <div className="flex min-h-screen flex-col items-center justify-center bg-[#0D1117] px-4">
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
-          <h1 className="text-5xl font-bold text-[#C9A84C] tracking-tight">
-            BLEV
+          <h1 className="text-6xl font-bold text-[#C9A84C] tracking-tight">
+            PLUGGON
           </h1>
-          <p className="mt-3 text-lg text-white">
-            Intelligence
+          <p className="mt-2 text-sm text-[#8B949E]">
+            by BLEV Educação
           </p>
-          <p className="mt-1 text-sm text-[#8B949E]">
+          <p className="mt-4 text-sm text-[#8B949E]">
             Plataforma de Inteligência para Eletropostos
           </p>
         </div>

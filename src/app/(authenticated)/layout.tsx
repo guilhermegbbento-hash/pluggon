@@ -86,7 +86,7 @@ const navItems = [
   },
   {
     href: "/dashboard/mentor",
-    label: "Mentor IA",
+    label: "Mentor BLEV",
     icon: (
       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.87 9.87 0 01-4-.8L3 20l1.3-3.9A7.96 7.96 0 013 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -123,10 +123,12 @@ export default function AuthenticatedLayout({
       {/* Sidebar */}
       <aside className="fixed left-0 top-0 flex h-screen w-64 flex-col border-r border-[#30363D] bg-[#161B22]">
         {/* Logo */}
-        <div className="flex h-16 items-center px-6 border-b border-[#30363D]">
-          <span className="text-xl font-bold text-[#C9A84C] tracking-tight">
-            BLEV
-            <span className="block text-xs text-[#8B949E] font-normal tracking-normal">Intelligence</span>
+        <div className="flex h-16 flex-col justify-center px-6 border-b border-[#30363D]">
+          <span className="text-xl font-bold text-[#C9A84C] tracking-tight leading-none">
+            PLUGGON
+          </span>
+          <span className="mt-1 text-[10px] text-[#8B949E] font-normal tracking-normal">
+            by BLEV Educação
           </span>
         </div>
 

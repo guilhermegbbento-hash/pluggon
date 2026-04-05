@@ -23,8 +23,14 @@ export async function POST(req: Request) {
 
     const message = await anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
-      max_tokens: 2000,
-      system: MENTOR_SYSTEM_PROMPT,
+      max_tokens: 1000,
+      system: [
+        {
+          type: "text",
+          text: MENTOR_SYSTEM_PROMPT,
+          cache_control: { type: "ephemeral" },
+        },
+      ],
       messages: [
         ...history,
         { role: "user", content: lastMessage },
