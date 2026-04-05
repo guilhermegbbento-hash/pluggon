@@ -6,7 +6,8 @@
       "Bash(npx next:*)",
       "Bash(npx tsc:*)",
       "Bash(find:*)",
-      "Bash(xargs grep:*)"
+      "Bash(xargs grep:*)",
+      "Bash(xargs wc:*)"
     ]
   }
 }
