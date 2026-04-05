@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
+import { buildScoreHtml } from "@/lib/score-html-export";
 
 // ---------- Types ----------
 
@@ -450,6 +451,7 @@ function ScorePageInner() {
   const [loadingStep, setLoadingStep] = useState(0);
   const [error, setError] = useState("");
   const [result, setResult] = useState<ScoreResult | null>(null);
+  const [scoreId, setScoreId] = useState<number | null>(null);
   const [leafletLoaded, setLeafletLoaded] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -514,6 +516,7 @@ function ScorePageInner() {
       }
 
       setResult(data);
+      setScoreId((data?.score_id as number) ?? null);
     } catch {
       setError("Erro de conexão. Tente novamente.");
     } finally {
@@ -871,26 +874,56 @@ function ScorePageInner() {
           </div>
 
           {/* CTA */}
-          <div className="flex justify-center">
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                if (!scoreId) {
+                  alert("Aguarde — salvando no histórico...");
+                  return;
+                }
+                window.open(`/score-print/${scoreId}`, "_blank");
+              }}
+              disabled={!scoreId}
+              className="flex items-center gap-2 rounded-lg bg-[#C9A84C] px-6 py-3 font-semibold text-[#0D1117] transition-colors hover:bg-[#B89443] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+              </svg>
+              Exportar PDF
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                const html = buildScoreHtml(result);
+                const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                const safeCity = result.city.replace(/[^a-zA-Z0-9]/g, "_");
+                a.href = url;
+                a.download = `score-ponto-${safeCity}-${Date.now()}.html`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+              }}
+              className="flex items-center gap-2 rounded-lg bg-[#C9A84C] px-6 py-3 font-semibold text-[#0D1117] transition-colors hover:bg-[#B89443]"
+            >
+              <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              Exportar HTML
+            </button>
+
             <a
               href={`/dashboard/business-plan?lat=${result.lat}&lng=${result.lng}&address=${encodeURIComponent(result.address)}&city=${encodeURIComponent(result.city)}&state=${encodeURIComponent(result.state)}&score=${result.overall_score}&classification=${result.classification}&establishment_type=${result.establishment_type}&establishment_name=${encodeURIComponent(result.establishment_name)}`}
-              className="flex items-center gap-2 rounded-lg border border-[#C9A84C] bg-[#C9A84C]/10 px-6 py-3 font-semibold text-[#C9A84C] transition-colors hover:bg-[#C9A84C]/20"
+              className="flex items-center gap-2 rounded-lg border border-[#C9A84C] bg-transparent px-6 py-3 font-semibold text-[#C9A84C] transition-colors hover:bg-[#C9A84C]/10"
             >
-              <svg
-                width="20"
-                height="20"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                />
+              <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
-              Gerar Business Plan deste Ponto
+              Gerar Business Plan
             </a>
           </div>
         </div>

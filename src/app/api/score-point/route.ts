@@ -836,27 +836,34 @@ export async function POST(request: Request) {
       data: { user },
     } = await supabase.auth.getUser();
 
+    let score_id: number | null = null;
     if (user) {
-      await supabase.from("point_scores").insert({
-        user_id: user.id,
-        address,
-        lat: geo.lat,
-        lng: geo.lng,
-        city: geo.city,
-        state: geo.state,
-        establishment_type: establishment_type || "outro",
-        establishment_name: establishment_name || "",
-        overall_score: scoreResult.overallScore,
-        classification: scoreResult.classification,
-        variables_json: analysisResult.variables,
-        strengths: analysisResult.strengths,
-        weaknesses: analysisResult.weaknesses,
-        recommendation: analysisResult.recommendation,
-        status: "done",
-      });
+      const { data: inserted } = await supabase
+        .from("point_scores")
+        .insert({
+          user_id: user.id,
+          address,
+          lat: geo.lat,
+          lng: geo.lng,
+          city: geo.city,
+          state: geo.state,
+          establishment_type: establishment_type || "outro",
+          establishment_name: establishment_name || "",
+          overall_score: scoreResult.overallScore,
+          classification: scoreResult.classification,
+          variables_json: analysisResult.variables,
+          strengths: analysisResult.strengths,
+          weaknesses: analysisResult.weaknesses,
+          recommendation: analysisResult.recommendation,
+          full_json: responseData,
+          status: "done",
+        })
+        .select("id")
+        .single();
+      score_id = (inserted?.id as number) ?? null;
     }
 
-    return Response.json(responseData);
+    return Response.json({ ...responseData, score_id });
   } catch (err: unknown) {
     const errorMessage = err instanceof Error ? err.message : String(err);
     console.error("score-point: erro geral:", errorMessage);

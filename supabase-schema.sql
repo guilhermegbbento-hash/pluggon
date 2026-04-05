@@ -38,9 +38,11 @@ CREATE TABLE IF NOT EXISTS point_scores (
   strengths          text[],
   weaknesses         text[],
   recommendation     text,
+  full_json          jsonb,
   status             text DEFAULT 'done',
   created_at         timestamptz DEFAULT now()
 );
+ALTER TABLE point_scores ADD COLUMN IF NOT EXISTS full_json jsonb;
 
 -- 3. business_plans
 CREATE TABLE IF NOT EXISTS business_plans (
