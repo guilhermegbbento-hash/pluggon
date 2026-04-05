@@ -78,9 +78,22 @@ function parseTallyText(rawText: string): FormData {
   const phoneMatch = text.match(/Phone Number\n(.+?)\n/);
   const emailMatch = text.match(/E-mail Address\n(.+?)\n/);
 
-  const cityMatch = text.match(/(?:Untitled long answer field|Cidade)\n(.+?)\n/);
+  // Extrair cidade e estado - aceitar vírgula, barra ou hífen
+  const cityMatch = text.match(/(?:Untitled long answer field|Cidade)\n([^\n]+)/i);
   const cityFull = cityMatch ? cityMatch[1].trim() : "";
-  const cityParts = cityFull.split(",").map((s) => s.trim());
+  let parsedCity = "", parsedState = "";
+  if (cityFull.includes(",")) {
+    const parts = cityFull.split(",").map((s) => s.trim());
+    parsedCity = parts[0]; parsedState = parts[1] || "";
+  } else if (cityFull.includes("/")) {
+    const parts = cityFull.split("/").map((s) => s.trim());
+    parsedCity = parts[0]; parsedState = parts[1] || "";
+  } else if (cityFull.includes(" - ")) {
+    const parts = cityFull.split(" - ").map((s) => s.trim());
+    parsedCity = parts[0]; parsedState = parts[1] || "";
+  } else {
+    parsedCity = cityFull; parsedState = "";
+  }
 
   const objMatch = text.match(/objetivo principal.*?\n(.+?)\n/i);
   const resMatch = text.match(/Se marcou alguma acima, descreva\n(.+?)\n/);
@@ -95,8 +108,8 @@ function parseTallyText(rawText: string): FormData {
     client_name: nameMatch ? nameMatch[1].trim() : "Cliente",
     phone: phoneMatch ? phoneMatch[1].trim() : "",
     email: emailMatch ? emailMatch[1].trim() : "",
-    city: cityParts[0] || "",
-    state: cityParts[1] || "",
+    city: parsedCity,
+    state: parsedState,
     objective: objMatch ? objMatch[1].trim() : "",
     resources: resMatch ? resMatch[1].trim() : "",
     capital: (() => {
@@ -104,6 +117,11 @@ function parseTallyText(rawText: string): FormData {
       if (capitalRaw.toLowerCase().includes('acima') || capitalRaw.toLowerCase().includes('mais de')) {
         const numInside = capitalRaw.match(/([\d.,]+)/);
         capitalRaw = numInside ? numInside[1] : '500000';
+      }
+      // "Menos de R$ 50.000" / "menos que" - pegar o número como teto
+      if (capitalRaw.toLowerCase().includes('menos de') || capitalRaw.toLowerCase().includes('menos que')) {
+        const numInside = capitalRaw.match(/([\d.,]+)/);
+        capitalRaw = numInside ? numInside[1] : '50000';
       }
       console.log('=== CAPITAL RAW ===', capitalRaw);
       return capitalRaw;
@@ -250,8 +268,13 @@ export async function POST(request: Request) {
 
     console.log('=== FORM DATA PARSEADO ===', { name: form.client_name, city: form.city, capital: form.capital });
 
-    if (!form.client_name || !form.city || !form.state) {
-      return Response.json({ error: "Nome, cidade e estado são obrigatórios." }, { status: 400 });
+    if (!form.client_name) {
+      return Response.json({ error: "Não conseguimos identificar o nome do cliente no texto." }, { status: 400 });
+    }
+    if (!form.city || !form.state) {
+      return Response.json({
+        error: "Não conseguimos identificar a cidade no texto. Por favor, escreva no formato: Cidade, Estado (ex: Natal, RN)"
+      }, { status: 400 });
     }
 
     // PASSO 2 - Calcular TUDO no código TypeScript
