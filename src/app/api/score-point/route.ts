@@ -234,15 +234,24 @@ async function fetchIBGEData(city: string, state: string): Promise<IBGEData> {
 
 // ---------- Build Claude system prompt (justificativas das 80 variáveis) ----------
 
-function buildSystemPrompt(): string {
+function buildSystemPrompt(totalCompetitors: number, population: number | null): string {
+  const popText = population ? `${population.toLocaleString("pt-BR")} habitantes` : "população da cidade";
   return `Você é a BLEV, plataforma líder em inteligência para eletromobilidade no Brasil. Analise este ponto para instalação de eletroposto DC (40kW a 80kW).
 
 O SCORE GERAL JÁ FOI CALCULADO pelo sistema. Sua tarefa é APENAS gerar as justificativas detalhadas das 80 variáveis.
 
+REGRA CRÍTICA SOBRE CONCORRENTES (PRIORIDADE MÁXIMA — LEIA ANTES DE QUALQUER OUTRA COISA):
+- Encontramos ${totalCompetitors} carregadores na cidade via Google Places.
+- NÃO sabemos quantos são DC ou AC (Google Places não informa tipo).
+- NUNCA diga "apenas X carregadores DC" ou "X carregadores rápidos". Você NÃO sabe esse número.
+- O que pode dizer: "Foram identificados ${totalCompetitors} pontos de recarga na cidade. A cidade tem potencial para muito mais, considerando a população de ${popText}."
+- NUNCA invente um número específico de DC. Se não sabe, não diga.
+- Nos pontos fortes, em vez de "apenas 10 DC rápidos", dizer "mercado com espaço para crescimento de carregadores rápidos DC".
+- PROIBIDO usar a palavra "apenas" seguida de um número de carregadores que você não tem certeza.
+
 REGRAS INVIOLÁVEIS DE INTEGRIDADE DE DADOS:
 - NUNCA invente dados de carregadores. Use APENAS os dados que foram coletados e fornecidos neste prompt.
-- Se encontramos 67 concorrentes via Google Places, diga 67. NUNCA diga um número diferente.
-- Se não sabe quantos são DC rápidos especificamente, diga "quantidade de DC rápidos a ser verificada in loco". NUNCA chutar.
+- Se encontramos ${totalCompetitors} concorrentes via Google Places, diga ${totalCompetitors}. NUNCA diga um número diferente.
 - Nos pontos fortes e de atenção (strengths/weaknesses), use APENAS dados que foram fornecidos nas APIs. NÃO invente estatísticas. Se o dado não foi coletado, NÃO mencione.
 - NUNCA crie números, percentuais, quantidades ou rankings que não estejam explicitamente nos dados fornecidos.
 
@@ -402,7 +411,6 @@ function buildUserPrompt(
   chargersIn2km: number,
   chargersIn200m: number,
   chargersInCity: number,
-  dcChargersInCity: number,
   chargerOperators: string[],
   ibgeData: IBGEData,
   city: string,
@@ -439,8 +447,7 @@ DADOS IBGE DA CIDADE:
 - IDHM: ${ibgeData.idhm ?? "N/D"}
 
 DADOS REAIS DE CONCORRÊNCIA (Google Places + carregados.com.br):
-- Total de carregadores na cidade: ${chargersInCity}
-- Carregadores DC rápidos na cidade: ${dcChargersInCity}
+- Total de carregadores na cidade: ${chargersInCity} (tipo DC/AC NÃO é conhecido — Google Places não informa)
 - Concorrentes diretos (<200m): ${chargersIn200m}
 - Carregadores no raio de 2km: ${chargersIn2km}
 - Operadores na cidade: ${chargerOperators.join(", ") || "Nenhum"}
@@ -749,7 +756,6 @@ export async function POST(request: Request) {
       chargersIn2km,
       chargersIn200m,
       chargerInfo.total,
-      chargerInfo.dc,
       chargerInfo.operators,
       ibgeData,
       geo.city,
@@ -764,7 +770,7 @@ export async function POST(request: Request) {
       const message = await callClaudeWithRetry({
         model: "claude-sonnet-4-20250514",
         max_tokens: 8192,
-        system: buildSystemPrompt(),
+        system: buildSystemPrompt(chargerInfo.total, ibgeData.population),
         messages: [{ role: "user", content: userPrompt }],
       });
 
