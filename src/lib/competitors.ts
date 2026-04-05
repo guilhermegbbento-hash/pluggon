@@ -1,3 +1,7 @@
+import { fetchChargers } from "@/lib/openchargemap";
+
+export type TypeConfidence = "confirmed" | "estimated" | "unknown";
+
 export interface CompetitorStation {
   name: string;
   lat: number;
@@ -8,9 +12,52 @@ export interface CompetitorStation {
   powerKW: number;
   type: string;
   isFastCharge: boolean;
+  typeConfidence: TypeConfidence;
   isOperational: boolean;
   rating: number;
   reviews: number;
+}
+
+/** Classify a station by its name using known operator keywords. */
+export function classifyByName(
+  name: string
+): { type: string; estimatedPower: number; isFastCharge: boolean } {
+  const nameLower = name.toLowerCase();
+  const dcKeywords = [
+    "shell recharge",
+    "zletric",
+    "ezvolt",
+    "tupinamba",
+    "tupinambá",
+    "voltbras",
+    "neocharge",
+    "copel eletrovia",
+    "edp",
+    "raizen",
+    "raízen",
+    "ipiranga",
+  ];
+  const acKeywords = [
+    "byd",
+    "bmw",
+    "volvo",
+    "audi",
+    "porsche",
+    "mercedes",
+    "condor",
+    "shopping",
+    "patio",
+    "pátio",
+    "mall",
+  ];
+
+  if (dcKeywords.some((k) => nameLower.includes(k))) {
+    return { type: "DC Rápido (estimado)", estimatedPower: 60, isFastCharge: true };
+  }
+  if (acKeywords.some((k) => nameLower.includes(k))) {
+    return { type: "AC Lento (estimado)", estimatedPower: 7, isFastCharge: false };
+  }
+  return { type: "Não identificado", estimatedPower: 0, isFastCharge: false };
 }
 
 export interface CompetitorResult {
@@ -54,6 +101,7 @@ export async function fetchAllCompetitors(
         powerKW: 0,
         type: "Verificar in loco",
         isFastCharge: false,
+        typeConfidence: "unknown",
         isOperational: p.businessStatus === "OPERATIONAL",
         rating: p.rating || 0,
         reviews: p.userRatingCount || 0,
@@ -188,8 +236,9 @@ export async function fetchAllCompetitors(
           source: "carregados.com.br",
           operator: s.operator || s.operador || s.network || "Desconhecido",
           powerKW: pw,
-          type: pw >= 40 ? "DC Rápido" : "Verificar",
+          type: pw >= 40 ? "DC Rápido" : pw > 0 ? "AC Lento" : "Verificar",
           isFastCharge: pw >= 40,
+          typeConfidence: pw > 0 ? "confirmed" : "unknown",
           isOperational: true,
           rating: s.rating || 0,
           reviews: s.reviews || 0,
@@ -223,6 +272,67 @@ export async function fetchAllCompetitors(
     }
   } catch (err) {
     console.error("carregados.com.br scrape erro:", err);
+  }
+
+  // FONTE 6: OpenChargeMap — dados confirmados de potência/tipo
+  let ocmStations: Awaited<ReturnType<typeof fetchChargers>> = [];
+  try {
+    ocmStations = await fetchChargers(lat, lng, 50);
+    // Adicionar estações OCM como concorrentes novos (se não duplicadas)
+    let addedFromOcm = 0;
+    for (const s of ocmStations) {
+      if (!s.lat || !s.lng) continue;
+      if (isDuplicate(s.lat, s.lng)) continue;
+      allResults.push({
+        name: s.name || "Sem nome",
+        lat: s.lat,
+        lng: s.lng,
+        address: s.address || "",
+        source: "OpenChargeMap",
+        operator: s.operator || "Desconhecido",
+        powerKW: s.powerKW || 0,
+        type: s.powerKW >= 40 ? "DC Rápido" : s.powerKW > 0 ? "AC Lento" : "Verificar",
+        isFastCharge: s.isFastCharge,
+        typeConfidence: s.powerKW > 0 ? "confirmed" : "unknown",
+        isOperational: s.isOperational,
+        rating: 0,
+        reviews: 0,
+      });
+      addedFromOcm++;
+    }
+    queryStats["OpenChargeMap"] = addedFromOcm;
+  } catch (err) {
+    console.error("OpenChargeMap erro:", err);
+  }
+
+  // ENRIQUECIMENTO: para cada concorrente sem potência, procurar OCM num raio de 100m
+  for (const c of allResults) {
+    if (c.typeConfidence === "confirmed") continue;
+    const match = ocmStations.find((s) => {
+      const d = Math.sqrt(
+        Math.pow((s.lat - c.lat) * 111000, 2) +
+          Math.pow((s.lng - c.lng) * 111000, 2)
+      );
+      return d < 100 && (s.powerKW || 0) > 0;
+    });
+    if (match) {
+      c.powerKW = match.powerKW;
+      c.isFastCharge = match.isFastCharge;
+      c.type = match.powerKW >= 40 ? "DC Rápido" : "AC Lento";
+      c.typeConfidence = "confirmed";
+      if (c.operator === "Verificar" || c.operator === "Desconhecido") {
+        c.operator = match.operator || c.operator;
+      }
+      continue;
+    }
+    // Fallback: classificar por nome
+    const byName = classifyByName(c.name);
+    if (byName.estimatedPower > 0) {
+      c.powerKW = byName.estimatedPower;
+      c.isFastCharge = byName.isFastCharge;
+      c.type = byName.type;
+      c.typeConfidence = "estimated";
+    }
   }
 
   // LOG detalhado
@@ -279,9 +389,39 @@ export function competitorsToChargerFormat(competitors: CompetitorStation[]) {
 /** Classify competitors for summary stats (mirrors classifyChargers) */
 export function classifyCompetitors(competitors: CompetitorStation[]) {
   const total = competitors.length;
-  const dc = competitors.filter((c) => c.isFastCharge).length;
-  const ac = total - dc;
+  const dcConfirmed = competitors.filter(
+    (c) => c.isFastCharge && c.typeConfidence === "confirmed"
+  ).length;
+  const dcEstimated = competitors.filter(
+    (c) => c.isFastCharge && c.typeConfidence === "estimated"
+  ).length;
+  const acConfirmed = competitors.filter(
+    (c) => !c.isFastCharge && c.typeConfidence === "confirmed"
+  ).length;
+  const acEstimated = competitors.filter(
+    (c) => !c.isFastCharge && c.typeConfidence === "estimated"
+  ).length;
+  const unknown = competitors.filter((c) => c.typeConfidence === "unknown").length;
+
+  const dc = dcConfirmed + dcEstimated;
+  const ac = acConfirmed + acEstimated;
+  // Só DC conta como concorrência real para o score
+  const realCompetition = dc;
+
   const operational = competitors.filter((c) => c.isOperational).length;
   const operators = [...new Set(competitors.map((c) => c.operator))];
-  return { total, dc, ac, operational, operators };
+
+  return {
+    total,
+    dc,
+    ac,
+    dcConfirmed,
+    dcEstimated,
+    acConfirmed,
+    acEstimated,
+    unknown,
+    realCompetition,
+    operational,
+    operators,
+  };
 }

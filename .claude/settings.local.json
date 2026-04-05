@@ -8,7 +8,9 @@
       "Bash(find:*)",
       "Bash(xargs grep:*)",
       "Bash(xargs wc:*)",
-      "Bash(git:*)"
+      "Bash(git:*)",
+      "Bash(grep -E \"\\\\.ts$\")",
+      "Bash(npx eslint:*)"
     ]
   }
 }
