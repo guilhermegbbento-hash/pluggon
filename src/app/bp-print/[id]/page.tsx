@@ -266,9 +266,9 @@ export default function BPPrintPage() {
       <style jsx global>{`
         /* ========== BASE ========== */
         body {
-          font-family: Georgia, serif;
-          font-size: 13px;
-          line-height: 1.8;
+          font-family: Georgia, 'Times New Roman', serif;
+          font-size: 12px;
+          line-height: 1.9;
           color: #2c2c2c;
           background: white;
           margin: 0;
@@ -291,16 +291,16 @@ export default function BPPrintPage() {
         }
         .capa-label {
           font-size: 16px;
-          letter-spacing: 10px;
+          letter-spacing: 12px;
           color: #C9A84C;
           text-transform: uppercase;
-          font-family: Helvetica, Arial, sans-serif;
+          font-family: 'Helvetica Neue', Arial, sans-serif;
         }
         .capa-line {
-          width: 80px;
+          width: 100px;
           height: 2px;
           background: #C9A84C;
-          margin: 40px auto;
+          margin: 50px auto;
           border: none;
           -webkit-print-color-adjust: exact !important;
           print-color-adjust: exact !important;
@@ -309,25 +309,26 @@ export default function BPPrintPage() {
           font-size: 36px;
           font-weight: 800;
           color: white;
-          font-family: Helvetica, Arial, sans-serif;
-          margin-bottom: 8px;
+          font-family: 'Helvetica Neue', Arial, sans-serif;
+          margin-bottom: 12px;
         }
         .capa-state {
           font-size: 28px;
           color: white;
-          font-family: Helvetica, Arial, sans-serif;
+          font-family: 'Helvetica Neue', Arial, sans-serif;
         }
         .capa-for { font-size: 12px; color: #888; }
         .capa-name {
-          font-size: 20px;
+          font-size: 22px;
           font-weight: 600;
           color: white;
-          font-family: Helvetica, Arial, sans-serif;
+          font-family: 'Helvetica Neue', Arial, sans-serif;
+          margin-top: 40px;
         }
         .capa-date { font-size: 12px; color: #666; }
         .capa-box {
           border: 1px solid #C9A84C;
-          padding: 20px 30px;
+          padding: 24px 36px;
           display: inline-block;
           -webkit-print-color-adjust: exact !important;
           print-color-adjust: exact !important;
@@ -335,56 +336,63 @@ export default function BPPrintPage() {
         .capa-box-text {
           font-size: 14px;
           color: #C9A84C;
-          font-family: Helvetica, Arial, sans-serif;
+          font-family: 'Helvetica Neue', Arial, sans-serif;
         }
         .capa-footer { font-size: 10px; color: #555; }
 
         /* ========== SECTION CONTAINERS ========== */
         .section-with-break {
-          padding: 15mm 20mm;
+          padding: 30mm 25mm 30mm 25mm;
           page-break-before: always;
         }
         .section-no-break {
-          padding: 5mm 20mm;
+          padding: 10mm 25mm;
         }
 
         /* ========== TYPOGRAPHY ========== */
         h2, .bp-section-title {
-          font-family: Helvetica, Arial, sans-serif;
+          font-family: 'Helvetica Neue', Arial, sans-serif;
           font-size: 22px;
+          font-weight: 700;
           color: #C9A84C;
           border-bottom: 3px solid #C9A84C;
           padding-bottom: 10px;
           margin-bottom: 20px;
-          margin-top: 10px;
+          margin-top: 40px;
           line-height: 1.3;
+          page-break-after: avoid;
           -webkit-print-color-adjust: exact !important;
           print-color-adjust: exact !important;
         }
         .bp-h3 {
           font-size: 16px;
           font-weight: 600;
-          color: #1a1a1a;
-          margin-top: 20px;
-          margin-bottom: 10px;
-          font-family: Helvetica, Arial, sans-serif;
+          color: #333;
+          margin-top: 25px;
+          margin-bottom: 12px;
+          font-family: 'Helvetica Neue', Arial, sans-serif;
           line-height: 1.4;
+          page-break-after: avoid;
         }
         .bp-h4 {
           font-size: 14px;
           font-weight: 600;
           color: #333;
-          margin-top: 16px;
-          margin-bottom: 8px;
-          font-family: Helvetica, Arial, sans-serif;
+          margin-top: 20px;
+          margin-bottom: 10px;
+          font-family: 'Helvetica Neue', Arial, sans-serif;
           line-height: 1.4;
+          page-break-after: avoid;
         }
         p {
-          font-size: 13px;
-          line-height: 1.8;
+          font-family: Georgia, 'Times New Roman', serif;
+          font-size: 12px;
+          line-height: 1.9;
           color: #2c2c2c;
-          margin-bottom: 12px;
+          margin-bottom: 14px;
           text-align: justify;
+          orphans: 3;
+          widows: 3;
         }
         strong { font-weight: 700; color: #1a1a1a; }
 
@@ -392,28 +400,30 @@ export default function BPPrintPage() {
         table {
           width: 100%;
           border-collapse: collapse;
-          margin: 20px 0;
+          margin: 25px 0 30px 0;
+          page-break-inside: avoid;
         }
         th {
           background: #C9A84C !important;
           color: white !important;
-          padding: 10px 12px;
+          padding: 12px 15px;
           text-align: left;
           font-size: 11px;
           font-weight: 700;
           text-transform: uppercase;
           letter-spacing: 0.5px;
-          font-family: Helvetica, Arial, sans-serif;
+          font-family: 'Helvetica Neue', Arial, sans-serif;
           -webkit-print-color-adjust: exact !important;
           print-color-adjust: exact !important;
         }
         td {
-          padding: 8px 12px;
+          padding: 12px 15px;
           font-size: 11px;
-          border-bottom: 1px solid #e0e0e0;
+          line-height: 1.5;
+          border-bottom: 1px solid #eee;
         }
         tr:nth-child(even) td {
-          background: #f9f9f9 !important;
+          background: #fafafa !important;
           -webkit-print-color-adjust: exact !important;
           print-color-adjust: exact !important;
         }
@@ -424,15 +434,22 @@ export default function BPPrintPage() {
           -webkit-print-color-adjust: exact !important;
           print-color-adjust: exact !important;
         }
-        .total-row td { font-weight: 700; }
+        .total-row td {
+          font-weight: 700;
+          border-top: 2px solid #C9A84C;
+        }
 
         /* ========== LISTS ========== */
-        .bp-list { margin: 12px 0; }
+        .bp-list {
+          margin: 12px 0 20px 0;
+          padding-left: 20px;
+        }
         .bp-list-item {
-          font-size: 13px;
-          line-height: 1.8;
+          font-family: Georgia, 'Times New Roman', serif;
+          font-size: 12px;
+          line-height: 1.7;
           color: #2c2c2c;
-          margin-bottom: 6px;
+          margin-bottom: 8px;
           padding-left: 20px;
           text-indent: -20px;
         }
@@ -444,13 +461,14 @@ export default function BPPrintPage() {
           print-color-adjust: exact !important;
         }
         .bp-ol {
-          font-size: 13px;
-          line-height: 1.8;
+          font-family: Georgia, 'Times New Roman', serif;
+          font-size: 12px;
+          line-height: 1.7;
           color: #2c2c2c;
           padding-left: 24px;
-          margin: 12px 0;
+          margin: 12px 0 20px 0;
         }
-        .bp-ol li { margin-bottom: 6px; }
+        .bp-ol li { margin-bottom: 8px; }
 
         /* ========== BLOCKQUOTE / DESTAQUE ========== */
         .bp-blockquote, .destaque {
@@ -461,6 +479,7 @@ export default function BPPrintPage() {
           font-style: italic;
           color: #444;
           border-radius: 0 4px 4px 0;
+          page-break-inside: avoid;
           -webkit-print-color-adjust: exact !important;
           print-color-adjust: exact !important;
         }
@@ -469,22 +488,22 @@ export default function BPPrintPage() {
         .bp-header {
           display: flex;
           justify-content: space-between;
-          font-size: 9px;
-          color: #aaa;
-          border-bottom: 1px solid #e0e0e0;
+          font-size: 8px;
+          color: #bbb;
+          border-bottom: 0.5px solid #e0e0e0;
           padding-bottom: 8px;
-          margin-bottom: 20px;
-          font-family: Helvetica, Arial, sans-serif;
+          margin-bottom: 25px;
+          font-family: 'Helvetica Neue', Arial, sans-serif;
         }
         .bp-footer {
           display: flex;
           justify-content: space-between;
           font-size: 8px;
           color: #bbb;
-          border-top: 1px solid #e0e0e0;
+          border-top: 0.5px solid #e0e0e0;
           padding-top: 8px;
           margin-top: 25px;
-          font-family: Helvetica, Arial, sans-serif;
+          font-family: 'Helvetica Neue', Arial, sans-serif;
         }
 
         /* ========== SCREEN PREVIEW ========== */
@@ -522,7 +541,8 @@ export default function BPPrintPage() {
 
         /* ========== PRINT ========== */
         @media print {
-          @page { size: A4; margin: 0; }
+          @page { size: A4; margin: 25mm 20mm 25mm 25mm; }
+          @page :first { margin: 0; }
           body {
             margin: 0 !important;
             padding: 0 !important;
@@ -531,8 +551,23 @@ export default function BPPrintPage() {
             print-color-adjust: exact !important;
           }
           .no-print { display: none !important; }
-          .page-capa { height: 100vh; }
-          .section-with-break { page-break-before: always; }
+          .page-capa {
+            height: 100vh;
+            margin: 0;
+            padding: 0;
+          }
+          .section-with-break {
+            padding: 0;
+            page-break-before: always;
+          }
+          .section-no-break {
+            padding: 0;
+          }
+          p { orphans: 3; widows: 3; }
+          h2, h3, h4, .bp-section-title, .bp-h3, .bp-h4 {
+            page-break-after: avoid;
+          }
+          table, .bp-blockquote, .destaque { page-break-inside: avoid; }
         }
 
         /* ========== AVOID ORPHANS ========== */
@@ -588,7 +623,7 @@ export default function BPPrintPage() {
             <div key={section.number} className={sectionClass}>
               {useBreak && (
                 <div className="bp-header">
-                  <span>BLEV Educação</span>
+                  <span>PLUGGON by BLEV Educação</span>
                   <span>Business Plan — {data.client_name}</span>
                 </div>
               )}
