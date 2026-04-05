@@ -328,6 +328,21 @@ export function calculateScore(data: ScoreInput): ScoreResult {
     calibrated = Math.max(calibrated, 85);
   }
 
+  // Terreno em cidade grande = mínimo 78
+  if (data.establishmentType === 'terreno' && popScore >= 8) {
+    calibrated = Math.max(calibrated, 78);
+  }
+
+  // Terreno em bairro premium de cidade grande = mínimo 85
+  if (data.establishmentType === 'terreno' && nbScore >= 8 && popScore >= 8) {
+    calibrated = Math.max(calibrated, 85);
+  }
+
+  // Qualquer tipo em bairro premium + cidade grande + sem concorrência direta = mínimo 83
+  if (nbScore >= 9 && popScore >= 8 && (data.chargersIn200m || 0) === 0) {
+    calibrated = Math.max(calibrated, 83);
+  }
+
   const classification =
     calibrated >= 85
       ? "PREMIUM"

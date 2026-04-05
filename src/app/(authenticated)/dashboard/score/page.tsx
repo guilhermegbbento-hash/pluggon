@@ -583,14 +583,14 @@ function ScorePageInner() {
 
           <div>
             <label className="mb-1.5 block text-sm font-medium text-[#C9D1D9]">
-              Nome do estabelecimento{" "}
+              Observações importantes{" "}
               <span className="text-[#484F58]">(opcional)</span>
             </label>
-            <input
-              type="text"
+            <textarea
               value={establishmentName}
               onChange={(e) => setEstablishmentName(e.target.value)}
-              placeholder="Ex: Posto Shell Av. Paulista"
+              placeholder="Ex: terreno próprio, próximo ao Jardim Botânico, frente pra avenida principal, tem transformador dedicado..."
+              rows={3}
               className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-3 text-white placeholder-[#484F58] outline-none transition-colors focus:border-[#C9A84C]"
               disabled={loading}
             />

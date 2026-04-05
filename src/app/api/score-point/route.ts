@@ -406,7 +406,7 @@ function buildUserPrompt(
   lat: number,
   lng: number,
   establishmentType: string,
-  establishmentName: string,
+  observations: string,
   nearbyPOIs: NearbyPlace[],
   chargersIn2km: number,
   chargersIn200m: number,
@@ -438,7 +438,7 @@ DADOS REAIS COLETADOS:
 - Coordenadas: ${lat}, ${lng}
 - Cidade: ${city}, ${state}
 - Tipo de estabelecimento: ${establishmentType}
-${establishmentName ? `- Nome: ${establishmentName}` : ""}
+${observations ? `\nOBSERVAÇÕES IMPORTANTES FORNECIDAS PELO USUÁRIO (considere na análise):\n${observations}\n` : ""}
 
 DADOS IBGE DA CIDADE:
 - População: ${ibgeData.population?.toLocaleString("pt-BR") ?? "N/D"}
@@ -587,7 +587,7 @@ export async function POST(request: Request) {
     // 2. Validate the point itself via Google Places to get rating/reviews
     let pointRating = 0;
     let pointReviews = 0;
-    if (GOOGLE_MAPS_API_KEY && (establishment_name || address)) {
+    if (GOOGLE_MAPS_API_KEY && address) {
       try {
         const placeRes = await fetch(
           "https://places.googleapis.com/v1/places:searchText",
@@ -600,10 +600,7 @@ export async function POST(request: Request) {
                 "places.rating,places.userRatingCount",
             },
             body: JSON.stringify({
-              textQuery:
-                (establishment_name || "") +
-                " " +
-                address,
+              textQuery: address,
               maxResultCount: 1,
             }),
           }
