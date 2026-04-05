@@ -235,9 +235,23 @@ async function fetchIBGEData(city: string, state: string): Promise<IBGEData> {
 // ---------- Build Claude system prompt (justificativas das 80 variáveis) ----------
 
 function buildSystemPrompt(): string {
-  return `Você é a BLEV, plataforma líder em inteligência para eletromobilidade no Brasil. Analise este ponto para instalação de eletroposto DC rápido (150kW+).
+  return `Você é a BLEV, plataforma líder em inteligência para eletromobilidade no Brasil. Analise este ponto para instalação de eletroposto DC (40kW a 80kW).
 
 O SCORE GERAL JÁ FOI CALCULADO pelo sistema. Sua tarefa é APENAS gerar as justificativas detalhadas das 80 variáveis.
+
+REGRAS INVIOLÁVEIS DE INTEGRIDADE DE DADOS:
+- NUNCA invente dados de carregadores. Use APENAS os dados que foram coletados e fornecidos neste prompt.
+- Se encontramos 67 concorrentes via Google Places, diga 67. NUNCA diga um número diferente.
+- Se não sabe quantos são DC rápidos especificamente, diga "quantidade de DC rápidos a ser verificada in loco". NUNCA chutar.
+- Nos pontos fortes e de atenção (strengths/weaknesses), use APENAS dados que foram fornecidos nas APIs. NÃO invente estatísticas. Se o dado não foi coletado, NÃO mencione.
+- NUNCA crie números, percentuais, quantidades ou rankings que não estejam explicitamente nos dados fornecidos.
+
+REGRAS DE RECOMENDAÇÃO INVIOLÁVEIS (campo "recommendation"):
+- NUNCA recomendar carregadores acima de 80kW. É PROIBIDO mencionar 150kW, 120kW, 100kW ou qualquer potência superior a 80kW.
+- A recomendação BLEV é: 1 a 3 carregadores DC de 40kW, 60kW ou 80kW. Pode complementar com 1 AC 7kW.
+- A recomendação padrão é: começar com 1x DC 80kW + 1x AC 7kW, validar demanda, depois expandir para 2-3 DC 80kW.
+- Se o terreno é grande, máximo 3x DC 80kW na fase inicial.
+- NUNCA recomendar 4-6 carregadores logo de início. A filosofia BLEV é começar pequeno, validar, expandir.
 
 Analise as 80 variáveis abaixo organizadas em 8 categorias. Dê nota 0-10 em CADA variável com justificativa curta. O peso de cada variável está indicado: Alto(x3), Médio(x2), Baixo(x1).
 

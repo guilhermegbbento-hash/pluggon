@@ -916,15 +916,19 @@ function ScorePageInner() {
               Exportar HTML
             </button>
 
-            <a
-              href={`/dashboard/business-plan?lat=${result.lat}&lng=${result.lng}&address=${encodeURIComponent(result.address)}&city=${encodeURIComponent(result.city)}&state=${encodeURIComponent(result.state)}&score=${result.overall_score}&classification=${result.classification}&establishment_type=${result.establishment_type}&establishment_name=${encodeURIComponent(result.establishment_name)}`}
+            <button
+              type="button"
+              onClick={() => {
+                setResult(null);
+                setScoreId(null);
+              }}
               className="flex items-center gap-2 rounded-lg border border-[#C9A84C] bg-transparent px-6 py-3 font-semibold text-[#C9A84C] transition-colors hover:bg-[#C9A84C]/10"
             >
               <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
-              Gerar Business Plan
-            </a>
+              Nova Análise
+            </button>
           </div>
         </div>
       )}
