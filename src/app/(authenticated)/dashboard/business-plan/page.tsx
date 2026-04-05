@@ -394,6 +394,355 @@ export default function BusinessPlanPage() {
     window.open(`/bp-print/${result.bp_id}`, "_blank");
   }
 
+  function handleExportHTML() {
+    if (!result) return;
+    const name = result.client_name || clientName || "Cliente";
+    const cityName = result.city || city || "";
+    const stateName = result.state || state || "";
+    const safe = (s: string) =>
+      s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9]+/g, "_").replace(/^_|_$/g, "");
+    const dateStr = new Date().toLocaleDateString("pt-BR", {
+      day: "2-digit", month: "long", year: "numeric",
+    });
+    const dateFormatted = dateStr.charAt(0).toUpperCase() + dateStr.slice(1);
+
+    const escapeHtml = (s: string) =>
+      s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+    const inlineFmt = (text: string): string =>
+      escapeHtml(text)
+        .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+        .replace(/\*([^*]+)\*/g, "<em>$1</em>");
+
+    const mdToHtml = (md: string): string => {
+      const lines = md.split("\n");
+      const out: string[] = [];
+      let i = 0;
+      while (i < lines.length) {
+        const line = lines[i];
+        if (line.startsWith("### ")) { out.push(`<h4>${inlineFmt(line.slice(4))}</h4>`); i++; continue; }
+        if (line.startsWith("## ")) { out.push(`<h3>${inlineFmt(line.slice(3))}</h3>`); i++; continue; }
+        if (line.startsWith("# ")) { out.push(`<h2>${inlineFmt(line.slice(2))}</h2>`); i++; continue; }
+        if (line.startsWith("> ")) {
+          const qs: string[] = [];
+          while (i < lines.length && lines[i].startsWith("> ")) { qs.push(lines[i].slice(2)); i++; }
+          out.push(`<blockquote>${qs.map(inlineFmt).join("<br/>")}</blockquote>`);
+          continue;
+        }
+        if (line.includes("|") && line.trim().startsWith("|")) {
+          const tl: string[] = [];
+          while (i < lines.length && lines[i].includes("|") && lines[i].trim().startsWith("|")) { tl.push(lines[i]); i++; }
+          const dataRows = tl.filter((l) => !l.match(/^\|\s*[-:]+[-|:\s]*$/));
+          const parse = (l: string) => l.split("|").filter((c) => c.trim() !== "").map((c) => c.trim());
+          if (dataRows.length === 0) continue;
+          const hasSep = tl.length > 1 && !!tl[1].match(/^\|\s*[-:]+[-|:\s]*$/);
+          let t = "<table>";
+          if (hasSep) {
+            t += "<thead><tr>";
+            for (const c of parse(dataRows[0])) t += `<th>${inlineFmt(c)}</th>`;
+            t += "</tr></thead><tbody>";
+            for (let r = 1; r < dataRows.length; r++) {
+              t += "<tr>";
+              for (const c of parse(dataRows[r])) t += `<td>${inlineFmt(c)}</td>`;
+              t += "</tr>";
+            }
+            t += "</tbody>";
+          } else {
+            t += "<tbody>";
+            for (const row of dataRows) {
+              t += "<tr>";
+              for (const c of parse(row)) t += `<td>${inlineFmt(c)}</td>`;
+              t += "</tr>";
+            }
+            t += "</tbody>";
+          }
+          t += "</table>";
+          out.push(t);
+          continue;
+        }
+        if (line.match(/^\s*[-*]\s/)) {
+          const items: string[] = [];
+          while (i < lines.length && lines[i].match(/^\s*[-*]\s/)) { items.push(lines[i].replace(/^\s*[-*]\s/, "")); i++; }
+          out.push(`<ul>${items.map((it) => `<li>${inlineFmt(it)}</li>`).join("")}</ul>`);
+          continue;
+        }
+        if (line.match(/^\s*\d+\.\s/)) {
+          const items: string[] = [];
+          while (i < lines.length && lines[i].match(/^\s*\d+\.\s/)) { items.push(lines[i].replace(/^\s*\d+\.\s/, "")); i++; }
+          out.push(`<ol>${items.map((it) => `<li>${inlineFmt(it)}</li>`).join("")}</ol>`);
+          continue;
+        }
+        if (line.trim() === "") { i++; continue; }
+        out.push(`<p>${inlineFmt(line)}</p>`);
+        i++;
+      }
+      return out.join("\n");
+    };
+
+    const contentSections = result.sections
+      .filter((s) => s.number !== 1)
+      .filter((s) => s.content && s.content.trim().length > 10);
+
+    const capa = result.sections.find((s) => s.number === 1);
+    const capaHtml = capa ? mdToHtml(capa.content) : "";
+
+    const sectionsHtml = contentSections
+      .map(
+        (s) => `
+    <section class="bp-section">
+      <h2 class="bp-section-title">${escapeHtml(s.title)}</h2>
+      ${mdToHtml(s.content)}
+    </section>`
+      )
+      .join("\n");
+
+    const title = `Business Plan — ${name}`;
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>${escapeHtml(title)}</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 0;
+    background: #f0f0f0;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 13px;
+    line-height: 1.8;
+    color: #1a1a1a;
+  }
+  .bp-doc {
+    max-width: 900px;
+    margin: 0 auto;
+    background: white;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.1);
+  }
+  .bp-header {
+    background: #0A0A0A;
+    color: #C9A84C;
+    padding: 14px 40px;
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 11px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .bp-header .brand { font-weight: 700; }
+  .bp-capa {
+    background: #0A0A0A;
+    color: white;
+    text-align: center;
+    padding: 90px 40px;
+  }
+  .bp-capa .label {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 14px;
+    letter-spacing: 10px;
+    color: #C9A84C;
+    text-transform: uppercase;
+  }
+  .bp-capa .line {
+    width: 80px;
+    height: 2px;
+    background: #C9A84C;
+    margin: 40px auto;
+    border: none;
+  }
+  .bp-capa .city {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 34px;
+    font-weight: 800;
+    color: white;
+    margin: 0 0 8px 0;
+  }
+  .bp-capa .state {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 22px;
+    color: #e5e5e5;
+    margin: 0;
+  }
+  .bp-capa .for {
+    margin-top: 50px;
+    font-size: 11px;
+    color: #888;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+  .bp-capa .name {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 20px;
+    font-weight: 600;
+    color: white;
+    margin-top: 8px;
+  }
+  .bp-capa .date { font-size: 12px; color: #777; margin-top: 10px; }
+  .bp-capa .capa-content { border: 1px solid #C9A84C; display: inline-block; padding: 18px 28px; margin-top: 35px; color: #C9A84C; font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 13px; text-align: left; }
+  .bp-capa .capa-content h2, .bp-capa .capa-content h3, .bp-capa .capa-content h4 { color: #C9A84C; border: none; margin: 6px 0; padding: 0; font-size: 13px; }
+  .bp-capa .capa-content p { color: #C9A84C; margin: 4px 0; }
+  .bp-capa .capa-content strong { color: #fff; }
+  .bp-section {
+    padding: 50px 60px;
+    border-bottom: 1px solid #eee;
+  }
+  .bp-section-title {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 22px;
+    font-weight: 700;
+    color: #C9A84C;
+    border-bottom: 3px solid #C9A84C;
+    padding-bottom: 10px;
+    margin: 0 0 24px 0;
+    line-height: 1.3;
+  }
+  .bp-section h2, .bp-section h3 {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    color: #1a1a1a;
+    line-height: 1.4;
+    margin-top: 24px;
+    margin-bottom: 12px;
+  }
+  .bp-section h2 { font-size: 18px; font-weight: 700; color: #C9A84C; }
+  .bp-section h3 { font-size: 16px; font-weight: 600; }
+  .bp-section h4 { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 14px; font-weight: 600; color: #333; margin: 18px 0 10px 0; }
+  .bp-section p {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 13px;
+    line-height: 1.8;
+    color: #1a1a1a;
+    margin: 0 0 14px 0;
+    text-align: justify;
+  }
+  .bp-section strong { color: #000; font-weight: 700; }
+  .bp-section ul, .bp-section ol {
+    margin: 12px 0 18px 0;
+    padding-left: 24px;
+  }
+  .bp-section li {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 13px;
+    line-height: 1.8;
+    color: #1a1a1a;
+    margin-bottom: 6px;
+  }
+  .bp-section ul li::marker { color: #C9A84C; }
+  .bp-section ol li::marker { color: #C9A84C; font-weight: 700; }
+  .bp-section table {
+    width: 100%;
+    max-width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse;
+    margin: 20px 0 28px 0;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+  }
+  .bp-section th {
+    background: #C9A84C;
+    color: white;
+    padding: 10px 12px;
+    text-align: left;
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+  }
+  .bp-section td {
+    padding: 10px 12px;
+    font-size: 12px;
+    line-height: 1.5;
+    border-bottom: 1px solid #eee;
+    color: #1a1a1a;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+  }
+  .bp-section tr:nth-child(even) td { background: #fafafa; }
+  .bp-section blockquote {
+    background: #f8f5ed;
+    border-left: 4px solid #C9A84C;
+    padding: 14px 20px;
+    margin: 16px 0;
+    font-style: italic;
+    color: #444;
+    border-radius: 0 4px 4px 0;
+  }
+  .bp-footer {
+    background: #0A0A0A;
+    color: #888;
+    text-align: center;
+    padding: 24px 40px;
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 11px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .bp-footer .gold { color: #C9A84C; }
+  @media (max-width: 720px) {
+    body { font-size: 12px; }
+    .bp-doc { box-shadow: none; }
+    .bp-section { padding: 30px 20px; }
+    .bp-capa { padding: 60px 20px; }
+    .bp-capa .city { font-size: 26px; }
+    .bp-capa .state { font-size: 18px; }
+    .bp-capa .label { font-size: 12px; letter-spacing: 6px; }
+    .bp-header, .bp-footer { padding: 12px 20px; font-size: 10px; }
+    .bp-section-title { font-size: 18px; }
+    .bp-section th, .bp-section td { padding: 8px; font-size: 11px; }
+  }
+</style>
+</head>
+<body>
+  <div class="bp-doc">
+    <div class="bp-header">
+      <span class="brand">PLUGGON by BLEV Educação</span>
+      <span>Business Plan — ${escapeHtml(name)}</span>
+    </div>
+
+    <div class="bp-capa">
+      <div class="label">Business Plan</div>
+      <div class="label" style="margin-top:6px">Personalizado</div>
+      <hr class="line" />
+      <div class="city">ELETROPOSTO</div>
+      <div class="state">${escapeHtml(cityName.toUpperCase())}${stateName ? "/" + escapeHtml(stateName.toUpperCase()) : ""}</div>
+      <div class="for">Preparado para</div>
+      <div class="name">${escapeHtml(name)}</div>
+      <div class="date">${escapeHtml(dateFormatted)}</div>
+      ${capaHtml ? `<div class="capa-content">${capaHtml}</div>` : ""}
+    </div>
+
+    ${sectionsHtml}
+
+    <div class="bp-footer">
+      <span class="gold">@guilhermegbbento</span>
+      <span>Gerado em ${escapeHtml(dateFormatted)}</span>
+    </div>
+  </div>
+</body>
+</html>`;
+
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `Business_Plan_PLUGGON_${safe(name)}_${safe(cityName)}.html`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
   // ---------- Render: Form ----------
 
   if (step === "form") {
@@ -799,6 +1148,12 @@ export default function BusinessPlanPage() {
             Novo Plano
           </button>
           <button
+            onClick={handleExportHTML}
+            className="rounded-lg border border-[#C9A84C] bg-transparent px-4 py-2 text-sm font-semibold text-[#C9A84C] transition-colors hover:bg-[#C9A84C]/10"
+          >
+            Exportar HTML
+          </button>
+          <button
             onClick={handleDownloadPDF}
             className="rounded-lg bg-[#C9A84C] px-4 py-2 text-sm font-semibold text-[#0D1117] transition-colors hover:bg-[#B89443]"
           >
@@ -892,6 +1247,12 @@ export default function BusinessPlanPage() {
           className="rounded-lg border border-[#30363D] bg-[#161B22] px-6 py-3 text-sm text-[#8B949E] transition-colors hover:border-[#484F58] hover:text-white"
         >
           Gerar Novo Plano
+        </button>
+        <button
+          onClick={handleExportHTML}
+          className="rounded-lg border border-[#C9A84C] bg-transparent px-6 py-3 text-sm font-semibold text-[#C9A84C] transition-colors hover:bg-[#C9A84C]/10"
+        >
+          Exportar HTML
         </button>
         <button
           onClick={handleDownloadPDF}

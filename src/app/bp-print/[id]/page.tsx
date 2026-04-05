@@ -265,6 +265,7 @@ export default function BPPrintPage() {
     <>
       <style jsx global>{`
         /* ========== BASE ========== */
+        * { box-sizing: border-box !important; }
         body {
           font-family: Georgia, 'Times New Roman', serif;
           font-size: 12px;
@@ -273,6 +274,8 @@ export default function BPPrintPage() {
           background: white;
           margin: 0;
           padding: 0;
+          max-width: 100% !important;
+          overflow-x: hidden !important;
         }
 
         /* ========== COVER PAGE ========== */
@@ -398,29 +401,39 @@ export default function BPPrintPage() {
 
         /* ========== TABLES ========== */
         table {
-          width: 100%;
+          width: 100% !important;
+          max-width: 100% !important;
+          table-layout: fixed !important;
           border-collapse: collapse;
           margin: 25px 0 30px 0;
           page-break-inside: avoid;
+          overflow-wrap: break-word;
+          word-wrap: break-word;
         }
         th {
           background: #C9A84C !important;
           color: white !important;
-          padding: 12px 15px;
+          padding: 8px 10px;
           text-align: left;
-          font-size: 11px;
+          font-size: 10px;
           font-weight: 700;
           text-transform: uppercase;
           letter-spacing: 0.5px;
           font-family: 'Helvetica Neue', Arial, sans-serif;
+          overflow-wrap: break-word;
+          word-wrap: break-word;
+          max-width: 0;
           -webkit-print-color-adjust: exact !important;
           print-color-adjust: exact !important;
         }
         td {
-          padding: 12px 15px;
-          font-size: 11px;
+          padding: 8px 10px;
+          font-size: 10px;
           line-height: 1.5;
           border-bottom: 1px solid #eee;
+          overflow-wrap: break-word;
+          word-wrap: break-word;
+          max-width: 0;
         }
         tr:nth-child(even) td {
           background: #fafafa !important;
@@ -541,14 +554,31 @@ export default function BPPrintPage() {
 
         /* ========== PRINT ========== */
         @media print {
-          @page { size: A4; margin: 25mm 20mm 25mm 25mm; }
+          @page { size: A4; margin: 20mm 18mm 20mm 20mm; }
           @page :first { margin: 0; }
+          * { box-sizing: border-box !important; }
           body {
             margin: 0 !important;
             padding: 0 !important;
             background: white !important;
+            max-width: 100% !important;
+            overflow-x: hidden !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
+          }
+          table {
+            width: 100% !important;
+            max-width: 100% !important;
+            table-layout: fixed !important;
+            overflow-wrap: break-word;
+            word-wrap: break-word;
+          }
+          td, th {
+            padding: 8px 10px !important;
+            font-size: 10px !important;
+            overflow-wrap: break-word;
+            word-wrap: break-word;
+            max-width: 0;
           }
           .no-print { display: none !important; }
           .page-capa {
