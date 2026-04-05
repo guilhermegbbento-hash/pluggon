@@ -447,6 +447,10 @@ function ScorePageInner() {
   const [address, setAddress] = useState(searchParams.get("address") || "");
   const [establishmentType, setEstablishmentType] = useState(searchParams.get("type") || "");
   const [establishmentName, setEstablishmentName] = useState(searchParams.get("name") || "");
+  const [addressTab, setAddressTab] = useState<"address" | "gmaps">("address");
+  const [gmapsLink, setGmapsLink] = useState("");
+  const [gmapsError, setGmapsError] = useState("");
+  const [parsedCoords, setParsedCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingStep, setLoadingStep] = useState(0);
   const [error, setError] = useState("");
@@ -490,23 +494,81 @@ function ScorePageInner() {
     };
   }, [loading]);
 
+  function parseGoogleMapsLink(link: string): { lat: number; lng: number } | null {
+    // Formato 1: https://www.google.com/maps/place/.../@-25.4284,-49.2733,17z
+    const match1 = link.match(/@(-?\d+\.?\d*),(-?\d+\.?\d*)/);
+    if (match1) return { lat: parseFloat(match1[1]), lng: parseFloat(match1[2]) };
+
+    // Formato 2: https://maps.google.com/?q=-25.4284,-49.2733
+    const match2 = link.match(/[?&]q=(-?\d+\.?\d*),(-?\d+\.?\d*)/);
+    if (match2) return { lat: parseFloat(match2[1]), lng: parseFloat(match2[2]) };
+
+    // Formato 3: https://www.google.com/maps?ll=-25.4284,-49.2733
+    const match3 = link.match(/ll=(-?\d+\.?\d*),(-?\d+\.?\d*)/);
+    if (match3) return { lat: parseFloat(match3[1]), lng: parseFloat(match3[2]) };
+
+    return null;
+  }
+
+  async function handleGmapsLink(link: string) {
+    setGmapsLink(link);
+    setGmapsError("");
+    setParsedCoords(null);
+
+    if (!link.trim()) return;
+
+    // Check for short links
+    if (/goo\.gl/.test(link)) {
+      setGmapsError("Link curto não suportado. Abra o Google Maps, clique no local e copie o link completo da barra de endereço.");
+      return;
+    }
+
+    const coords = parseGoogleMapsLink(link);
+    if (!coords) {
+      setGmapsError("Não foi possível extrair coordenadas deste link. Copie o link completo da barra de endereço do Google Maps.");
+      return;
+    }
+
+    setParsedCoords(coords);
+
+    // Reverse geocode to get address
+    try {
+      const res = await fetch(
+        `/api/reverse-geocode?lat=${coords.lat}&lng=${coords.lng}`
+      );
+      if (res.ok) {
+        const data = await res.json();
+        if (data.address) {
+          setAddress(data.address);
+        }
+      }
+    } catch {
+      // Silently fail - coords are still usable
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!address.trim()) return;
+    if (!address.trim() && !parsedCoords) return;
 
     setLoading(true);
     setError("");
     setResult(null);
 
     try {
+      const payload: Record<string, unknown> = {
+        address: address.trim(),
+        establishment_type: establishmentType || "outro",
+        establishment_name: establishmentName.trim(),
+      };
+      if (parsedCoords) {
+        payload.lat = parsedCoords.lat;
+        payload.lng = parsedCoords.lng;
+      }
       const res = await fetch("/api/score-point", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          address: address.trim(),
-          establishment_type: establishmentType || "outro",
-          establishment_name: establishmentName.trim(),
-        }),
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();
@@ -548,17 +610,64 @@ function ScorePageInner() {
         <div className="grid gap-4 md:grid-cols-2">
           <div className="md:col-span-2">
             <label className="mb-1.5 block text-sm font-medium text-[#C9D1D9]">
-              Endereço completo *
+              Localização *
             </label>
-            <input
-              type="text"
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              placeholder="Ex: Av. Paulista, 1000, São Paulo, SP"
-              className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-3 text-white placeholder-[#484F58] outline-none transition-colors focus:border-[#C9A84C]"
-              disabled={loading}
-              required
-            />
+            <div className="mb-2 flex gap-1 rounded-lg border border-[#30363D] bg-[#0D1117] p-1">
+              <button
+                type="button"
+                onClick={() => setAddressTab("address")}
+                className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                  addressTab === "address"
+                    ? "bg-[#C9A84C] text-[#0D1117]"
+                    : "text-[#8B949E] hover:text-white"
+                }`}
+              >
+                Endereço
+              </button>
+              <button
+                type="button"
+                onClick={() => setAddressTab("gmaps")}
+                className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                  addressTab === "gmaps"
+                    ? "bg-[#C9A84C] text-[#0D1117]"
+                    : "text-[#8B949E] hover:text-white"
+                }`}
+              >
+                Link do Google Maps
+              </button>
+            </div>
+
+            {addressTab === "address" ? (
+              <input
+                type="text"
+                value={address}
+                onChange={(e) => { setAddress(e.target.value); setParsedCoords(null); }}
+                placeholder="Ex: Av. Paulista, 1000, São Paulo, SP"
+                className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-3 text-white placeholder-[#484F58] outline-none transition-colors focus:border-[#C9A84C]"
+                disabled={loading}
+                required={addressTab === "address"}
+              />
+            ) : (
+              <div>
+                <input
+                  type="text"
+                  value={gmapsLink}
+                  onChange={(e) => handleGmapsLink(e.target.value)}
+                  placeholder="Cole aqui o link do Google Maps (ex: https://maps.google.com/...)"
+                  className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-3 text-white placeholder-[#484F58] outline-none transition-colors focus:border-[#C9A84C]"
+                  disabled={loading}
+                />
+                {gmapsError && (
+                  <p className="mt-1.5 text-sm text-yellow-400">{gmapsError}</p>
+                )}
+                {parsedCoords && (
+                  <p className="mt-1.5 text-sm text-green-400">
+                    Coordenadas extraídas: {parsedCoords.lat.toFixed(6)}, {parsedCoords.lng.toFixed(6)}
+                    {address && ` — ${address}`}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           <div>
@@ -605,7 +714,7 @@ function ScorePageInner() {
 
         <button
           type="submit"
-          disabled={loading || !address.trim() || !establishmentType}
+          disabled={loading || (!address.trim() && !parsedCoords) || !establishmentType}
           className="mt-5 flex w-full items-center justify-center gap-2 rounded-lg bg-[#C9A84C] px-6 py-3 font-semibold text-[#0D1117] transition-colors hover:bg-[#B89443] disabled:cursor-not-allowed disabled:opacity-50"
         >
           {loading ? (

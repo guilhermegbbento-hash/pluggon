@@ -562,18 +562,45 @@ async function callClaudeWithRetry(
 
 export async function POST(request: Request) {
   try {
-    const { address, establishment_type, establishment_name } =
+    const { address, establishment_type, establishment_name, lat, lng } =
       await request.json();
 
-    if (!address) {
+    if (!address && (lat == null || lng == null)) {
       return Response.json(
-        { error: "Endereço é obrigatório" },
+        { error: "Endereço ou coordenadas são obrigatórios" },
         { status: 400 }
       );
     }
 
-    // 1. Geocode
-    const geo = await geocodeAddress(address);
+    // 1. Geocode (skip if lat/lng already provided)
+    let geo: { lat: number; lng: number; city: string; state: string } | null = null;
+    if (typeof lat === "number" && typeof lng === "number") {
+      // Reverse geocode to get city/state from coordinates
+      let city = "";
+      let state = "";
+      if (GOOGLE_MAPS_API_KEY) {
+        try {
+          const revUrl = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${GOOGLE_MAPS_API_KEY}&language=pt-BR&region=br`;
+          const revRes = await fetch(revUrl);
+          if (revRes.ok) {
+            const revData = await revRes.json();
+            if (revData.status === "OK" && revData.results?.length) {
+              for (const comp of revData.results[0].address_components || []) {
+                if (comp.types.includes("administrative_area_level_2"))
+                  city = comp.long_name;
+                if (comp.types.includes("administrative_area_level_1"))
+                  state = comp.short_name;
+              }
+            }
+          }
+        } catch {
+          // Continue without city/state - will try geocoding address as fallback
+        }
+      }
+      geo = { lat, lng, city, state };
+    } else {
+      geo = await geocodeAddress(address);
+    }
     if (!geo) {
       return Response.json(
         {
