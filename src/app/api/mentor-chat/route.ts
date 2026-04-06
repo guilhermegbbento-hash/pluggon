@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { MENTOR_SYSTEM_PROMPT } from "@/lib/mentor-knowledge";
+import { logUsage } from "@/lib/usage-logger";
 
 export const maxDuration = 300;
 
@@ -39,6 +40,14 @@ export async function POST(req: Request) {
 
     const textBlock = message.content.find((b) => b.type === "text");
     const reply = textBlock && textBlock.type === "text" ? textBlock.text : "Não consegui gerar resposta.";
+
+    // Log usage
+    await logUsage({
+      module: "mentor",
+      claudeTokensIn: message.usage?.input_tokens || 0,
+      claudeTokensOut: message.usage?.output_tokens || 0,
+      googlePlacesQueries: 0,
+    });
 
     return Response.json({ reply });
   } catch (err) {

@@ -77,6 +77,21 @@ CREATE TABLE IF NOT EXISTS chargers_cache (
   fetched_at      timestamptz DEFAULT now()
 );
 
+-- 5. usage_logs
+CREATE TABLE IF NOT EXISTS usage_logs (
+  id              serial PRIMARY KEY,
+  user_id         uuid REFERENCES auth.users,
+  module          text NOT NULL,
+  city            text,
+  claude_tokens_in  int DEFAULT 0,
+  claude_tokens_out int DEFAULT 0,
+  claude_cost_usd   decimal DEFAULT 0,
+  google_places_queries int DEFAULT 0,
+  google_places_cost_usd decimal DEFAULT 0,
+  total_cost_usd  decimal DEFAULT 0,
+  created_at      timestamptz DEFAULT now()
+);
+
 -- ============================================================
 -- Disable RLS on all tables
 -- ============================================================
@@ -84,6 +99,13 @@ ALTER TABLE city_analyses   DISABLE ROW LEVEL SECURITY;
 ALTER TABLE point_scores    DISABLE ROW LEVEL SECURITY;
 ALTER TABLE business_plans  DISABLE ROW LEVEL SECURITY;
 ALTER TABLE chargers_cache  DISABLE ROW LEVEL SECURITY;
+ALTER TABLE usage_logs      DISABLE ROW LEVEL SECURITY;
+
+-- ============================================================
+-- Constraints
+-- ============================================================
+ALTER TABLE chargers_cache
+  ADD CONSTRAINT chargers_cache_city_state_unique UNIQUE (city, state);
 
 -- ============================================================
 -- Indexes
@@ -98,3 +120,7 @@ CREATE INDEX IF NOT EXISTS idx_business_plans_user_id ON business_plans (user_id
 CREATE INDEX IF NOT EXISTS idx_business_plans_city    ON business_plans (city);
 
 CREATE INDEX IF NOT EXISTS idx_chargers_cache_city ON chargers_cache (city);
+
+CREATE INDEX IF NOT EXISTS idx_usage_logs_user_id    ON usage_logs (user_id);
+CREATE INDEX IF NOT EXISTS idx_usage_logs_module     ON usage_logs (module);
+CREATE INDEX IF NOT EXISTS idx_usage_logs_created_at ON usage_logs (created_at);

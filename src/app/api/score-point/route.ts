@@ -1,12 +1,13 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@/lib/supabase/server";
 import {
-  fetchAllCompetitors,
+  getCachedOrFetch,
   classifyCompetitors,
   countNearby,
 } from "@/lib/competitors";
 import { calculateScore } from "@/lib/scoring-engine";
 import type { ScoreInput } from "@/lib/scoring-engine";
+import { logUsage } from "@/lib/usage-logger";
 
 export const maxDuration = 300;
 
@@ -688,7 +689,7 @@ export async function POST(request: Request) {
         "estacionamento",
         500
       ),
-      fetchAllCompetitors(geo.city, geo.state, geo.lat, geo.lng).then(r => r.competitors), // Google Places + carregados.com.br
+      createClient().then(sb => getCachedOrFetch(geo.city, geo.state, geo.lat, geo.lng, sb)).then(r => r.competitors), // Cache or Google Places + carregados.com.br
       fetchIBGEData(geo.city, geo.state),
     ]);
 
@@ -790,6 +791,8 @@ export async function POST(request: Request) {
     );
 
     let analysisResult: Record<string, unknown> | null = null;
+    let claudeTokensIn = 0;
+    let claudeTokensOut = 0;
     try {
       const message = await callClaudeWithRetry({
         model: "claude-sonnet-4-20250514",
@@ -797,6 +800,9 @@ export async function POST(request: Request) {
         system: buildSystemPrompt(chargerInfo.total, ibgeData.population),
         messages: [{ role: "user", content: userPrompt }],
       });
+
+      claudeTokensIn = message.usage?.input_tokens || 0;
+      claudeTokensOut = message.usage?.output_tokens || 0;
 
       const textBlock = message.content.find((b) => b.type === "text");
       if (!textBlock || textBlock.type !== "text") {
@@ -906,6 +912,16 @@ export async function POST(request: Request) {
         .single();
       score_id = (inserted?.id as number) ?? null;
     }
+
+    // Log usage: 1 point validation + 7 POI searches + competitor queries
+    const googleQueries = 1 + 7; // 1 address validation + 7 POI categories
+    await logUsage({
+      module: "score",
+      city: `${geo.city}/${geo.state}`,
+      claudeTokensIn,
+      claudeTokensOut,
+      googlePlacesQueries: googleQueries,
+    });
 
     return Response.json({ ...responseData, score_id });
   } catch (err: unknown) {

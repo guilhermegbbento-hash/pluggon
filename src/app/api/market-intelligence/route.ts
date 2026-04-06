@@ -1,12 +1,14 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { createClient as createSupabaseClient } from "@/lib/supabase/server";
 import {
-  fetchAllCompetitors,
+  getCachedOrFetch,
   classifyCompetitors,
 } from "@/lib/competitors";
 import type { CompetitorStation } from "@/lib/competitors";
 import { searchPlaces, deduplicatePlaces } from "@/lib/google-places";
 import type { PlaceResult } from "@/lib/google-places";
 import { ABVE_DATA, estimateEVs } from "@/lib/abve-data";
+import { logUsage } from "@/lib/usage-logger";
 
 const STATE_NAMES: Record<string, string> = {
   AC: "Acre", AL: "Alagoas", AP: "Amapá", AM: "Amazonas", BA: "Bahia",
@@ -436,7 +438,7 @@ async function generateExecutiveReport(
     projections: ProjectionYear[];
     cityScore: number;
   }
-): Promise<string> {
+): Promise<{ text: string; tokensIn: number; tokensOut: number }> {
   try {
     const anthropic = new Anthropic();
     const prompt = `Você é um analista de mercado de eletromobilidade no Brasil. Gere um relatório executivo sobre o mercado de carregadores de veículos elétricos em ${city}/${state}.
@@ -477,10 +479,15 @@ Seja direto, use dados reais fornecidos, não invente números.`;
     });
 
     const textBlock = message.content.find((b) => b.type === "text");
-    return textBlock && textBlock.type === "text" ? textBlock.text : "Erro ao gerar relatório.";
+    const text = textBlock && textBlock.type === "text" ? textBlock.text : "Erro ao gerar relatório.";
+    return {
+      text,
+      tokensIn: message.usage?.input_tokens || 0,
+      tokensOut: message.usage?.output_tokens || 0,
+    };
   } catch (err) {
     console.error("Claude executive report error:", err);
-    return "Não foi possível gerar o relatório executivo. Tente novamente.";
+    return { text: "Não foi possível gerar o relatório executivo. Tente novamente.", tokensIn: 0, tokensOut: 0 };
   }
 }
 
@@ -578,12 +585,15 @@ export async function POST(request: Request) {
           },
         });
 
-        // Step 2: Competitors
+        // Step 2: Competitors (with cache)
         send({ type: "progress", step: 2, total: 8, label: "Mapeando concorrentes..." });
+        const supabase = await createSupabaseClient();
         let allCompetitors: CompetitorStation[] = [];
+        let competitorGoogleQueries = 0;
         try {
-          const result = await fetchAllCompetitors(city, state, geoData.lat, geoData.lng, population);
+          const result = await getCachedOrFetch(city, state, geoData.lat, geoData.lng, supabase, population);
           allCompetitors = result.competitors;
+          competitorGoogleQueries = result.queryStats.cache ? 0 : 5;
         } catch (err) {
           console.error("Competitors error:", err);
         }
@@ -801,7 +811,7 @@ export async function POST(request: Request) {
           },
         });
 
-        const report = await generateExecutiveReport(city, state, {
+        const reportResult = await generateExecutiveReport(city, state, {
           population,
           gdpPerCapita,
           evs: fleet.evs,
@@ -821,10 +831,20 @@ export async function POST(request: Request) {
           panel: 8,
           label: "Relatório Executivo",
           data: {
-            report,
+            report: reportResult.text,
             cityScore,
             marketPhase,
           },
+        });
+
+        // Count Google Places queries: POI categories (10 cats * ~2 queries avg) + corridors (4) + competitor queries
+        const poiGoogleQueries = POI_CATEGORIES.reduce((sum, cat) => sum + cat.queries.length, 0) + 4;
+        await logUsage({
+          module: "market",
+          city: `${city}/${state}`,
+          claudeTokensIn: reportResult.tokensIn,
+          claudeTokensOut: reportResult.tokensOut,
+          googlePlacesQueries: competitorGoogleQueries + poiGoogleQueries,
         });
 
         // Final

@@ -1,4 +1,5 @@
 import { fetchChargers } from "@/lib/openchargemap";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type TypeConfidence = "confirmed" | "estimated" | "unknown";
 
@@ -145,45 +146,21 @@ export async function fetchAllCompetitors(
     }
   }
 
-  // FONTE 1: Google Places - queries genéricas
+  // FONTE 1: Google Places - 5 queries otimizadas (reduzido de 16)
   const googleQueries = [
     "eletroposto",
     "carregador veiculo eletrico",
-    "estação recarga eletrica",
     "ev charging station",
-    "ponto recarga eletrica",
-    "carregador eletrico rapido",
-    "shell recharge",
-    "zletric",
-    "tupinamba energia",
-    "enel x way",
-  ];
-
-  // FONTE 2: Redes conhecidas
-  const networkQueries = [
-    "voltz carregador",
-    "neocharge",
-    "CPFL carregador",
-    "copel eletroposto",
-    "BYD carregador",
-    "BMW charging",
+    "estacao recarga",
+    "ponto recarga",
   ];
 
   const apiKey = process.env.GOOGLE_MAPS_API_KEY;
   if (apiKey) {
-    // Queries genéricas
     for (const query of googleQueries) {
       await searchGoogle(
         query + " em " + city + " " + state,
         "google:" + query
-      );
-    }
-
-    // Queries de redes conhecidas
-    for (const query of networkQueries) {
-      await searchGoogle(
-        query + " " + city + " " + state,
-        "rede:" + query
       );
     }
 
@@ -384,6 +361,61 @@ export function competitorsToChargerFormat(competitors: CompetitorStation[]) {
     usageCost: "Não informado",
     dateLastVerified: null,
   }));
+}
+
+/** Get competitors from cache or fetch fresh + save to cache */
+export async function getCachedOrFetch(
+  city: string,
+  state: string,
+  lat: number,
+  lng: number,
+  supabase: SupabaseClient,
+  population?: number
+): Promise<CompetitorResult> {
+  // Check cache (7-day TTL)
+  try {
+    const { data: cached } = await supabase
+      .from("chargers_cache")
+      .select("*")
+      .eq("city", city)
+      .eq("state", state)
+      .gte("fetched_at", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+      .limit(1)
+      .single();
+
+    if (cached && cached.stations_json) {
+      console.log("CACHE HIT:", city, cached.total_stations, "estações");
+      const competitors: CompetitorStation[] =
+        typeof cached.stations_json === "string"
+          ? JSON.parse(cached.stations_json)
+          : cached.stations_json;
+      return { competitors, carregadosTotal: null, queryStats: { cache: competitors.length } };
+    }
+  } catch {
+    // No cache hit - continue to fetch
+  }
+
+  console.log("CACHE MISS:", city, "- buscando no Google Places");
+  const result = await fetchAllCompetitors(city, state, lat, lng, population);
+
+  // Save to cache
+  try {
+    await supabase.from("chargers_cache").upsert(
+      {
+        city,
+        state,
+        total_stations: result.competitors.length,
+        dc_fast: result.competitors.filter((c) => c.isFastCharge).length,
+        stations_json: JSON.stringify(result.competitors),
+        fetched_at: new Date().toISOString(),
+      },
+      { onConflict: "city,state" }
+    );
+  } catch (err) {
+    console.error("Cache save error:", err);
+  }
+
+  return result;
 }
 
 /** Classify competitors for summary stats (mirrors classifyChargers) */

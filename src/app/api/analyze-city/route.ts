@@ -1,13 +1,14 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@/lib/supabase/server";
 import {
-  fetchAllCompetitors,
+  getCachedOrFetch,
   classifyCompetitors,
   countNearby,
 } from "@/lib/competitors";
 import type { CompetitorStation } from "@/lib/competitors";
 import { calculateScore } from "@/lib/scoring-engine";
 import type { ScoreInput } from "@/lib/scoring-engine";
+import { logUsage } from "@/lib/usage-logger";
 
 export const maxDuration = 300;
 
@@ -466,20 +467,24 @@ export async function POST(request: Request) {
     const population = ibgeData.population || 200000;
     const gdpPerCapita = ibgeData.gdpPerCapita || 30000;
 
-    // Buscar concorrentes (Google Places + carregados.com.br)
+    // Buscar concorrentes (cache ou Google Places + carregados.com.br)
     console.log("=== BUSCANDO CONCORRENTES ===");
+    const supabase = await createClient();
     let allCompetitors: CompetitorStation[] = [];
     let carregadosTotal: number | null = null;
+    let competitorGoogleQueries = 0;
     try {
-      const result = await fetchAllCompetitors(
+      const result = await getCachedOrFetch(
         city,
         state,
         cityCoords.lat,
         cityCoords.lng,
+        supabase,
         population
       );
       allCompetitors = result.competitors;
       carregadosTotal = result.carregadosTotal;
+      competitorGoogleQueries = result.queryStats.cache ? 0 : 5; // 5 queries if cache miss
     } catch (err) {
       console.error("=== ERRO BUSCANDO CONCORRENTES ===", err);
     }
@@ -512,6 +517,9 @@ ${carregadosTotal !== null ? `- Total no carregados.com.br: ${carregadosTotal} (
         controller.enqueue(encoder.encode(meta + "\n"));
 
         let allPoints: any[] = [];
+        let totalClaudeIn = 0;
+        let totalClaudeOut = 0;
+        let totalGoogleQueries = competitorGoogleQueries;
 
         // Processar regiões sequencialmente (evita rate limit)
         for (let i = 0; i < regions.length; i++) {
@@ -542,6 +550,10 @@ ${carregadosTotal !== null ? `- Total no carregados.com.br: ${carregadosTotal} (
               messages: [{ role: "user", content: prompt }],
             });
 
+            // Track Claude usage
+            totalClaudeIn += message.usage?.input_tokens || 0;
+            totalClaudeOut += message.usage?.output_tokens || 0;
+
             const textBlock = message.content.find((b) => b.type === "text");
             if (textBlock && textBlock.type === "text") {
               const parsed = parseClaudeJSON(textBlock.text);
@@ -550,6 +562,8 @@ ${carregadosTotal !== null ? `- Total no carregados.com.br: ${carregadosTotal} (
                 : parsed?.points || [];
 
               // Validar coordenadas via Google Places (máx 50 por região)
+              const pointsToValidate = Math.min(rawPoints.length, 50);
+              totalGoogleQueries += pointsToValidate; // Each validation = 1 Google query
               rawPoints = await validateCoordinates(rawPoints, city, state);
 
               const scoredPoints = scorePoints(
@@ -628,7 +642,6 @@ ${carregadosTotal !== null ? `- Total no carregados.com.br: ${carregadosTotal} (
 
         // Salvar no banco
         try {
-          const supabase = await createClient();
           const {
             data: { user },
           } = await supabase.auth.getUser();
@@ -647,6 +660,15 @@ ${carregadosTotal !== null ? `- Total no carregados.com.br: ${carregadosTotal} (
         } catch (dbErr) {
           console.error("analyze-city: erro ao salvar no banco:", dbErr);
         }
+
+        // Log usage
+        await logUsage({
+          module: "heatmap",
+          city: `${city}/${state}`,
+          claudeTokensIn: totalClaudeIn,
+          claudeTokensOut: totalClaudeOut,
+          googlePlacesQueries: totalGoogleQueries,
+        });
 
         controller.close();
       },

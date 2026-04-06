@@ -3,6 +3,9 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { useEffect, useState } from "react";
+
+const ADMIN_EMAIL = "guilherme@bfranca.com";
 
 const navItems = [
   {
@@ -111,6 +114,14 @@ export default function AuthenticatedLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user?.email === ADMIN_EMAIL) setIsAdmin(true);
+    });
+  }, []);
 
   async function handleLogout() {
     const supabase = createClient();
@@ -155,6 +166,24 @@ export default function AuthenticatedLayout({
               </Link>
             );
           })}
+          {isAdmin && (
+            <>
+              <div className="my-2 border-t border-[#30363D]" />
+              <Link
+                href="/dashboard/admin/costs"
+                className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+                  pathname.startsWith("/dashboard/admin/costs")
+                    ? "bg-[#C9A84C] text-[#0D1117]"
+                    : "text-[#8B949E] hover:bg-[#21262D] hover:text-white"
+                }`}
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Custos
+              </Link>
+            </>
+          )}
         </nav>
 
         {/* Logout */}

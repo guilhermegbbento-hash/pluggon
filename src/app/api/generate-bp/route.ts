@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@/lib/supabase/server";
 import { searchPlaces, deduplicatePlaces } from "@/lib/google-places";
+import { logUsage } from "@/lib/usage-logger";
 
 export const maxDuration = 300;
 
@@ -206,7 +207,13 @@ async function fetchChargers(city: string, state: string) {
 
 // ---------- Claude call with retry ----------
 
-async function callClaude(system: string, userContent: string): Promise<{ title: string; content: string }[]> {
+interface ClaudeResult {
+  sections: { title: string; content: string }[];
+  tokensIn: number;
+  tokensOut: number;
+}
+
+async function callClaude(system: string, userContent: string): Promise<ClaudeResult> {
   const params = {
     model: "claude-sonnet-4-20250514" as const,
     max_tokens: 4096,
@@ -233,7 +240,11 @@ async function callClaude(system: string, userContent: string): Promise<{ title:
   const parsed = parseClaudeJSON(textBlock.text);
   if (!parsed || !Array.isArray(parsed.sections)) throw new Error("Failed to parse Claude JSON");
 
-  return parsed.sections as { title: string; content: string }[];
+  return {
+    sections: parsed.sections as { title: string; content: string }[],
+    tokensIn: msg.usage?.input_tokens || 0,
+    tokensOut: msg.usage?.output_tokens || 0,
+  };
 }
 
 // ---------- Main handler ----------
@@ -494,7 +505,7 @@ ${ruleBlock}`;
 
     // Chamada 1: Sumário Executivo + Análise de Mercado + Concorrência
     // Chamada 2: Marketing + Operacional + Outras Receitas + Riscos + Desafio + Próximos Passos
-    const [claudeSections1, claudeSections2] = await Promise.all([
+    const [claudeResult1, claudeResult2] = await Promise.all([
       callClaude(
         systemPrompt,
         `${contextBlock}
@@ -533,17 +544,17 @@ Gere EXATAMENTE estas 6 seções no JSON {"sections":[...]}:
     // Inserir seções do Claude na posição correta
 
     // Claude 1: Sumário (depois da capa/blev/guilherme, antes do CAPEX)
-    const sumario: BPSection = { number: 0, title: claudeSections1[0]?.title || "Sumário Executivo", content: claudeSections1[0]?.content || "" };
-    const mercado: BPSection = { number: 0, title: claudeSections1[1]?.title || "Análise de Mercado", content: claudeSections1[1]?.content || "" };
-    const concorrencia: BPSection = { number: 0, title: claudeSections1[2]?.title || "Análise de Concorrência", content: claudeSections1[2]?.content || "" };
+    const sumario: BPSection = { number: 0, title: claudeResult1.sections[0]?.title || "Sumário Executivo", content: claudeResult1.sections[0]?.content || "" };
+    const mercado: BPSection = { number: 0, title: claudeResult1.sections[1]?.title || "Análise de Mercado", content: claudeResult1.sections[1]?.content || "" };
+    const concorrencia: BPSection = { number: 0, title: claudeResult1.sections[2]?.title || "Análise de Concorrência", content: claudeResult1.sections[2]?.content || "" };
 
     // Claude 2: Marketing, Operacional, Receitas, Riscos, Desafio, Próximos Passos
-    const marketing: BPSection = { number: 0, title: claudeSections2[0]?.title || "Estratégia de Marketing", content: claudeSections2[0]?.content || "" };
-    const operacional: BPSection = { number: 0, title: claudeSections2[1]?.title || "Plano Operacional", content: claudeSections2[1]?.content || "" };
-    const receitas: BPSection = { number: 0, title: claudeSections2[2]?.title || "Receitas Extras e Oportunidades", content: claudeSections2[2]?.content || "" };
-    const riscos: BPSection = { number: 0, title: claudeSections2[3]?.title || "Riscos e Mitigações", content: claudeSections2[3]?.content || "" };
-    const desafio: BPSection = { number: 0, title: claudeSections2[4]?.title || "Respondendo ao Desafio", content: claudeSections2[4]?.content || "" };
-    const proximosRaw = claudeSections2[5]?.content || "";
+    const marketing: BPSection = { number: 0, title: claudeResult2.sections[0]?.title || "Estratégia de Marketing", content: claudeResult2.sections[0]?.content || "" };
+    const operacional: BPSection = { number: 0, title: claudeResult2.sections[1]?.title || "Plano Operacional", content: claudeResult2.sections[1]?.content || "" };
+    const receitas: BPSection = { number: 0, title: claudeResult2.sections[2]?.title || "Receitas Extras e Oportunidades", content: claudeResult2.sections[2]?.content || "" };
+    const riscos: BPSection = { number: 0, title: claudeResult2.sections[3]?.title || "Riscos e Mitigações", content: claudeResult2.sections[3]?.content || "" };
+    const desafio: BPSection = { number: 0, title: claudeResult2.sections[4]?.title || "Respondendo ao Desafio", content: claudeResult2.sections[4]?.content || "" };
+    const proximosRaw = claudeResult2.sections[5]?.content || "";
     const proximosPassosFallback = `1. Agende sua mentoria com a BLEV Educação para alinhar estratégia e cronograma de implementação.\n\n2. Visite os locais potenciais e avalie condições de instalação elétrica, acesso e visibilidade.\n\n3. Solicite orçamentos de pelo menos 3 fornecedores de carregadores DC ${pw}kW.\n\n4. Inicie a busca por usina solar para contrato de energia a R$ 0,50/kWh. A BLEV indica parceiros.\n\n5. Defina o modelo de contrato com o dono do espaço (aluguel fixo vs revenue share).\n\nContato: @guilhermegbbento\nBLEV Educação — A primeira empresa de educação em mobilidade elétrica do Brasil`;
     const proximos: BPSection = {
       number: 0,
@@ -620,6 +631,17 @@ Gere EXATAMENTE estas 6 seções no JSON {"sections":[...]}:
       }).select("id").single();
       bp_id = inserted?.id ?? null;
     }
+
+    // Log usage: 3 Google queries for chargers + 2 Claude calls
+    const totalClaudeIn = claudeResult1.tokensIn + claudeResult2.tokensIn;
+    const totalClaudeOut = claudeResult1.tokensOut + claudeResult2.tokensOut;
+    await logUsage({
+      module: "bp",
+      city: `${form.city}/${form.state}`,
+      claudeTokensIn: totalClaudeIn,
+      claudeTokensOut: totalClaudeOut,
+      googlePlacesQueries: 3, // 3 charger search queries
+    });
 
     return Response.json({ sections: validSections, ibge: ibgeData, chargers_count: chargers.length, client_name: form.client_name, city: form.city, state: form.state, capex, bp_id });
   } catch (err: unknown) {
