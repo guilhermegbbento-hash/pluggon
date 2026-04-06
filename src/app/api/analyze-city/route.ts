@@ -120,37 +120,26 @@ function getRegions(
 
   const pop = population || 200000;
 
-  // Cidades pequenas: 1 chamada só
-  if (pop <= 500000) {
+  // Cidades pequenas (< 500k): 1 chamada só (40 pontos)
+  if (pop < 500000) {
     const pointCount = Math.min(Math.max(30, Math.round(pop / 20000)), 40);
     return [{ region: `toda a cidade de ${city}`, pointCount }];
   }
 
-  // Cidades médias (500k-1M): 5 regiões
+  // Cidades médias (500k-1M): 2 chamadas (30 pontos cada)
   if (pop <= 1000000) {
-    const regions = ["Centro", "Zona Norte", "Zona Sul", "Zona Leste", "Zona Oeste"];
-    const pointsPerRegion = Math.min(25, Math.round(pop / 20000 / regions.length));
-    return regions.map((r) => ({
-      region: `${r} de ${city}`,
-      pointCount: Math.max(15, pointsPerRegion),
-    }));
+    return [
+      { region: `Centro e Zona Norte de ${city}`, pointCount: 30 },
+      { region: `Zona Sul, Zona Leste e Zona Oeste de ${city}`, pointCount: 30 },
+    ];
   }
 
-  // Cidades grandes (>1M): 7 regiões
-  const regions = [
-    "Centro",
-    "Zona Norte",
-    "Zona Sul",
-    "Zona Leste",
-    "Zona Oeste",
-    "Região Metropolitana Norte",
-    "Região Metropolitana Sul",
+  // Cidades grandes (>1M): 3 chamadas (30 pontos cada)
+  return [
+    { region: `Centro e Zona Norte de ${city}`, pointCount: 30 },
+    { region: `Zona Sul e Zona Leste de ${city}`, pointCount: 30 },
+    { region: `Zona Oeste e Região Metropolitana de ${city}`, pointCount: 30 },
   ];
-  const pointsPerRegion = Math.min(25, Math.round(pop / 20000 / regions.length));
-  return regions.map((r) => ({
-    region: `${r} de ${city}`,
-    pointCount: Math.max(15, pointsPerRegion),
-  }));
 }
 
 // ---------- Validate coordinates via Google Places ----------
@@ -169,74 +158,75 @@ async function validateCoordinates(
   const toValidate = points.slice(0, 50);
   const rest = points.slice(50);
 
+  // Validar todos em paralelo (Promise.all)
+  const BATCH_SIZE = 10;
   const validated: Record<string, unknown>[] = [];
 
-  for (const point of toValidate) {
-    const nome = (point.nome ?? point.name ?? "") as string;
-    const endereco = (point.endereco ?? point.address ?? "") as string;
-    if (!nome) {
-      validated.push({ ...point, googleValidated: false });
-      continue;
-    }
+  for (let b = 0; b < toValidate.length; b += BATCH_SIZE) {
+    const batch = toValidate.slice(b, b + BATCH_SIZE);
+    const batchResults = await Promise.all(
+      batch.map(async (point) => {
+        const nome = (point.nome ?? point.name ?? "") as string;
+        const endereco = (point.endereco ?? point.address ?? "") as string;
+        if (!nome) {
+          return { ...point, googleValidated: false };
+        }
 
-    // Tentar buscar pelo nome primeiro, depois pelo endereço
-    const queries = [
-      nome + " " + city + " " + state,
-      ...(endereco ? [endereco + " " + city + " " + state] : []),
-    ];
+        const queries = [
+          nome + " " + city + " " + state,
+          ...(endereco ? [endereco + " " + city + " " + state] : []),
+        ];
 
-    let found = false;
-    for (const query of queries) {
-      try {
-        const res = await fetch(
-          "https://places.googleapis.com/v1/places:searchText",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-Goog-Api-Key": GOOGLE_MAPS_API_KEY,
-              "X-Goog-FieldMask":
-                "places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.currentOpeningHours,places.types",
-            },
-            body: JSON.stringify({
-              textQuery: query,
-              maxResultCount: 1,
-            }),
-          }
-        );
-        if (res.ok) {
-          const data = await res.json();
-          const place = data.places?.[0];
-          if (place?.location) {
-            validated.push({
-              ...point,
-              lat: place.location.latitude,
-              lng: place.location.longitude,
-              endereco: place.formattedAddress || point.endereco,
-              rating: place.rating || 0,
-              reviews: place.userRatingCount || 0,
-              operacao_24h:
-                place.currentOpeningHours?.periods?.some(
-                  (p: { open?: { hour?: number }; close?: { hour?: number } }) =>
-                    p.open?.hour === 0 && p.close?.hour === 0
-                ) ||
-                nome.toLowerCase().includes("24") ||
-                (point.operacao_24h as boolean) ||
-                false,
-              googleValidated: true,
-            });
-            found = true;
-            break;
+        for (const query of queries) {
+          try {
+            const res = await fetch(
+              "https://places.googleapis.com/v1/places:searchText",
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "X-Goog-Api-Key": GOOGLE_MAPS_API_KEY,
+                  "X-Goog-FieldMask":
+                    "places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.currentOpeningHours,places.types",
+                },
+                body: JSON.stringify({
+                  textQuery: query,
+                  maxResultCount: 1,
+                }),
+              }
+            );
+            if (res.ok) {
+              const data = await res.json();
+              const place = data.places?.[0];
+              if (place?.location) {
+                return {
+                  ...point,
+                  lat: place.location.latitude,
+                  lng: place.location.longitude,
+                  endereco: place.formattedAddress || point.endereco,
+                  rating: place.rating || 0,
+                  reviews: place.userRatingCount || 0,
+                  operacao_24h:
+                    place.currentOpeningHours?.periods?.some(
+                      (p: { open?: { hour?: number }; close?: { hour?: number } }) =>
+                        p.open?.hour === 0 && p.close?.hour === 0
+                    ) ||
+                    nome.toLowerCase().includes("24") ||
+                    (point.operacao_24h as boolean) ||
+                    false,
+                  googleValidated: true,
+                };
+              }
+            }
+          } catch {
+            // Tentar próxima query
           }
         }
-      } catch {
-        // Tentar próxima query
-      }
-    }
 
-    if (!found) {
-      validated.push({ ...point, googleValidated: false });
-    }
+        return { ...point, googleValidated: false };
+      })
+    );
+    validated.push(...batchResults);
   }
 
   // Pontos além do limite de 50 ficam sem validação
@@ -356,7 +346,7 @@ async function callClaudeWithRetry(
 ): Promise<Anthropic.Message> {
   for (let attempt = 0; attempt < 2; attempt++) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 280000);
+    const timeout = setTimeout(() => controller.abort(), 90000); // 90s timeout individual
     try {
       const msg = await anthropic.messages.create(params, {
         signal: controller.signal,
@@ -520,83 +510,96 @@ ${carregadosTotal !== null ? `- Total no carregados.com.br: ${carregadosTotal} (
         let totalClaudeIn = 0;
         let totalClaudeOut = 0;
         let totalGoogleQueries = competitorGoogleQueries;
+        let failedRegions = 0;
 
-        // Processar regiões sequencialmente (evita rate limit)
+        // Enviar progresso inicial de todas as regiões
         for (let i = 0; i < regions.length; i++) {
-          const { region, pointCount } = regions[i];
-
-          // Enviar progresso
           const progress = JSON.stringify({
             type: "progress",
-            region,
+            region: regions[i].region,
             regionIndex: i,
             totalRegions: regions.length,
           });
           controller.enqueue(encoder.encode(progress + "\n"));
+        }
 
-          try {
-            const prompt = buildRegionPrompt(
-              city,
-              state,
+        // Processar todas as regiões em PARALELO (Promise.allSettled)
+        const regionPromises = regions.map(async ({ region, pointCount }, i) => {
+          const prompt = buildRegionPrompt(
+            city,
+            state,
+            region,
+            pointCount,
+            population,
+            chargerSummary
+          );
+
+          const message = await callClaudeWithRetry({
+            model: "claude-sonnet-4-20250514",
+            max_tokens: 4096,
+            messages: [{ role: "user", content: prompt }],
+          });
+
+          const textBlock = message.content.find((b) => b.type === "text");
+          if (!textBlock || textBlock.type !== "text") {
+            throw new Error("Resposta vazia do Claude");
+          }
+
+          const parsed = parseClaudeJSON(textBlock.text);
+          let rawPoints: Record<string, unknown>[] = Array.isArray(parsed)
+            ? parsed
+            : parsed?.points || [];
+
+          // Validar coordenadas via Google Places (máx 50 por região)
+          rawPoints = await validateCoordinates(rawPoints, city, state);
+
+          const scoredPoints = scorePoints(
+            rawPoints,
+            region,
+            population,
+            gdpPerCapita,
+            chargerInfo,
+            allCompetitors
+          );
+
+          return {
+            region,
+            regionIndex: i,
+            points: scoredPoints,
+            claudeIn: message.usage?.input_tokens || 0,
+            claudeOut: message.usage?.output_tokens || 0,
+            googleQueries: Math.min(rawPoints.length, 50),
+          };
+        });
+
+        const results = await Promise.allSettled(regionPromises);
+
+        for (const result of results) {
+          if (result.status === "fulfilled") {
+            const { region, regionIndex, points, claudeIn, claudeOut, googleQueries } = result.value;
+            totalClaudeIn += claudeIn;
+            totalClaudeOut += claudeOut;
+            totalGoogleQueries += googleQueries;
+            allPoints = [...allPoints, ...points];
+
+            const regionResult = JSON.stringify({
+              type: "region_complete",
               region,
-              pointCount,
-              population,
-              chargerSummary
-            );
-
-            const message = await callClaudeWithRetry({
-              model: "claude-sonnet-4-20250514",
-              max_tokens: 8192,
-              messages: [{ role: "user", content: prompt }],
+              regionIndex,
+              points,
+              totalPointsSoFar: allPoints.length,
             });
-
-            // Track Claude usage
-            totalClaudeIn += message.usage?.input_tokens || 0;
-            totalClaudeOut += message.usage?.output_tokens || 0;
-
-            const textBlock = message.content.find((b) => b.type === "text");
-            if (textBlock && textBlock.type === "text") {
-              const parsed = parseClaudeJSON(textBlock.text);
-              let rawPoints: Record<string, unknown>[] = Array.isArray(parsed)
-                ? parsed
-                : parsed?.points || [];
-
-              // Validar coordenadas via Google Places (máx 50 por região)
-              const pointsToValidate = Math.min(rawPoints.length, 50);
-              totalGoogleQueries += pointsToValidate; // Each validation = 1 Google query
-              rawPoints = await validateCoordinates(rawPoints, city, state);
-
-              const scoredPoints = scorePoints(
-                rawPoints,
-                region,
-                population,
-                gdpPerCapita,
-                chargerInfo,
-                allCompetitors
-              );
-
-              allPoints = [...allPoints, ...scoredPoints];
-
-              // Enviar pontos desta região
-              const regionResult = JSON.stringify({
-                type: "region_complete",
-                region,
-                regionIndex: i,
-                points: scoredPoints,
-                totalPointsSoFar: allPoints.length,
-              });
-              controller.enqueue(encoder.encode(regionResult + "\n"));
-            }
-          } catch (err) {
+            controller.enqueue(encoder.encode(regionResult + "\n"));
+          } else {
+            failedRegions++;
+            const err = result.reason;
             console.error(
-              `analyze-city: erro na região ${region}:`,
+              `analyze-city: erro em região:`,
               err instanceof Error ? err.message : err
             );
-            // Enviar erro da região mas continuar com as outras
             const errMsg = JSON.stringify({
               type: "region_error",
-              region,
-              regionIndex: i,
+              region: "região",
               error: err instanceof Error ? err.message : "Erro desconhecido",
             });
             controller.enqueue(encoder.encode(errMsg + "\n"));
@@ -628,7 +631,7 @@ ${carregadosTotal !== null ? `- Total no carregados.com.br: ${carregadosTotal} (
 
         console.log("Concorrentes (3 fontes): enviando", competitors.length, "no resultado final");
 
-        // Enviar resultado final
+        // Enviar resultado final (parcial se houve falhas)
         const final = JSON.stringify({
           type: "complete",
           city,
@@ -637,6 +640,10 @@ ${carregadosTotal !== null ? `- Total no carregados.com.br: ${carregadosTotal} (
           points: deduped,
           competitors,
           totalPoints: deduped.length,
+          ...(failedRegions > 0 && {
+            partial: true,
+            message: `Análise parcial: ${deduped.length} pontos encontrados. ${failedRegions} região(ões) não puderam ser analisadas.`,
+          }),
         });
         controller.enqueue(encoder.encode(final + "\n"));
 
