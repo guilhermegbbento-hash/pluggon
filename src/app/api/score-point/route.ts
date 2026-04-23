@@ -733,16 +733,28 @@ export async function POST(request: Request) {
     };
 
     // 3. Calcular score com scoring-engine (MESMA fórmula do heatmap)
-    // Inferir qualidade do bairro pelo PIB per capita da cidade
     const gdpPC = ibgeData.gdp_per_capita || 30000;
-    const nbQuality =
-      gdpPC > 70000
-        ? "premium"
-        : gdpPC > 50000
-          ? "alto"
-          : gdpPC > 25000
-            ? "medio"
-            : "baixo";
+
+    // Geocode do centro da cidade para cálculo de distância
+    let cityLat = geo.lat;
+    let cityLng = geo.lng;
+    if (GOOGLE_MAPS_API_KEY && geo.city) {
+      try {
+        const cityGeoUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(
+          `${geo.city}, ${geo.state}, Brasil`
+        )}&key=${GOOGLE_MAPS_API_KEY}&language=pt-BR&region=br`;
+        const cityGeoRes = await fetch(cityGeoUrl);
+        if (cityGeoRes.ok) {
+          const cityGeoData = await cityGeoRes.json();
+          if (cityGeoData.status === "OK" && cityGeoData.results?.length) {
+            cityLat = cityGeoData.results[0].geometry.location.lat;
+            cityLng = cityGeoData.results[0].geometry.location.lng;
+          }
+        }
+      } catch {
+        // use point coords as fallback
+      }
+    }
 
     const scoreInput: ScoreInput = {
       population: ibgeData.population || 200000,
@@ -754,18 +766,23 @@ export async function POST(request: Request) {
         "farmacia_24h",
         "aeroporto",
       ].includes(establishment_type || ""),
-      neighborhoodQuality: nbQuality,
-      chargersInCity: chargerInfo.total,
-      dcChargersInCity: chargerInfo.dc,
-      chargersIn200m,
-      chargersIn2km,
-      restaurantsNearby: restaurants.length,
-      hospitalsNearby: hospitals.length,
-      shoppingNearby: shoppings.length,
-      gasStationsNearby: gasStations.length,
-      parkingNearby: parking.length,
+      observations: establishment_name || "",
+      restaurantsIn500m: restaurants.length,
+      farmaciasIn500m: pharmacies.length,
+      supermercadosIn500m: supermarkets.length,
+      postosIn500m: gasStations.length,
+      shoppingsIn1km: shoppings.length,
+      hospitaisIn1km: hospitals.length,
+      estacionamentosIn500m: parking.length,
+      totalCompetitorsCity: chargerInfo.total,
+      competitorsIn200m: chargersIn200m,
+      competitorsIn2km: chargersIn2km,
       rating: pointRating,
       reviews: pointReviews,
+      lat: geo.lat,
+      lng: geo.lng,
+      cityLat,
+      cityLng,
     };
 
     const scoreResult = calculateScore(scoreInput);

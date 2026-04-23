@@ -373,7 +373,9 @@ function scorePoints(
   population: number,
   gdpPerCapita: number,
   chargerInfo: { total: number; dc: number },
-  competitors: CompetitorStation[]
+  competitors: CompetitorStation[],
+  cityLat: number,
+  cityLng: number
 ) {
   return rawPoints
     .map((p) => {
@@ -383,32 +385,28 @@ function scorePoints(
       const chargersIn200m = countNearby(normalized.lat, normalized.lng, competitors, 200);
       const chargersIn2km = countNearby(normalized.lat, normalized.lng, competitors, 2000);
 
-      // Inferir qualidade do bairro pelo tipo de estabelecimento
-      const premiumTypes = ["shopping", "aeroporto", "hotel"];
-      const altoTypes = ["hospital_24h", "centro_comercial", "concessionaria"];
-      const nbQuality = premiumTypes.includes(normalized.category)
-        ? "premium"
-        : altoTypes.includes(normalized.category)
-          ? "alto"
-          : "medio";
-
       const scoreInput: ScoreInput = {
         population,
         gdpPerCapita,
         establishmentType: normalized.category,
         is24h: normalized.operacao_24h,
-        neighborhoodQuality: nbQuality,
-        chargersInCity: chargerInfo.total,
-        dcChargersInCity: chargerInfo.dc,
-        chargersIn200m,
-        chargersIn2km,
-        restaurantsNearby: 3,
-        hospitalsNearby: 1,
-        shoppingNearby: 1,
-        gasStationsNearby: 2,
-        parkingNearby: normalized.has_parking ? 2 : 0,
+        observations: normalized.justification,
+        restaurantsIn500m: 3,
+        farmaciasIn500m: 1,
+        supermercadosIn500m: 1,
+        postosIn500m: 2,
+        shoppingsIn1km: 1,
+        hospitaisIn1km: 1,
+        estacionamentosIn500m: normalized.has_parking ? 2 : 0,
+        totalCompetitorsCity: chargerInfo.total,
+        competitorsIn200m: chargersIn200m,
+        competitorsIn2km: chargersIn2km,
         rating: normalized.rating,
         reviews: normalized.reviews,
+        lat: normalized.lat,
+        lng: normalized.lng,
+        cityLat,
+        cityLng,
       };
 
       const scoreResult = calculateScore(scoreInput);
@@ -559,7 +557,9 @@ ${carregadosTotal !== null ? `- Total no carregados.com.br: ${carregadosTotal} (
             population,
             gdpPerCapita,
             chargerInfo,
-            allCompetitors
+            allCompetitors,
+            cityCoords.lat,
+            cityCoords.lng
           );
 
           return {
