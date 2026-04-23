@@ -52,16 +52,26 @@ export function calculateScore(input: ScoreInput): ScoreResult {
   const vars: ScoreVariable[] = [];
   let id = 1;
 
-  // Helper
-  const add = (name: string, category: string, score: number, weight: number, just: string) => {
-    vars.push({ id: id++, name, category, score: Math.min(10, Math.max(0, Math.round(score))), weight, justification: just });
-  };
-
   // Distância ao centro da cidade (km)
   const distCenter = Math.sqrt(Math.pow((input.lat - input.cityLat) * 111, 2) + Math.pow((input.lng - input.cityLng) * 111 * Math.cos(input.cityLat * Math.PI / 180), 2));
 
-  // Fator cidade: cidade grande tem base mais alta
-  const cityFactor = input.population > 2000000 ? 1.0 : input.population > 1000000 ? 0.95 : input.population > 500000 ? 0.88 : input.population > 200000 ? 0.80 : input.population > 100000 ? 0.72 : 0.60;
+  // Fator cidade: escala variáveis dependentes do tamanho/economia da cidade.
+  // Aplicado apenas nas categorias: Demanda, Frota de EVs, Demografia.
+  // NÃO aplicado em: Infraestrutura, Amenidades, Concorrência, Potencial Comercial, Exclusivas Brasil.
+  const cityFactor = input.population > 2000000 ? 1.00
+    : input.population > 1000000 ? 0.92
+    : input.population > 500000 ? 0.82
+    : input.population > 200000 ? 0.72
+    : input.population > 100000 ? 0.62
+    : 0.50;
+
+  const cityScaledCategories = new Set(['Demanda e Mobilidade', 'Frota de EVs', 'Demografia']);
+
+  // Helper: escala por cityFactor quando a categoria depende do tamanho da cidade.
+  const add = (name: string, category: string, score: number, weight: number, just: string) => {
+    const scaled = cityScaledCategories.has(category) ? score * cityFactor : score;
+    vars.push({ id: id++, name, category, score: Math.min(10, Math.max(0, Math.round(scaled))), weight, justification: just });
+  };
 
   // ===== CATEGORIA 1: DEMANDA E MOBILIDADE (15 variáveis) =====
 
@@ -101,9 +111,9 @@ export function calculateScore(input: ScoreInput): ScoreResult {
   const rodovia = input.observations?.toLowerCase().includes('rodovia') || input.observations?.toLowerCase().includes('br-') ? 9 : distCenter < 5 ? 6 : 4;
   add('Proximidade Rodovias', 'Demanda e Mobilidade', rodovia, 3, input.observations?.toLowerCase().includes('rodovia') ? 'Próximo a rodovia' : 'Verificar proximidade a rodovias');
 
-  // 10. Distância ao centro (Médio=2)
+  // 10. Distância ao centro (Alto=3) - variável de LOCALIZAÇÃO dentro da cidade
   const centroScore = distCenter < 2 ? 10 : distCenter < 4 ? 8 : distCenter < 7 ? 6 : distCenter < 12 ? 4 : 2;
-  add('Distância ao Centro', 'Demanda e Mobilidade', centroScore, 2, distCenter.toFixed(1) + 'km do centro');
+  add('Distância ao Centro', 'Demanda e Mobilidade', centroScore, 3, distCenter.toFixed(1) + 'km do centro');
 
   // 11. Pontos taxi/Uber próximos (Baixo=1)
   add('Pontos Taxi/Uber Próximos', 'Demanda e Mobilidade', appScore > 6 ? 7 : 4, 1, 'Baseado na população');
