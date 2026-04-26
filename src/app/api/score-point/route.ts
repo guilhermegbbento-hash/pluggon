@@ -5,6 +5,7 @@ import {
   classifyCompetitors,
   countNearby,
 } from "@/lib/competitors";
+import type { CompetitorStation } from "@/lib/competitors";
 import { calculateScore } from "@/lib/scoring-engine";
 import type { ScoreInput, ScoreVariable } from "@/lib/scoring-engine";
 import { logUsage } from "@/lib/usage-logger";
@@ -336,6 +337,185 @@ Gere SOMENTE o JSON abaixo. NÃO mude o score. NÃO invente dados. NÃO recomend
   }
 }
 
+// ---------- Cross-check de fontes para concorrentes / DC ----------
+
+interface CrossCheckSource {
+  source: string;
+  total: number | null;
+  dc: number | null;
+  status: "ok" | "partial" | "unavailable";
+  details: string;
+}
+
+interface CrossCheckResult {
+  totalChargers: number;
+  totalDC: number;
+  bestTotalSource: string;
+  bestDCSource: string;
+  sources: CrossCheckSource[];
+}
+
+async function crossCheckCompetitors(
+  city: string,
+  state: string,
+  lat: number,
+  lng: number,
+  googleResults: CompetitorStation[]
+): Promise<CrossCheckResult> {
+  const sources: CrossCheckSource[] = [];
+
+  // FONTE 1: ABVE (dataset oficial fev/2026)
+  const abve = getABVEData(city, state);
+  if (abve) {
+    sources.push({
+      source: "ABVE fev/2026",
+      total: abve.total,
+      dc: abve.dc,
+      status: "ok",
+      details: "Dado oficial",
+    });
+  } else {
+    sources.push({
+      source: "ABVE fev/2026",
+      total: null,
+      dc: null,
+      status: "unavailable",
+      details: "Cidade fora do dataset",
+    });
+  }
+
+  // FONTE 2: Google Places (já buscado upstream — só relata o total)
+  sources.push({
+    source: "Google Places",
+    total: googleResults.length,
+    dc: null,
+    status: "partial",
+    details: "Tipo DC/AC não identificável",
+  });
+
+  // FONTE 3: OpenChargeMap
+  try {
+    const ocmUrl =
+      `https://api.openchargemap.io/v3/poi/?output=json&countrycode=BR&latitude=${lat}` +
+      `&longitude=${lng}&distance=50&distanceunit=KM&maxresults=500&compact=true&verbose=false` +
+      `&key=e7aff4db-e534-4269-8329-00440329ed09`;
+    const ocmRes = await fetch(ocmUrl, { signal: AbortSignal.timeout(10000) });
+    if (ocmRes.ok) {
+      const ocmData = await ocmRes.json();
+      if (Array.isArray(ocmData)) {
+        const ocmDC = ocmData.filter(
+          (s: { Connections?: { PowerKW?: number }[] }) =>
+            s.Connections?.some((c) => typeof c.PowerKW === "number" && c.PowerKW >= 20)
+        ).length;
+        sources.push({
+          source: "OpenChargeMap",
+          total: ocmData.length,
+          dc: ocmDC,
+          status: "ok",
+          details: `${ocmDC} DC confirmados com potência ≥20kW`,
+        });
+      } else {
+        sources.push({
+          source: "OpenChargeMap",
+          total: null,
+          dc: null,
+          status: "unavailable",
+          details: "Resposta inesperada",
+        });
+      }
+    } else {
+      sources.push({
+        source: "OpenChargeMap",
+        total: null,
+        dc: null,
+        status: "unavailable",
+        details: `HTTP ${ocmRes.status}`,
+      });
+    }
+  } catch (err) {
+    console.log("OpenChargeMap erro (ignorando):", err);
+    sources.push({
+      source: "OpenChargeMap",
+      total: null,
+      dc: null,
+      status: "unavailable",
+      details: "Falha na consulta",
+    });
+  }
+
+  // FONTE 4: carregados.com.br (scrape do total)
+  try {
+    const crrUrl = `https://carregados.com.br/estacoes?cidade=${encodeURIComponent(city)}`;
+    const crrRes = await fetch(crrUrl, {
+      headers: { "User-Agent": "Mozilla/5.0" },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (crrRes.ok) {
+      const html = await crrRes.text();
+      const match =
+        html.match(/(\d+)\s*eletropostos?\s*(?:encontrados?|em)/i) ||
+        html.match(/Encontramos\s*(\d+)/i) ||
+        html.match(/conta com (\d+) eletropostos/i) ||
+        html.match(/total[:\s]*(\d+)/i);
+      if (match) {
+        sources.push({
+          source: "carregados.com.br",
+          total: parseInt(match[1], 10),
+          dc: null,
+          status: "partial",
+          details: "Total verificado no site",
+        });
+      } else {
+        sources.push({
+          source: "carregados.com.br",
+          total: null,
+          dc: null,
+          status: "unavailable",
+          details: "Total não encontrado no HTML",
+        });
+      }
+    } else {
+      sources.push({
+        source: "carregados.com.br",
+        total: null,
+        dc: null,
+        status: "unavailable",
+        details: `HTTP ${crrRes.status}`,
+      });
+    }
+  } catch (err) {
+    console.log("carregados.com.br erro (ignorando):", err);
+    sources.push({
+      source: "carregados.com.br",
+      total: null,
+      dc: null,
+      status: "unavailable",
+      details: "Falha na consulta",
+    });
+  }
+
+  // Pegar o MAIOR número verificado de cada fonte
+  const totals = sources.filter((s) => s.total != null) as Array<
+    CrossCheckSource & { total: number }
+  >;
+  const dcs = sources.filter((s) => s.dc != null && s.dc > 0) as Array<
+    CrossCheckSource & { dc: number }
+  >;
+
+  const bestTotal = totals.length ? Math.max(...totals.map((t) => t.total)) : 0;
+  const bestDC = dcs.length ? Math.max(...dcs.map((d) => d.dc)) : 0;
+  const bestTotalSource = totals.find((t) => t.total === bestTotal)?.source ?? "estimativa";
+  const bestDCSource = dcs.find((d) => d.dc === bestDC)?.source ?? "estimativa";
+
+  return {
+    totalChargers: bestTotal,
+    totalDC: bestDC,
+    bestTotalSource,
+    bestDCSource,
+    sources,
+  };
+}
+
 // ---------- Main handler ----------
 
 export async function POST(request: Request) {
@@ -424,10 +604,21 @@ export async function POST(request: Request) {
     }
 
     const chargerInfo = classifyCompetitors(allCompetitors);
-    const competitorsIn200m = countNearby(geo.lat, geo.lng, allCompetitors, 200);
-    const competitorsIn500m = countNearby(geo.lat, geo.lng, allCompetitors, 500);
-    const competitorsIn1km = countNearby(geo.lat, geo.lng, allCompetitors, 1000);
-    const competitorsIn2km = countNearby(geo.lat, geo.lng, allCompetitors, 2000);
+    // Concorrência por raio: SOMENTE Google Places (única fonte com lat/lng confiável e atualizada)
+    const googleOnly = allCompetitors.filter((c) => c.source === "Google Places");
+    const competitorsIn200m = countNearby(geo.lat, geo.lng, googleOnly, 200);
+    const competitorsIn500m = countNearby(geo.lat, geo.lng, googleOnly, 500);
+    const competitorsIn1km = countNearby(geo.lat, geo.lng, googleOnly, 1000);
+    const competitorsIn2km = countNearby(geo.lat, geo.lng, googleOnly, 2000);
+
+    // Cruzamento de fontes (ABVE + Google Places + OpenChargeMap + carregados.com.br)
+    const crossCheck = await crossCheckCompetitors(
+      geo.city,
+      geo.state,
+      geo.lat,
+      geo.lng,
+      googleOnly
+    );
 
     // 5. POIs no raio (9 categorias)
     const [
@@ -541,8 +732,9 @@ export async function POST(request: Request) {
       state: geo.state,
       population: ibgeData.population,
       gdpPerCapita: ibgeData.gdp_per_capita,
-      abveDcCity: abve?.dc ?? null,
-      abveTotalCity: abve?.total ?? null,
+      // DC e total: maior valor verificado entre ABVE / OCM / carregados.com.br
+      abveDcCity: crossCheck.totalDC > 0 ? crossCheck.totalDC : abve?.dc ?? null,
+      abveTotalCity: crossCheck.totalChargers > 0 ? crossCheck.totalChargers : abve?.total ?? null,
       abveEvsSold: abve?.evsSold ?? null,
       competitorsIn200m,
       competitorsIn500m,
@@ -570,6 +762,33 @@ export async function POST(request: Request) {
     };
 
     const scoreResult = calculateScore(scoreInput);
+
+    // 6.1. Reescrever justificativa das variáveis de DC com cruzamento de fontes
+    const sourcesText = crossCheck.sources
+      .map((s) => {
+        if (s.total == null && s.dc == null) return `${s.source} indisponível`;
+        const parts: string[] = [];
+        if (s.total != null) parts.push(`${s.total} total`);
+        if (s.dc != null) parts.push(`${s.dc} DC`);
+        return `${s.source} ${parts.join("/")}`;
+      })
+      .join(", ");
+    const moreRecentThanAbve =
+      !!abve &&
+      crossCheck.bestDCSource !== "ABVE fev/2026" &&
+      crossCheck.totalDC > abve.dc;
+    const dcJustification =
+      `${crossCheck.totalDC} DC (${crossCheck.bestDCSource})` +
+      (moreRecentThanAbve ? " — dado mais recente que ABVE fev/2026" : "") +
+      `. Verificado: ${sourcesText}`;
+    for (const v of scoreResult.variables) {
+      if (
+        v.name === "Total Carregadores DC na Cidade" ||
+        v.name === "DC na Cidade (Saturação)"
+      ) {
+        v.justification = dcJustification;
+      }
+    }
 
     // 7. Claude para texto APENAS
     const claudeResult = await generateAnalysisText(
@@ -647,6 +866,11 @@ export async function POST(request: Request) {
         })),
       ibge_data: ibgeData,
       abve_data: abve,
+      data_sources: {
+        cross_check: crossCheck.sources,
+        best_total: { value: crossCheck.totalChargers, source: crossCheck.bestTotalSource },
+        best_dc: { value: crossCheck.totalDC, source: crossCheck.bestDCSource },
+      },
       charger_summary: {
         total: chargerInfo.total,
         dc: chargerInfo.dc,

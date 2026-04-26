@@ -71,6 +71,17 @@ interface ScoreResult {
     total: number;
     evsSold?: number;
   } | null;
+  data_sources?: {
+    cross_check: Array<{
+      source: string;
+      total: number | null;
+      dc: number | null;
+      status: "ok" | "partial" | "unavailable";
+      details: string;
+    }>;
+    best_total: { value: number; source: string };
+    best_dc: { value: number; source: string };
+  };
   cost_breakdown: CostBreakdown;
 }
 
@@ -938,6 +949,76 @@ function ScorePageInner() {
               </div>
             </div>
           </div>
+
+          {/* Fontes de Dados (cruzamento de fontes para concorrentes / DC) */}
+          {result.data_sources && (
+            <div className="overflow-hidden rounded-xl border border-[#30363D] bg-[#161B22]">
+              <div className="flex items-center justify-between border-b border-[#30363D] px-5 py-3">
+                <h3 className="text-base font-semibold text-white">
+                  🔎 Fontes de Dados — Concorrentes / DC na Cidade
+                </h3>
+                <span className="text-xs text-[#8B949E]">
+                  Melhor DC: <span className="font-semibold text-white">{result.data_sources.best_dc.value}</span>
+                  {" "}({result.data_sources.best_dc.source})
+                </span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-[#0D1117] text-left text-xs uppercase text-[#8B949E]">
+                    <tr>
+                      <th className="px-4 py-2.5 font-medium">Fonte</th>
+                      <th className="px-4 py-2.5 font-medium text-center">Total</th>
+                      <th className="px-4 py-2.5 font-medium text-center">DC</th>
+                      <th className="px-4 py-2.5 font-medium">Status</th>
+                      <th className="px-4 py-2.5 font-medium">Detalhes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.data_sources.cross_check.map((s) => {
+                      const statusLabel =
+                        s.status === "ok"
+                          ? "✅ Dado oficial"
+                          : s.status === "partial"
+                          ? "⚠️ Parcial"
+                          : "❌ Indisponível";
+                      const statusColor =
+                        s.status === "ok"
+                          ? "text-[#4CAF50]"
+                          : s.status === "partial"
+                          ? "text-[#FFC107]"
+                          : "text-[#8B949E]";
+                      return (
+                        <tr key={s.source} className="border-t border-[#21262D] hover:bg-[#0D1117]">
+                          <td className="px-4 py-3 text-[#C9D1D9]">{s.source}</td>
+                          <td className="px-4 py-3 text-center text-[#C9D1D9]">
+                            {s.total ?? "—"}
+                          </td>
+                          <td className="px-4 py-3 text-center text-[#C9D1D9]">
+                            {s.dc ?? "—"}
+                          </td>
+                          <td className={`px-4 py-3 text-xs ${statusColor}`}>{statusLabel}</td>
+                          <td className="px-4 py-3 text-xs text-[#8B949E]">{s.details}</td>
+                        </tr>
+                      );
+                    })}
+                    <tr className="border-t-2 border-[#30363D] bg-[#0D1117]">
+                      <td className="px-4 py-3 font-semibold text-[#C9A84C]">MELHOR DADO</td>
+                      <td className="px-4 py-3 text-center font-bold text-white">
+                        {result.data_sources.best_total.value}
+                      </td>
+                      <td className="px-4 py-3 text-center font-bold text-white">
+                        {result.data_sources.best_dc.value}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-[#C9A84C]" colSpan={2}>
+                        Fonte total: {result.data_sources.best_total.source}
+                        {" · "}Fonte DC: {result.data_sources.best_dc.source}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           {/* Adicionar Observação (zero custo) */}
           <div className="rounded-xl border border-[#A06CD5]/30 bg-[#A06CD5]/5 p-5">
