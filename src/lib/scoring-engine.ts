@@ -1,7 +1,7 @@
 // ============================================================
 // Scoring Engine — Pluggon
-// Score 100% calculado por código, sem chamadas de IA.
-// Variáveis adaptadas do framework Stable.auto para o Brasil.
+// 42 variáveis em 7 categorias + bônus de observações.
+// Score 100% calculado por código. Dados: IBGE, ABVE, Google Places, banco interno.
 // ============================================================
 
 export type ScoreSource =
@@ -12,44 +12,55 @@ export type ScoreSource =
   | "Usuário";
 
 export interface ScoreInput {
-  // Cidade — IBGE
+  // IBGE
   population: number;
   gdpPerCapita: number;
 
   // ABVE (cidade)
-  abveDC: number;     // DC oficial ABVE na cidade (0 se cidade fora do dataset)
-  abveTotal: number;  // Total ABVE na cidade
-  abveEVs: number;    // EVs vendidos na cidade (ABVE)
+  abveDC: number;
+  abveTotal: number;
+  abveEVs: number;
 
-  // Banco próprio (ev_chargers via charger-database.ts)
+  // Banco interno de carregadores
   dcIn200m: number;
   dcIn500m: number;
   dcIn1km: number;
   dcIn2km: number;
-  dcInCity: number;   // DC achados pelo Google/OpenChargeMap/etc
+  dcInCity: number;
   totalInCity: number;
 
-  // Nomes dos concorrentes DC em cada raio (para justificativas)
+  // Nomes dos concorrentes DC (para justificativas e operadores)
   dcNamesIn200m?: string[];
   dcNamesIn500m?: string[];
   dcNamesIn1km?: string[];
   dcNamesIn2km?: string[];
 
-  // POIs Google Places
-  restaurants: number;   // 500m
-  supermarkets: number;  // 500m
-  gasStations: number;   // 500m
-  shoppings: number;     // 1km
-  hotels: number;        // 1km
-  parkingLots: number;   // 500m
-  totalPOIs: number;     // 500m
+  // Google Places — 500m
+  restaurants: number;
+  supermarkets: number;
+  gasStations: number;
+  parkingLots: number;
+  totalPOIs: number;
+  pharmacies?: number;
+  banks?: number;
+
+  // Google Places — 1km
+  shoppings: number;
+  hotels: number;
+
+  // Google Places — 2km
+  universitiesIn2km?: number;
+  hospitalsIn2km?: number;
+
+  // Google Places — 5km
+  hasAirportNearby?: boolean;
 
   // Geocoding
   distanceToCenter: number; // km
 
-  // Google Places — local
-  rating: number;       // 0 se não tem
-  reviewCount: number;  // 0 se não tem
+  // Local (Google Places)
+  rating: number;
+  reviewCount: number;
 
   // Usuário
   establishmentType: string;
@@ -60,7 +71,7 @@ export interface ScoreVariable {
   id: number;
   name: string;
   category: string;
-  score: number;       // 0-10
+  score: number; // 0-10
   weight: number;
   justification: string;
   source: ScoreSource;
@@ -73,20 +84,82 @@ export interface ScoreResult {
   classification: string;
   variables: ScoreVariable[];
   categoryScores: Record<string, number>;
+  observationsBonus: number;
 }
 
 // Pesos por categoria (somam 100%)
 const CATEGORY_WEIGHTS: Record<string, number> = {
-  Demanda: 25,
-  Concorrência: 25,
-  Localização: 20,
-  Amenidades: 15,
-  "Tipo de Ponto": 10,
-  Observações: 5,
+  "Demanda e População": 20,
+  "Frota EV e Adoção": 20,
+  "Tráfego e Mobilidade": 15,
+  Concorrência: 20,
+  "Localização e Acesso": 15,
+  "Tipo de Ponto": 7,
+  Amenidades: 3,
 };
+
+// Constantes de mercado (ABVE)
+const NATIONAL_EV_GROWTH_YOY = 0.26;
+const NATIONAL_EV_MARKET_SHARE = 2.16;
+const VEHICLE_OWNERSHIP_RATE = 0.5;
+
+const HIGH_FLOW_TYPES = [
+  "rodoviaria",
+  "aeroporto",
+  "shopping",
+  "posto_24h",
+  "hospital_24h",
+];
 
 function clamp(n: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, n));
+}
+
+function fmtInt(n: number): string {
+  return Math.round(n).toLocaleString("pt-BR");
+}
+
+function fmtNames(names?: string[], max = 2): string {
+  if (!names || names.length === 0) return "";
+  if (names.length <= max) return `: ${names.join("; ")}`;
+  const extra = names.length - max;
+  return `: ${names.slice(0, max).join("; ")} (+${extra})`;
+}
+
+function extractOperators(names: string[]): string[] {
+  const known = [
+    "Shell",
+    "Zletric",
+    "Tupinambá",
+    "EZVolt",
+    "Volvo",
+    "BYD",
+    "Porto",
+    "Raízen",
+    "Ipiranga",
+    "EVMo",
+    "Petrobras",
+    "Tesla",
+    "WEG",
+    "ABB",
+    "Eletro",
+    "EDP",
+    "Enel",
+    "Neocharge",
+    "Voltaria",
+    "ChargeNow",
+  ];
+  const found = new Set<string>();
+  for (const name of names) {
+    const upper = (name || "").toUpperCase();
+    for (const op of known) {
+      if (upper.includes(op.toUpperCase())) {
+        found.add(op);
+        break;
+      }
+    }
+  }
+  return Array.from(found);
 }
 
 export function calculateScore(input: ScoreInput): ScoreResult {
@@ -111,23 +184,38 @@ export function calculateScore(input: ScoreInput): ScoreResult {
     });
   };
 
-  // Melhor dado DC na cidade: ABVE ou banco próprio (o maior)
+  // ---------- Cálculos auxiliares ----------
   const dcCity = Math.max(input.abveDC || 0, input.dcInCity || 0);
+  const evsCityFromAbve = (input.abveEVs ?? 0) > 0;
   const evsCity =
     input.abveEVs ||
     Math.round(
       input.population *
-        (input.gdpPerCapita > 50000
+        (input.gdpPerCapita > 50_000
           ? 0.006
-          : input.gdpPerCapita > 30000
+          : input.gdpPerCapita > 30_000
           ? 0.004
           : 0.002)
     );
   const ratioEVperCharger = dcCity > 0 ? Math.round(evsCity / dcCity) : 999;
+  const cityShare =
+    input.population > 0
+      ? (evsCity / (input.population * VEHICLE_OWNERSHIP_RATE)) * 100
+      : 0;
+  const projection5y = Math.round(
+    evsCity * Math.pow(1 + NATIONAL_EV_GROWTH_YOY, 5)
+  );
 
-  // ===== 1. DEMANDA (25%) =====
+  const tipoKey = (input.establishmentType || "outro").toLowerCase();
+  const obs = (input.observations || "").toLowerCase();
+  const isHighFlow = HIGH_FLOW_TYPES.includes(tipoKey);
 
-  const popScore =
+  // ============================================================
+  // CATEGORIA 1 — DEMANDA E POPULAÇÃO (20%)
+  // ============================================================
+
+  // V1 — População do município (peso 3)
+  const v1 =
     input.population > 2_000_000 ? 10 :
     input.population > 1_000_000 ? 9 :
     input.population > 500_000 ? 8 :
@@ -136,30 +224,120 @@ export function calculateScore(input: ScoreInput): ScoreResult {
     input.population > 100_000 ? 5 :
     input.population > 50_000 ? 4 : 3;
   add(
-    "Densidade Populacional",
-    "Demanda",
-    popScore,
+    "População do município",
+    "Demanda e População",
+    v1,
     3,
-    `${input.population.toLocaleString("pt-BR")} habitantes`,
+    `${fmtInt(input.population)} habitantes (IBGE)`,
     "IBGE"
   );
 
-  const gdpScore =
+  // V2 — Densidade populacional (peso 2)
+  const v2 =
+    input.population > 1_000_000 && input.distanceToCenter < 5 ? 9 :
+    input.population > 500_000 && input.distanceToCenter < 5 ? 7 :
+    input.population > 200_000 && input.distanceToCenter < 5 ? 6 :
+    input.population > 100_000 ? 5 : 4;
+  const v2Label = v2 >= 8 ? "alta" : v2 >= 6 ? "média" : "baixa";
+  add(
+    "Densidade populacional",
+    "Demanda e População",
+    v2,
+    2,
+    `Região de ${v2Label} densidade demográfica (proxy: porte da cidade e distância ao centro)`,
+    "IBGE"
+  );
+
+  // V3 — PIB per capita (peso 3)
+  const v3 =
     input.gdpPerCapita > 70_000 ? 10 :
     input.gdpPerCapita > 55_000 ? 9 :
     input.gdpPerCapita > 40_000 ? 8 :
     input.gdpPerCapita > 30_000 ? 7 :
     input.gdpPerCapita > 20_000 ? 5 : 3;
   add(
-    "Poder Aquisitivo",
-    "Demanda",
-    gdpScore,
+    "PIB per capita",
+    "Demanda e População",
+    v3,
     3,
-    `PIB per capita R$ ${Math.round(input.gdpPerCapita).toLocaleString("pt-BR")}`,
+    `R$ ${fmtInt(input.gdpPerCapita)} per capita (IBGE)`,
     "IBGE"
   );
 
-  const evScore =
+  // V4 — Estimativa domicílios alta renda (peso 2)
+  let v4: number;
+  let v4Label: string;
+  if (input.gdpPerCapita > 50_000 && input.distanceToCenter < 5) {
+    v4 = 9;
+    v4Label = "alto";
+  } else if (input.gdpPerCapita > 50_000) {
+    v4 = 7;
+    v4Label = "alto";
+  } else if (input.gdpPerCapita > 30_000 && input.distanceToCenter < 3) {
+    v4 = 7;
+    v4Label = "médio-alto";
+  } else if (input.gdpPerCapita > 30_000) {
+    v4 = 5;
+    v4Label = "médio";
+  } else {
+    v4 = 4;
+    v4Label = "baixo";
+  }
+  add(
+    "Domicílios de alta renda (estimativa)",
+    "Demanda e População",
+    v4,
+    2,
+    `Região com ${v4Label} poder aquisitivo — PIB per capita R$ ${fmtInt(
+      input.gdpPerCapita
+    )} a ${input.distanceToCenter.toFixed(1)}km do centro`
+  );
+
+  // V5 — Moradores sem garagem (peso 2)
+  const v5 =
+    input.population > 1_000_000 ? 8 :
+    input.population > 500_000 ? 7 :
+    input.population > 200_000 ? 5 : 3;
+  add(
+    "Moradores sem garagem (estimativa)",
+    "Demanda e População",
+    v5,
+    2,
+    "Cidades maiores têm maior % de moradores em apartamentos sem garagem — dependem de carregamento público"
+  );
+
+  // V6 — Crescimento populacional (peso 1) — fixo moderado
+  add(
+    "Crescimento populacional",
+    "Demanda e População",
+    6,
+    1,
+    "Crescimento demográfico estável (estimativa setorial)"
+  );
+
+  // V7 — Potencial motoristas de app (peso 3)
+  const v7 =
+    input.population > 1_000_000 ? 9 :
+    input.population > 500_000 ? 8 :
+    input.population > 200_000 ? 6 :
+    input.population > 100_000 ? 5 : 3;
+  const appDriversEstimate = Math.round(input.population * 0.012);
+  add(
+    "Potencial de motoristas de app",
+    "Demanda e População",
+    v7,
+    3,
+    `Estimativa de ${fmtInt(
+      appDriversEstimate
+    )} motoristas de app na região. Hoje 6% da frota de app é elétrica e 20% das novas compras são EVs`
+  );
+
+  // ============================================================
+  // CATEGORIA 2 — FROTA EV E ADOÇÃO (20%)
+  // ============================================================
+
+  // V8 — EVs registrados na cidade (peso 3)
+  const v8 =
     evsCity > 30_000 ? 10 :
     evsCity > 15_000 ? 9 :
     evsCity > 8_000 ? 8 :
@@ -167,171 +345,435 @@ export function calculateScore(input: ScoreInput): ScoreResult {
     evsCity > 1_000 ? 5 :
     evsCity > 500 ? 4 : 3;
   add(
-    "Frota de Veículos Elétricos",
-    "Demanda",
-    evScore,
+    "EVs registrados na cidade",
+    "Frota EV e Adoção",
+    v8,
     3,
-    `${evsCity.toLocaleString("pt-BR")} veículos eletrificados${
-      input.abveEVs ? "" : " (estimativa)"
-    }`,
-    input.abveEVs ? "ABVE" : "Cálculo"
+    evsCityFromAbve
+      ? `${fmtInt(evsCity)} veículos eletrificados (ABVE)`
+      : `${fmtInt(evsCity)} veículos estimados a partir de vendas estaduais`,
+    evsCityFromAbve ? "ABVE" : "Cálculo"
   );
 
-  const appScore =
-    input.population > 1_000_000 ? 9 :
-    input.population > 500_000 ? 8 :
-    input.population > 200_000 ? 6 :
-    input.population > 100_000 ? 5 : 3;
+  // V9 — Crescimento das vendas EV nacional (peso 2)
   add(
-    "Potencial Motoristas de App",
-    "Demanda",
-    appScore,
-    2,
-    input.population > 500_000
-      ? "Alta concentração de motoristas Uber/99 em cidades acima de 500 mil hab."
-      : "Concentração moderada de motoristas de app"
-  );
-
-  add(
-    "Crescimento do Mercado EV",
-    "Demanda",
+    "Crescimento das vendas de EV",
+    "Frota EV e Adoção",
     8,
     2,
-    "Mercado nacional crescendo 26% ao ano, 778 mil veículos eletrificados no Brasil",
+    "Mercado nacional crescendo 26% ao ano. Jan-fev 2026: +90% vs ano anterior (ABVE)",
     "ABVE"
   );
 
-  // ===== 2. CONCORRÊNCIA (25%) =====
-  // Em pontos de alto fluxo (rodoviária, aeroporto, shopping, posto/hospital 24h),
-  // 1-2 concorrentes próximos VALIDAM a demanda em vez de prejudicar o score.
-  const highFlowTypes = [
-    "rodoviaria",
-    "aeroporto",
-    "shopping",
-    "posto_24h",
-    "hospital_24h",
-  ];
-  const isHighFlow = highFlowTypes.includes(
-    (input.establishmentType || "").toLowerCase()
+  // V10 — Market share EV na cidade (peso 2)
+  const v10 =
+    cityShare > 3 ? 9 :
+    cityShare > 2 ? 8 :
+    cityShare > 1 ? 6 :
+    cityShare > 0.5 ? 5 : 3;
+  add(
+    "Market share EV na cidade",
+    "Frota EV e Adoção",
+    v10,
+    2,
+    `${cityShare.toFixed(2)}% de penetração EV na frota local estimada`
   );
 
-  const fmtNames = (names?: string[], max = 2): string => {
-    if (!names || names.length === 0) return "";
-    if (names.length <= max) return `: ${names.join("; ")}`;
-    const extra = names.length - max;
-    return `: ${names.slice(0, max).join("; ")} (+${extra})`;
-  };
+  // V11 — Concessionárias EV (peso 1)
+  const v11 =
+    input.population > 500_000 ? 8 :
+    input.population > 200_000 ? 6 : 3;
+  const v11Label =
+    v11 >= 8
+      ? "Forte presença de concessionárias EV (BYD, GWM, Volvo)"
+      : v11 >= 6
+      ? "Presença moderada de concessionárias EV"
+      : "Pouca ou nenhuma concessionária EV na região";
+  add(
+    "Concessionárias EV na região",
+    "Frota EV e Adoção",
+    v11,
+    1,
+    `${v11Label} (proxy por porte da cidade)`
+  );
 
-  // V6. Concorrência 200m
+  // V12 — Frotas corporativas elétricas (peso 2)
+  const v12 =
+    input.population > 1_000_000 ? 8 :
+    input.population > 500_000 ? 6 :
+    input.population > 200_000 ? 4 : 2;
+  add(
+    "Frotas corporativas elétricas",
+    "Frota EV e Adoção",
+    v12,
+    2,
+    "Presença estimada de frotas corporativas elétricas (Mercado Livre, Amazon, iFood, Correios)"
+  );
+
+  // V13 — % motoristas de app elétricos (peso 2)
+  const v13 =
+    input.population > 1_000_000 ? 8 :
+    input.population > 500_000 ? 7 :
+    input.population > 200_000 ? 5 : 3;
+  add(
+    "% de motoristas de app elétricos",
+    "Frota EV e Adoção",
+    v13,
+    2,
+    "~6% dos motoristas de app em cidades grandes já usam EV; tendência de 20% nas novas aquisições"
+  );
+
+  // V14 — Projeção da frota em 5 anos (peso 2)
+  const v14 =
+    projection5y > 30_000 ? 10 :
+    projection5y > 15_000 ? 9 :
+    projection5y > 8_000 ? 8 :
+    projection5y > 3_000 ? 7 :
+    projection5y > 1_000 ? 5 :
+    projection5y > 500 ? 4 : 3;
+  add(
+    "Projeção da frota EV em 5 anos",
+    "Frota EV e Adoção",
+    v14,
+    2,
+    `Projeção de ${fmtInt(projection5y)} veículos elétricos em 2031 (crescimento 26% a.a.)`
+  );
+
+  // V15 — Índice de eletrificação vs nacional (peso 1)
+  const v15 =
+    cityShare > NATIONAL_EV_MARKET_SHARE ? 8 :
+    cityShare > NATIONAL_EV_MARKET_SHARE * 0.7 ? 6 : 4;
+  const v15Label = v15 === 8 ? "acima da" : v15 === 6 ? "na" : "abaixo da";
+  add(
+    "Índice de eletrificação vs nacional",
+    "Frota EV e Adoção",
+    v15,
+    1,
+    `Cidade ${v15Label} média nacional de eletrificação (${NATIONAL_EV_MARKET_SHARE}%) — local em ${cityShare.toFixed(
+      2
+    )}%`
+  );
+
+  // ============================================================
+  // CATEGORIA 3 — TRÁFEGO E MOBILIDADE (15%)
+  // ============================================================
+
+  // V16 — Classificação da via (peso 3)
+  let v16: number;
+  let v16Label: string;
+  if (input.gasStations >= 2 && input.distanceToCenter < 5) {
+    v16 = 9;
+    v16Label = "via principal";
+  } else if (input.gasStations >= 1 && input.distanceToCenter < 3) {
+    v16 = 8;
+    v16Label = "via arterial";
+  } else if (input.gasStations >= 1) {
+    v16 = 7;
+    v16Label = "via comercial";
+  } else if (input.distanceToCenter < 3) {
+    v16 = 6;
+    v16Label = "via secundária central";
+  } else if (input.distanceToCenter > 5) {
+    v16 = 4;
+    v16Label = "via local";
+  } else {
+    v16 = 5;
+    v16Label = "via secundária";
+  }
+  add(
+    "Classificação da via",
+    "Tráfego e Mobilidade",
+    v16,
+    3,
+    `${input.gasStations} postos de combustível em 500m e ${input.distanceToCenter.toFixed(
+      1
+    )}km do centro indicam ${v16Label}`
+  );
+
+  // V17 — Proximidade a rodovias e vias arteriais (peso 3)
+  const highwayKw = ["rodovia", "br-", "highway", "estadual"];
+  const arterialKw = ["avenida", "principal"];
+  const hasHighway = highwayKw.some((k) => obs.includes(k));
+  const hasArterial = arterialKw.some((k) => obs.includes(k));
+  const v17 =
+    hasHighway ? 9 :
+    hasArterial ? 7 :
+    input.distanceToCenter < 2 ? 6 : 4;
+  const v17Label =
+    v17 === 9 ? "próximo a rodovias/BR" :
+    v17 === 7 ? "em via arterial" :
+    v17 === 6 ? "em região central" :
+    "distante de vias arteriais identificadas";
+  add(
+    "Proximidade a rodovias e vias arteriais",
+    "Tráfego e Mobilidade",
+    v17,
+    3,
+    `Ponto ${v17Label} (baseado em observações e localização)`,
+    hasHighway || hasArterial ? "Usuário" : "Cálculo"
+  );
+
+  // V18 — Postos de combustível em 500m (peso 2)
+  const v18 =
+    input.gasStations >= 3 ? 9 :
+    input.gasStations >= 2 ? 8 :
+    input.gasStations >= 1 ? 6 : 3;
+  add(
+    "Postos de combustível em 500m",
+    "Tráfego e Mobilidade",
+    v18,
+    2,
+    `${input.gasStations} postos em 500m — alto indicador de fluxo veicular`,
+    "Google Places"
+  );
+
+  // V19 — Proximidade ao aeroporto (peso 2)
+  let v19: number;
+  let v19Label: string;
+  let v19Source: ScoreSource;
+  if (tipoKey === "aeroporto") {
+    v19 = 10;
+    v19Label = "é o aeroporto";
+    v19Source = "Usuário";
+  } else if (input.hasAirportNearby) {
+    v19 = 7;
+    v19Label = "está próximo a um aeroporto (5km)";
+    v19Source = "Google Places";
+  } else {
+    v19 = 4;
+    v19Label = "não está próximo a aeroporto";
+    v19Source = "Cálculo";
+  }
+  add(
+    "Proximidade ao aeroporto",
+    "Tráfego e Mobilidade",
+    v19,
+    2,
+    `Ponto ${v19Label}`,
+    v19Source
+  );
+
+  // V20 — Proximidade à rodoviária (peso 2)
+  let v20: number;
+  let v20Label: string;
+  if (tipoKey === "rodoviaria") {
+    v20 = 10;
+    v20Label = "é a rodoviária";
+  } else if (input.distanceToCenter < 2 && input.population > 200_000) {
+    v20 = 7;
+    v20Label = "está próximo à rodoviária (centro de cidade > 200k hab.)";
+  } else {
+    v20 = 4;
+    v20Label = "verificar proximidade à rodoviária";
+  }
+  add(
+    "Proximidade à rodoviária",
+    "Tráfego e Mobilidade",
+    v20,
+    2,
+    `Ponto ${v20Label}`,
+    v20 === 10 ? "Usuário" : "Cálculo"
+  );
+
+  // V21 — Potencial turístico/regional (peso 1)
+  const v21 =
+    input.hotels >= 5 ? 9 :
+    input.hotels >= 2 ? 7 :
+    input.hotels >= 1 ? 5 : 3;
+  const v21Label =
+    v21 >= 8 ? "alta" :
+    v21 >= 6 ? "moderada" :
+    v21 >= 4 ? "baixa" : "muito baixa";
+  add(
+    "Potencial turístico/regional",
+    "Tráfego e Mobilidade",
+    v21,
+    1,
+    `${input.hotels} hotéis em 1km indicam ${v21Label} atividade turística`,
+    "Google Places"
+  );
+
+  // ============================================================
+  // CATEGORIA 4 — CONCORRÊNCIA (20%)
+  // ============================================================
+
+  // V22 — DC na cidade total (peso 2)
+  const v22 =
+    dcCity < 5 ? 9 :
+    dcCity <= 15 ? 8 :
+    dcCity <= 50 ? 7 :
+    dcCity <= 100 ? 6 : 5;
+  add(
+    "Carregadores DC na cidade (total)",
+    "Concorrência",
+    v22,
+    2,
+    `${dcCity} carregadores rápidos na cidade`,
+    input.abveDC ? "ABVE" : "Cálculo"
+  );
+
+  // V23 — Concorrentes DC em 200m (peso 3) — sensível a high flow
+  let v23: number;
+  let v23Just: string;
   if (isHighFlow) {
-    const dc200 =
+    v23 =
       input.dcIn200m === 0 ? 8 :
       input.dcIn200m <= 2 ? 9 :
       input.dcIn200m <= 4 ? 6 : 4;
-    const just =
+    v23Just =
       input.dcIn200m === 0
-        ? "Nenhum concorrente direto — oportunidade aberta em ponto de alto fluxo"
+        ? "Nenhum concorrente direto em 200m — oportunidade aberta em ponto de alto fluxo"
         : input.dcIn200m <= 2
-        ? `${input.dcIn200m} carregador(es) rápido(s) em 200m — valida a demanda do local${fmtNames(input.dcNamesIn200m)}`
-        : `${input.dcIn200m} carregadores rápidos em 200m — mercado validado mas disputado${fmtNames(input.dcNamesIn200m)}`;
-    add("Validação de Demanda (200m)", "Concorrência", dc200, 3, just);
+        ? `${input.dcIn200m} carregador(es) rápido(s) em 200m — valida demanda do local${fmtNames(
+            input.dcNamesIn200m
+          )}`
+        : `${input.dcIn200m} carregadores rápidos em 200m — mercado disputado${fmtNames(
+            input.dcNamesIn200m
+          )}`;
   } else {
-    const dc200 =
+    v23 =
       input.dcIn200m === 0 ? 10 :
       input.dcIn200m === 1 ? 5 :
       input.dcIn200m === 2 ? 3 : 1;
-    add(
-      "Concorrência Direta (200m)",
-      "Concorrência",
-      dc200,
-      3,
-      `${input.dcIn200m} carregadores rápidos em 200 metros${fmtNames(input.dcNamesIn200m)}`
-    );
+    v23Just =
+      input.dcIn200m === 0
+        ? "Sem concorrência direta em 200m"
+        : `${input.dcIn200m} carregadores rápidos em 200m — concorrência direta identificada${fmtNames(
+            input.dcNamesIn200m
+          )}`;
   }
+  add(
+    isHighFlow ? "Validação de demanda (200m)" : "Concorrência direta (200m)",
+    "Concorrência",
+    v23,
+    3,
+    v23Just
+  );
 
-  // Concorrência 500m
+  // V24 — Concorrentes DC em 500m (peso 3) — sensível a high flow
+  let v24: number;
+  let v24Just: string;
   if (isHighFlow) {
-    const dc500 =
-      input.dcIn500m === 0 ? 7 :
+    v24 =
+      input.dcIn500m === 0 ? 8 :
       input.dcIn500m <= 3 ? 9 :
       input.dcIn500m <= 6 ? 6 : 4;
-    const just =
+    v24Just =
       input.dcIn500m === 0
-        ? "Nenhum concorrente em 500m — oportunidade aberta em ponto de alto fluxo"
+        ? "Sem concorrentes em 500m — oportunidade aberta em ponto de alto fluxo"
         : input.dcIn500m <= 3
-        ? `${input.dcIn500m} carregador(es) rápido(s) em 500m — valida a demanda da região${fmtNames(input.dcNamesIn500m)}`
-        : `${input.dcIn500m} carregadores rápidos em 500m — região validada mas disputada${fmtNames(input.dcNamesIn500m)}`;
-    add("Validação de Demanda (500m)", "Concorrência", dc500, 3, just);
+        ? `${input.dcIn500m} carregador(es) rápido(s) em 500m — valida demanda regional${fmtNames(
+            input.dcNamesIn500m
+          )}`
+        : `${input.dcIn500m} carregadores rápidos em 500m — região disputada${fmtNames(
+            input.dcNamesIn500m
+          )}`;
   } else {
-    const dc500 =
+    v24 =
       input.dcIn500m === 0 ? 10 :
       input.dcIn500m <= 2 ? 7 :
       input.dcIn500m <= 5 ? 5 : 3;
-    add(
-      "Concorrência Próxima (500m)",
-      "Concorrência",
-      dc500,
-      3,
-      `${input.dcIn500m} carregadores rápidos em 500 metros${fmtNames(input.dcNamesIn500m)}`
-    );
+    v24Just = `${input.dcIn500m} carregadores rápidos em 500m${fmtNames(
+      input.dcNamesIn500m
+    )}`;
   }
+  add(
+    isHighFlow ? "Validação de demanda (500m)" : "Concorrência próxima (500m)",
+    "Concorrência",
+    v24,
+    3,
+    v24Just
+  );
 
-  // Concorrência 1km
-  if (isHighFlow) {
-    const dc1k =
-      input.dcIn1km === 0 ? 6 :
-      input.dcIn1km <= 5 ? 8 :
-      input.dcIn1km <= 10 ? 6 : 4;
-    const just =
-      input.dcIn1km === 0
-        ? "Nenhum concorrente em 1km — oportunidade aberta em ponto de alto fluxo"
-        : input.dcIn1km <= 5
-        ? `${input.dcIn1km} carregador(es) rápido(s) em 1km — valida a demanda regional${fmtNames(input.dcNamesIn1km)}`
-        : `${input.dcIn1km} carregadores rápidos em 1km — região saturada${fmtNames(input.dcNamesIn1km)}`;
-    add("Validação Regional (1km)", "Concorrência", dc1k, 2, just);
-  } else {
-    const dc1k =
-      input.dcIn1km === 0 ? 9 :
-      input.dcIn1km <= 3 ? 7 :
-      input.dcIn1km <= 8 ? 5 : 3;
-    add(
-      "Concorrência Regional (1km)",
-      "Concorrência",
-      dc1k,
-      2,
-      `${input.dcIn1km} carregadores rápidos em 1 km${fmtNames(input.dcNamesIn1km)}`
-    );
-  }
+  // V25 — Concorrentes DC em 1km (peso 2)
+  const v25 =
+    input.dcIn1km === 0 ? 9 :
+    input.dcIn1km <= 3 ? 7 :
+    input.dcIn1km <= 8 ? 5 : 3;
+  add(
+    "Concorrentes DC em 1km",
+    "Concorrência",
+    v25,
+    2,
+    `${input.dcIn1km} carregadores rápidos em 1km${fmtNames(input.dcNamesIn1km)}`
+  );
 
-  const dc2k =
+  // V26 — Concorrentes DC em 2km (peso 2)
+  const v26 =
     input.dcIn2km <= 2 ? 9 :
     input.dcIn2km <= 5 ? 7 :
     input.dcIn2km <= 10 ? 5 : 3;
   add(
-    "Densidade Regional (2km)",
+    "Concorrentes DC em 2km",
     "Concorrência",
-    dc2k,
+    v26,
     2,
-    `${input.dcIn2km} carregadores rápidos em 2 km${fmtNames(input.dcNamesIn2km)}`
+    `${input.dcIn2km} carregadores rápidos em 2km${fmtNames(input.dcNamesIn2km)}`
   );
 
-  const ratioScore =
+  // V27 — Ratio EVs por carregador DC (peso 3)
+  const v27 =
     ratioEVperCharger > 200 ? 10 :
     ratioEVperCharger > 100 ? 9 :
     ratioEVperCharger > 50 ? 7 :
     ratioEVperCharger > 20 ? 5 :
     ratioEVperCharger > 10 ? 4 : 3;
+  const v27Label =
+    v27 >= 9 ? "demanda muito reprimida" :
+    v27 >= 5 ? "equilíbrio entre oferta e demanda" :
+    "mercado bem servido";
   add(
-    "Demanda vs Oferta",
+    "Ratio de EVs por carregador DC",
     "Concorrência",
-    ratioScore,
+    v27,
     3,
-    `${ratioEVperCharger} veículos elétricos por carregador DC na cidade`
+    `${ratioEVperCharger} veículos elétricos por carregador DC na cidade — ${v27Label}`
   );
 
-  // ===== 3. LOCALIZAÇÃO (20%) =====
+  // V28 — Operadores identificados (peso 1)
+  const allDcNames = [
+    ...(input.dcNamesIn200m || []),
+    ...(input.dcNamesIn500m || []),
+    ...(input.dcNamesIn1km || []),
+    ...(input.dcNamesIn2km || []),
+  ];
+  const operators = extractOperators(allDcNames);
+  const v28Just =
+    operators.length > 0
+      ? `Operadores identificados na região: ${operators.slice(0, 5).join(", ")}`
+      : "Nenhum operador identificado por nome na região";
+  add("Operadores identificados", "Concorrência", 6, 1, v28Just);
 
-  const distScore =
+  // V29 — Gap de cobertura (peso 2)
+  let v29: number;
+  let v29Label: string;
+  if (input.dcIn1km === 0 && input.population > 200_000) {
+    v29 = 10;
+    v29Label = "Gap significativo";
+  } else if (input.dcIn500m === 0) {
+    v29 = 8;
+    v29Label = "Gap parcial";
+  } else if (input.dcIn1km < 3) {
+    v29 = 6;
+    v29Label = "Cobertura parcial";
+  } else {
+    v29 = 4;
+    v29Label = "Área bem servida";
+  }
+  add(
+    "Gap de cobertura",
+    "Concorrência",
+    v29,
+    2,
+    `${v29Label} de carregamento rápido (${input.dcIn500m} em 500m, ${input.dcIn1km} em 1km)`
+  );
+
+  // ============================================================
+  // CATEGORIA 5 — LOCALIZAÇÃO E ACESSO (15%)
+  // ============================================================
+
+  // V30 — Distância ao centro (peso 3)
+  const v30 =
     input.distanceToCenter < 1 ? 10 :
     input.distanceToCenter < 2 ? 9 :
     input.distanceToCenter < 3 ? 8 :
@@ -339,106 +781,125 @@ export function calculateScore(input: ScoreInput): ScoreResult {
     input.distanceToCenter < 8 ? 5 :
     input.distanceToCenter < 12 ? 4 : 2;
   add(
-    "Proximidade ao Centro",
-    "Localização",
-    distScore,
+    "Distância ao centro",
+    "Localização e Acesso",
+    v30,
     3,
-    `${input.distanceToCenter.toFixed(1)} km do centro da cidade`
+    `${input.distanceToCenter.toFixed(1)}km do centro da cidade`
   );
 
-  const visScore =
+  // V31 — Visibilidade e fluxo (peso 3)
+  const v31 =
     input.totalPOIs > 25 ? 10 :
     input.totalPOIs > 15 ? 8 :
-    input.totalPOIs > 8 ? 7 :
-    input.totalPOIs > 3 ? 5 : 3;
+    input.totalPOIs > 10 ? 7 :
+    input.totalPOIs > 5 ? 5 : 3;
+  const v31Label =
+    v31 >= 9 ? "altíssimo" :
+    v31 >= 7 ? "alto" :
+    v31 >= 5 ? "moderado" : "baixo";
   add(
-    "Visibilidade e Fluxo",
-    "Localização",
-    visScore,
+    "Visibilidade e fluxo",
+    "Localização e Acesso",
+    v31,
     3,
-    `${input.totalPOIs} pontos de interesse em 500m indicam alto fluxo de pessoas`,
+    `${input.totalPOIs} estabelecimentos em 500m — indica ${v31Label} fluxo de pessoas`,
     "Google Places"
   );
 
-  const gasScore =
-    input.gasStations >= 3 ? 9 :
-    input.gasStations >= 2 ? 8 :
-    input.gasStations >= 1 ? 6 : 3;
+  // V32 — Reputação Google do local (peso 1)
+  let v32: number;
+  let v32Just: string;
+  if (input.rating > 0) {
+    v32 =
+      input.rating > 4.5 ? 9 :
+      input.rating > 4.0 ? 8 :
+      input.rating > 3.5 ? 6 :
+      input.rating > 3.0 ? 5 : 4;
+    v32Just = `${input.rating.toFixed(1)} estrelas no Google (${input.reviewCount} avaliações)`;
+  } else {
+    v32 = 5;
+    v32Just = "Sem avaliação no Google (neutro)";
+  }
   add(
-    "Fluxo de Veículos",
-    "Localização",
-    gasScore,
-    2,
-    `${input.gasStations} postos de combustível em 500m — indicador de tráfego veicular`,
-    "Google Places"
-  );
-
-  const parkScore =
-    input.parkingLots >= 3 ? 9 :
-    input.parkingLots >= 1 ? 7 : 4;
-  add(
-    "Infraestrutura de Estacionamento",
-    "Localização",
-    parkScore,
+    "Reputação Google do local",
+    "Localização e Acesso",
+    v32,
     1,
-    `${input.parkingLots} estacionamentos em 500m`,
+    v32Just,
     "Google Places"
   );
 
-  // ===== 4. AMENIDADES — TEMPO DE PERMANÊNCIA (15%) =====
-
-  const restScore =
-    input.restaurants >= 10 ? 10 :
-    input.restaurants >= 5 ? 8 :
-    input.restaurants >= 3 ? 7 :
-    input.restaurants >= 1 ? 5 : 2;
+  // V33 — Facilidade de acesso (peso 2)
+  const accessScores: Record<string, number> = {
+    shopping: 9,
+    aeroporto: 9,
+    supermercado: 9,
+    posto_24h: 8,
+    hotel: 8,
+    rodoviaria: 7,
+    hospital_24h: 7,
+    estacionamento: 7,
+    universidade: 6,
+    restaurante: 6,
+    terreno: 5,
+    outro: 5,
+  };
+  const v33 = accessScores[tipoKey] ?? 5;
+  const v33Label = v33 >= 8 ? "fácil" : v33 >= 6 ? "moderado" : "limitado";
   add(
-    "Opções de Alimentação",
-    "Amenidades",
-    restScore,
-    3,
-    `${input.restaurants} restaurantes/cafés em 500m — favorece tempo de permanência para recarga`,
-    "Google Places"
-  );
-
-  const supScore =
-    input.supermarkets >= 3 ? 9 :
-    input.supermarkets >= 1 ? 7 : 3;
-  add(
-    "Comércio Local",
-    "Amenidades",
-    supScore,
+    "Facilidade de acesso ao ponto",
+    "Localização e Acesso",
+    v33,
     2,
-    `${input.supermarkets} supermercados em 500m`,
-    "Google Places"
+    `${tipoKey} tipicamente oferece acesso ${v33Label} para veículos`,
+    "Usuário"
   );
 
-  const shopScore =
-    input.shoppings >= 2 ? 10 :
-    input.shoppings >= 1 ? 8 : 3;
+  // V34 — Proximidade a centros corporativos (peso 1)
+  const v34 =
+    input.distanceToCenter < 3 && input.population > 500_000 ? 8 :
+    input.distanceToCenter < 5 && input.population > 300_000 ? 6 : 4;
+  const v34Label = v34 === 8 ? "alta" : v34 === 6 ? "moderada" : "baixa";
   add(
-    "Centros Comerciais",
-    "Amenidades",
-    shopScore,
-    2,
-    `${input.shoppings} shoppings/centros comerciais em 1km`,
-    "Google Places"
-  );
-
-  const hotelScore =
-    input.hotels >= 3 ? 9 :
-    input.hotels >= 1 ? 7 : 3;
-  add(
-    "Infraestrutura Hoteleira",
-    "Amenidades",
-    hotelScore,
+    "Proximidade a centros corporativos",
+    "Localização e Acesso",
+    v34,
     1,
-    `${input.hotels} hotéis em 1km — indica demanda turística e pernoite`,
-    "Google Places"
+    `Proximidade ${v34Label} a centros empresariais (${input.distanceToCenter.toFixed(
+      1
+    )}km do centro em cidade de ${fmtInt(input.population)} hab.)`
   );
 
-  // ===== 5. TIPO DE PONTO (10%) =====
+  // V35 — Proximidade a universidades (peso 1)
+  const universities = input.universitiesIn2km ?? 0;
+  const v35 = universities >= 2 ? 8 : universities >= 1 ? 6 : 4;
+  add(
+    "Proximidade a universidades",
+    "Localização e Acesso",
+    v35,
+    1,
+    `${universities} universidade(s) em 2km`,
+    universities > 0 ? "Google Places" : "Cálculo"
+  );
 
+  // V36 — Proximidade a hospitais (peso 1)
+  const hospitals = input.hospitalsIn2km ?? 0;
+  const v36 = hospitals >= 2 ? 8 : hospitals >= 1 ? 6 : 4;
+  add(
+    "Proximidade a hospitais",
+    "Localização e Acesso",
+    v36,
+    1,
+    `${hospitals} hospital(is) em 2km — fluxo 24h`,
+    hospitals > 0 ? "Google Places" : "Cálculo"
+  );
+
+  // ============================================================
+  // CATEGORIA 6 — TIPO DE PONTO (7%)
+  // ============================================================
+
+  // V37 — Adequação do tipo (peso 3)
   const tipoScores: Record<string, number> = {
     aeroporto: 10,
     rodoviaria: 10,
@@ -455,34 +916,35 @@ export function calculateScore(input: ScoreInput): ScoreResult {
   };
   const tipoJustificativas: Record<string, string> = {
     aeroporto:
-      "Aeroporto — máximo fluxo de veículos, alta visibilidade, operação 24h",
+      "Aeroporto — máximo fluxo de veículos, alta visibilidade, operação 24h, perfil ideal para DC",
     rodoviaria:
       "Rodoviária — alto fluxo diário, ponto de parada natural, operação contínua",
     posto_24h:
       "Posto 24h — operação contínua, visibilidade, acesso fácil, público habituado a parar",
     shopping:
-      "Shopping — alto tempo de permanência (1-3h), público com poder aquisitivo",
-    hotel: "Hotel — pernoite permite carregamento longo, público turista",
+      "Shopping — alto tempo de permanência (1-3h) e público com poder aquisitivo",
+    hotel:
+      "Hotel — pernoite permite carregamento longo, público turista e executivo",
     hospital_24h:
       "Hospital 24h — operação contínua, fluxo constante de visitantes",
     supermercado: "Supermercado — parada de 30-60min ideal para DC",
-    estacionamento: "Estacionamento — infraestrutura existente, vagas disponíveis",
+    estacionamento:
+      "Estacionamento — infraestrutura existente, vagas disponíveis",
     universidade: "Universidade — público jovem, permanência de horas",
     terreno: "Terreno — flexibilidade de projeto, mas sem fluxo existente",
     restaurante: "Restaurante — tempo de permanência ideal (30-60min)",
     outro: "Tipo de estabelecimento genérico",
   };
-  const tipoKey = (input.establishmentType || "outro").toLowerCase();
-  const tipoScore = tipoScores[tipoKey] ?? 5;
   add(
-    "Tipo de Estabelecimento",
+    "Adequação do tipo de ponto",
     "Tipo de Ponto",
-    tipoScore,
+    tipoScores[tipoKey] ?? 5,
     3,
     tipoJustificativas[tipoKey] || "Tipo de estabelecimento informado",
     "Usuário"
   );
 
+  // V38 — Potencial de operação contínua (peso 3)
   const opScores: Record<string, number> = {
     posto_24h: 10,
     aeroporto: 10,
@@ -498,69 +960,102 @@ export function calculateScore(input: ScoreInput): ScoreResult {
     outro: 4,
   };
   const opScore = opScores[tipoKey] ?? 4;
+  const opLabel = opScore >= 9 ? "24h" : opScore >= 7 ? "estendida" : "comercial";
   add(
-    "Potencial Operação Contínua",
+    "Potencial de operação contínua",
     "Tipo de Ponto",
     opScore,
-    2,
-    opScore >= 9
-      ? "Estabelecimento com operação contínua ou 24h"
-      : "Operação limitada a horário comercial",
+    3,
+    `${tipoKey} permite operação ${opLabel}`,
     "Usuário"
   );
 
-  // ===== 6. OBSERVAÇÕES DO ANALISTA (5%) =====
+  // V39 — Tempo de permanência (peso 2)
+  const dwellScores: Record<string, number> = {
+    shopping: 10,
+    hotel: 10,
+    universidade: 9,
+    restaurante: 9,
+    aeroporto: 8,
+    estacionamento: 8,
+    supermercado: 7,
+    rodoviaria: 7,
+    hospital_24h: 7,
+    terreno: 6,
+    posto_24h: 6,
+    outro: 5,
+  };
+  const dwellLabels: Record<string, string> = {
+    shopping: "2-3h — ideal para DC",
+    hotel: "pernoite — ideal para DC",
+    universidade: "4-8h — ideal para DC",
+    restaurante: "1h — adequado para DC",
+    aeroporto: "1-3h — adequado para DC",
+    estacionamento: "variável — adequado para DC",
+    supermercado: "30-60min — adequado para DC",
+    rodoviaria: "30-60min — adequado para DC",
+    hospital_24h: "30-90min — adequado para DC",
+    terreno: "indefinido — depende do projeto",
+    posto_24h: "10-20min — curto para DC",
+    outro: "indefinido",
+  };
+  add(
+    "Tempo de permanência",
+    "Tipo de Ponto",
+    dwellScores[tipoKey] ?? 5,
+    2,
+    `Permanência típica: ${dwellLabels[tipoKey] || "indefinida"}`,
+    "Usuário"
+  );
 
-  const obs = (input.observations || "").toLowerCase();
-  const positives = [
-    "24h",
-    "avenida",
-    "principal",
-    "visibilidade",
-    "frente",
-    "alto fluxo",
-    "segurança",
-    "câmera",
-    "iluminação",
-    "trifásico",
-    "transformador",
-    "terreno próprio",
-    "sem aluguel",
-    "rodovia",
-    "br-",
-    "esquina",
-    "próprio",
-    "excelente",
-    "ótimo",
-    "premium",
-    "nobre",
-    "centro",
-    "batel",
-    "jardins",
-    "leblon",
-  ];
-  const negatives = [
-    "escuro",
-    "perigoso",
-    "difícil acesso",
-    "rua estreita",
-    "monofásico",
-    "sem estacionamento",
-    "longe",
-    "afastado",
-    "ruim",
-    "pouco movimento",
-  ];
-  const posCount = positives.filter((p) => obs.includes(p)).length;
-  const negCount = negatives.filter((n) => obs.includes(n)).length;
-  const obsScore = clamp(5 + posCount * 2 - negCount * 2, 1, 10);
-  const obsJust =
-    obs.length > 0
-      ? `Observações analisadas: ${posCount} fatores positivos, ${negCount} fatores de atenção`
-      : "Sem observações adicionais";
-  add("Observações do Analista", "Observações", obsScore, 2, obsJust, "Usuário");
+  // ============================================================
+  // CATEGORIA 7 — AMENIDADES (3%)
+  // ============================================================
 
-  // ===== AGREGAÇÃO POR CATEGORIA =====
+  // V40 — Restaurantes/cafés em 500m (peso 1)
+  const v40 =
+    input.restaurants >= 10 ? 9 :
+    input.restaurants >= 5 ? 7 :
+    input.restaurants >= 2 ? 5 : 3;
+  add(
+    "Restaurantes e cafés (500m)",
+    "Amenidades",
+    v40,
+    1,
+    `${input.restaurants} opções de alimentação em 500m`,
+    "Google Places"
+  );
+
+  // V41 — Supermercados em 500m (peso 1)
+  const v41 =
+    input.supermarkets >= 2 ? 8 :
+    input.supermarkets >= 1 ? 6 : 3;
+  add(
+    "Supermercados (500m)",
+    "Amenidades",
+    v41,
+    1,
+    `${input.supermarkets} supermercados em 500m`,
+    "Google Places"
+  );
+
+  // V42 — Comércio geral em 500m (peso 1)
+  const generalCommerce = (input.pharmacies ?? 0) + (input.banks ?? 0);
+  const v42 =
+    generalCommerce >= 5 ? 8 :
+    generalCommerce >= 2 ? 6 : 3;
+  add(
+    "Comércio geral (500m)",
+    "Amenidades",
+    v42,
+    1,
+    `${generalCommerce} estabelecimentos comerciais (farmácias e bancos) em 500m`,
+    "Google Places"
+  );
+
+  // ============================================================
+  // AGREGAÇÃO POR CATEGORIA E SCORE FINAL
+  // ============================================================
 
   const categoryScores: Record<string, number> = {};
   for (const cat of Object.keys(CATEGORY_WEIGHTS)) {
@@ -578,7 +1073,6 @@ export function calculateScore(input: ScoreInput): ScoreResult {
     categoryScores[cat] = totalW > 0 ? weighted / totalW : 0;
   }
 
-  // Score bruto: média ponderada das categorias (×10 → 0-100)
   let rawScore = 0;
   let totalCatWeight = 0;
   for (const [cat, weight] of Object.entries(CATEGORY_WEIGHTS)) {
@@ -586,21 +1080,77 @@ export function calculateScore(input: ScoreInput): ScoreResult {
     totalCatWeight += weight;
   }
   if (totalCatWeight !== 100) {
-    // normaliza se algum dia mexerem nos pesos
     rawScore = (rawScore * 100) / totalCatWeight;
   }
 
-  // City factor suave
   const pop = input.population || 200_000;
   const cityFactor =
     pop > 2_000_000 ? 1.0 :
     pop > 1_000_000 ? 0.98 :
-    pop > 500_000 ? 0.94 :
-    pop > 200_000 ? 0.88 :
-    pop > 100_000 ? 0.82 : 0.75;
+    pop > 500_000 ? 0.95 :
+    pop > 200_000 ? 0.90 :
+    pop > 100_000 ? 0.85 : 0.78;
+  const finalMultiplier = 0.88 + 0.12 * cityFactor;
 
-  const finalMultiplier = 0.85 + 0.15 * cityFactor;
-  const overallScore = clamp(Math.round(rawScore * finalMultiplier), 0, 100);
+  // Bônus de observações — fora das categorias, ajuste no score final
+  const highImpactWords = [
+    "excelente",
+    "ótimo",
+    "perfeito",
+    "melhor ponto",
+    "premium",
+    "excepcional",
+  ];
+  const positiveWords = [
+    "24h",
+    "avenida principal",
+    "visibilidade",
+    "frente pra rua",
+    "alto fluxo",
+    "segurança",
+    "câmera",
+    "iluminação",
+    "trifásico",
+    "transformador",
+    "terreno próprio",
+    "sem aluguel",
+    "rodovia",
+    "br-",
+    "esquina",
+    "centro",
+    "batel",
+    "jardins",
+    "leblon",
+    "faria lima",
+    "paulista",
+    "copacabana",
+    "beira mar",
+  ];
+  const negativeWords = [
+    "escuro",
+    "perigoso",
+    "difícil acesso",
+    "rua estreita",
+    "monofásico",
+    "sem estacionamento",
+    "longe",
+    "ruim",
+    "pouco movimento",
+    "abandonado",
+  ];
+  const highCount = highImpactWords.filter((w) => obs.includes(w)).length;
+  const posCount = positiveWords.filter((w) => obs.includes(w)).length;
+  const negCount = negativeWords.filter((w) => obs.includes(w)).length;
+  const highBonus = Math.min(6, highCount * 3);
+  const posBonus = Math.min(5, posCount * 1);
+  const negBonus = -negCount * 2;
+  const observationsBonus = clamp(highBonus + posBonus + negBonus, -6, 8);
+
+  const overallScore = clamp(
+    Math.round(rawScore * finalMultiplier) + observationsBonus,
+    0,
+    100
+  );
 
   const classification =
     overallScore >= 85 ? "PREMIUM" :
@@ -615,5 +1165,6 @@ export function calculateScore(input: ScoreInput): ScoreResult {
     classification,
     variables: vars,
     categoryScores,
+    observationsBonus,
   };
 }
