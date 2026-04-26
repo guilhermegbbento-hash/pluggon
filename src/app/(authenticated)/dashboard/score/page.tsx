@@ -85,7 +85,7 @@ interface ScoreResult {
     best_total: { value: number; source: string };
     best_dc: { value: number; source: string };
   };
-  cost_breakdown: CostBreakdown;
+  cost_breakdown?: CostBreakdown;
 }
 
 // ---------- Constants ----------
@@ -121,21 +121,21 @@ const CLASSIFICATION_CONFIG: Record<
 };
 
 const CATEGORY_LABELS: Record<string, string> = {
-  CIDADE: "Cidade",
-  CONCORRENCIA: "Concorrência",
-  ENTORNO: "Entorno",
-  LOCALIZACAO: "Localização",
-  TIPO: "Tipo de Estabelecimento",
-  OBSERVACOES: "Observações",
+  Demanda: "Demanda",
+  Concorrência: "Concorrência",
+  Localização: "Localização",
+  Amenidades: "Amenidades",
+  "Tipo de Ponto": "Tipo de Ponto",
+  Observações: "Observações",
 };
 
 const CATEGORY_ICONS: Record<string, string> = {
-  CIDADE: "🏙️",
-  CONCORRENCIA: "🏁",
-  ENTORNO: "🏪",
-  LOCALIZACAO: "📍",
-  TIPO: "🏢",
-  OBSERVACOES: "📝",
+  Demanda: "🏙️",
+  Concorrência: "🏁",
+  Localização: "📍",
+  Amenidades: "🏪",
+  "Tipo de Ponto": "🏢",
+  Observações: "📝",
 };
 
 const SOURCE_BADGE: Record<ScoreSource, { bg: string; fg: string; label: string }> = {
@@ -186,64 +186,40 @@ function getScoreColor(score: number): string {
   return "#F44336";
 }
 
-// Recompute observation variable client-side (zero API cost)
+// Recompute observation variable client-side (zero API cost) — espelha scoring-engine.ts
 function recomputeObservationScore(text: string): {
   score: number;
   justification: string;
 } {
   const obs = (text || "").toLowerCase();
-  let score = 5;
-  const matchedPos: string[] = [];
-  const matchedNeg: string[] = [];
-  const positivas = [
-    "rodovia", "br-", "transformador", "energia trifásica", "trifasica", "trifásica",
-    "estacionamento", "movimento", "fluxo", "24h", "24 horas", "vagas", "câmera",
-    "camera", "segurança", "seguranca", "iluminação", "iluminacao", "avenida principal",
-    "esquina", "frente", "visível", "visivel", "próprio", "proprio", "parceria",
-    "subestação", "subestacao",
+  const positives = [
+    "24h", "avenida", "principal", "visibilidade", "frente", "alto fluxo",
+    "segurança", "câmera", "iluminação", "trifásico", "transformador",
+    "terreno próprio", "sem aluguel", "rodovia", "br-", "esquina", "próprio",
+    "excelente", "ótimo", "premium", "nobre", "centro", "batel", "jardins", "leblon",
   ];
-  const negativas = [
-    "rua sem saída", "sem saida", "violência", "violencia", "perigoso", "abandonado",
-    "alagamento", "enchente", "rede precária", "precaria", "monofásico", "monofasico",
-    "sem energia", "obras", "interditado", "longe", "isolado", "deserto",
+  const negatives = [
+    "escuro", "perigoso", "difícil acesso", "rua estreita", "monofásico",
+    "sem estacionamento", "longe", "afastado", "ruim", "pouco movimento",
   ];
-  for (const k of positivas) {
-    if (obs.includes(k)) {
-      score += 0.7;
-      matchedPos.push(k);
-    }
-  }
-  for (const k of negativas) {
-    if (obs.includes(k)) {
-      score -= 1.0;
-      matchedNeg.push(k);
-    }
-  }
-  score = Math.max(0, Math.min(10, Math.round(score * 10) / 10));
-  let justification: string;
-  if (!obs.trim()) {
-    justification = "Sem observações fornecidas";
-  } else {
-    const parts: string[] = [];
-    if (matchedPos.length)
-      parts.push(`+${matchedPos.length} positivas: ${matchedPos.slice(0, 3).join(", ")}`);
-    if (matchedNeg.length)
-      parts.push(`-${matchedNeg.length} negativas: ${matchedNeg.slice(0, 3).join(", ")}`);
-    justification = parts.length
-      ? parts.join(" | ")
-      : "Observação fornecida sem palavras-chave reconhecidas";
-  }
+  const posCount = positives.filter((p) => obs.includes(p)).length;
+  const negCount = negatives.filter((n) => obs.includes(n)).length;
+  const score = Math.max(1, Math.min(10, 5 + posCount * 2 - negCount * 2));
+  const justification = obs.length > 0
+    ? `Observações analisadas: ${posCount} fatores positivos, ${negCount} fatores de atenção`
+    : "Sem observações adicionais";
   return { score, justification };
 }
 
 // Recompute final score from current variables (used after observation edit)
+// Espelha scoring-engine.ts (Demanda 25, Concorrência 25, Localização 20, Amenidades 15, Tipo 10, Observações 5)
 const CATEGORY_WEIGHTS: Record<string, number> = {
-  CIDADE: 0.15,
-  CONCORRENCIA: 0.20,
-  ENTORNO: 0.18,
-  LOCALIZACAO: 0.22,
-  TIPO: 0.17,
-  OBSERVACOES: 0.08,
+  Demanda: 0.25,
+  Concorrência: 0.25,
+  Localização: 0.20,
+  Amenidades: 0.15,
+  "Tipo de Ponto": 0.10,
+  Observações: 0.05,
 };
 
 function recomputeOverall(
@@ -617,7 +593,7 @@ function ScorePageInner() {
     const recomp = recomputeObservationScore(merged);
 
     const newVars = result.scoring_variables.map((v) =>
-      v.category === "OBSERVACOES"
+      v.category === "Observações"
         ? { ...v, score: recomp.score, justification: recomp.justification }
         : v
     );
@@ -638,7 +614,7 @@ function ScorePageInner() {
   // Group + sort variables
   const sortedVariables = useMemo(() => {
     if (!result) return [];
-    const order = ["CIDADE", "CONCORRENCIA", "ENTORNO", "LOCALIZACAO", "TIPO", "OBSERVACOES"];
+    const order = ["Demanda", "Concorrência", "Localização", "Amenidades", "Tipo de Ponto", "Observações"];
     return [...result.scoring_variables].sort((a, b) => {
       const da = order.indexOf(a.category);
       const db = order.indexOf(b.category);
@@ -885,7 +861,7 @@ function ScorePageInner() {
             <div className="rounded-lg border border-[#30363D] bg-[#161B22] p-4">
               <p className="text-xs text-[#8B949E]">Concorrentes 500m</p>
               <p className="mt-1 text-xl font-bold text-white">
-                {result.scoring_variables.find((v) => v.name === "Concorrentes em 500m")?.score ?? "—"}
+                {result.scoring_variables.find((v) => v.name === "Concorrência Próxima (500m)")?.score ?? "—"}
                 <span className="ml-1 text-sm font-normal text-[#8B949E]">/10</span>
               </p>
             </div>
@@ -1136,7 +1112,7 @@ function ScorePageInner() {
           )}
 
           {/* Cost Card — admin only */}
-          {canSeeCost && (
+          {canSeeCost && result.cost_breakdown && (
           <div className="rounded-xl border border-[#30363D] bg-[#161B22] p-5">
             <h3 className="mb-3 text-base font-semibold text-white">💰 Custo desta análise</h3>
             <div className="grid gap-3 md:grid-cols-3">

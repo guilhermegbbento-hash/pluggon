@@ -27,3 +27,26 @@ ALTER TABLE usage_logs DISABLE ROW LEVEL SECURITY;
 CREATE INDEX IF NOT EXISTS idx_usage_logs_user_id ON usage_logs (user_id);
 CREATE INDEX IF NOT EXISTS idx_usage_logs_module ON usage_logs (module);
 CREATE INDEX IF NOT EXISTS idx_usage_logs_created_at ON usage_logs (created_at);
+
+-- 3. ev_chargers — banco próprio de carregadores que cresce a cada análise
+CREATE TABLE IF NOT EXISTS ev_chargers (
+  id            serial PRIMARY KEY,
+  city          text NOT NULL,
+  state         text NOT NULL,
+  name          text,
+  address       text,
+  lat           decimal,
+  lng           decimal,
+  power_kw      decimal DEFAULT 0,
+  charger_type  text DEFAULT 'unknown',
+  connector     text,
+  operator      text,
+  source        text,
+  verified      boolean DEFAULT false,
+  created_at    timestamptz DEFAULT now(),
+  updated_at    timestamptz DEFAULT now()
+);
+ALTER TABLE ev_chargers DISABLE ROW LEVEL SECURITY;
+CREATE INDEX IF NOT EXISTS idx_ev_chargers_city ON ev_chargers (city);
+CREATE INDEX IF NOT EXISTS idx_ev_chargers_location ON ev_chargers (lat, lng);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ev_chargers_unique ON ev_chargers (lat, lng, name);

@@ -1,22 +1,25 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@/lib/supabase/server";
-import {
-  getCachedOrFetch,
-  classifyCompetitors,
-  countNearby,
-} from "@/lib/competitors";
-import type { CompetitorStation } from "@/lib/competitors";
 import { calculateScore } from "@/lib/scoring-engine";
 import type { ScoreInput } from "@/lib/scoring-engine";
 import { logUsage } from "@/lib/usage-logger";
 import { getABVEData } from "@/lib/abve-real-data";
+import {
+  populateChargersFromGoogle,
+  enrichWithOpenChargeMap,
+  enrichWithCarregados,
+  enrichWithPlugShare,
+  cityHasFreshChargers,
+  getChargersNearPoint,
+} from "@/lib/charger-database";
 
 export const maxDuration = 300;
 
 const anthropic = new Anthropic();
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY || "";
+const ADMIN_EMAIL = "guilhermegbbento@gmail.com";
 
-// Pricing constants (mirror usage-logger)
+// Pricing
 const CLAUDE_INPUT_COST_PER_TOKEN = 0.003 / 1000;
 const CLAUDE_OUTPUT_COST_PER_TOKEN = 0.015 / 1000;
 const GOOGLE_PLACES_COST_PER_QUERY = 0.032;
@@ -245,20 +248,27 @@ interface ClaudeTextResult {
   tokensOut: number;
 }
 
-async function generateAnalysisText(
-  overallScore: number,
-  classification: string,
-  city: string,
-  state: string,
-  establishmentType: string,
-  observations: string,
-  population: number | null,
-  totalDC: number,
-  evsSold: number | null,
-  distanceKm: number,
-  competitorsIn200m: number,
-  totalPoisIn500m: number
-): Promise<ClaudeTextResult> {
+async function generateAnalysisText(args: {
+  overallScore: number;
+  classification: string;
+  city: string;
+  state: string;
+  population: number;
+  gdpPerCapita: number;
+  dcInCity: number;
+  evsCity: number;
+  establishmentType: string;
+  distanceKm: number;
+  dcIn200m: number;
+  dcIn500m: number;
+  dcIn1km: number;
+  dcIn2km: number;
+  restaurants: number;
+  supermarkets: number;
+  gasStations: number;
+  totalPOIs: number;
+  observations: string;
+}): Promise<ClaudeTextResult> {
   const empty: ClaudeTextResult = {
     strengths: [],
     weaknesses: [],
@@ -267,41 +277,41 @@ async function generateAnalysisText(
     tokensOut: 0,
   };
 
-  const popStr = population != null ? `${population.toLocaleString("pt-BR")} habitantes` : "população não informada";
-  const evsStr = evsSold != null ? `${evsSold.toLocaleString("pt-BR")} veículos elétricos` : "número de veículos elétricos não informado";
-  const dcStr = totalDC > 0 ? `${totalDC} carregadores rápidos` : "número de carregadores rápidos não informado";
-
-  const systemPrompt = `Você é a PLUGGON, plataforma de inteligência para eletromobilidade no Brasil.
+  const systemPrompt = `Você é analista de mercado da PLUGGON, plataforma de inteligência para eletromobilidade no Brasil.
 
 REGRAS INVIOLÁVEIS:
-- O score JÁ FOI calculado pelo sistema. NUNCA altere, comente ou questione o score.
-- NÃO invente dados. NÃO mencione números que não foram fornecidos.
-- NÃO recomende potência de carregador. Não fale "DC 80kW", "150kW", "50kW", etc.
-- NÃO diga "apenas X carregadores" se não tem certeza.
-- Use linguagem profissional de relatório.
+- Gere relatório profissional baseado APENAS nos dados fornecidos.
+- Nunca invente dados.
+- Nunca recomende potência de carregador (não diga "DC 80kW", "150kW", "50kW", etc).
+- Nunca questione, altere ou comente o score (já foi calculado pelo sistema).
+- Linguagem de relatório executivo, sem emojis.
 - Cada bullet com no máximo 22 palavras e referenciando pelo menos um dado real fornecido.
 - Responda APENAS com JSON válido, sem markdown, sem texto extra.`;
 
-  const userPrompt = `Score calculado: ${overallScore}/100 (${classification}).
-Dados da cidade: ${popStr}, ${dcStr}, ${evsStr}.
-Dados do ponto: ${establishmentType}, ${distanceKm.toFixed(1)}km do centro, ${competitorsIn200m} concorrentes diretos em 200m, ${totalPoisIn500m} pontos de interesse em 500m.
-Observações do usuário: ${observations || "(nenhuma)"}
-Cidade/UF: ${city}/${state}.
+  const userPrompt = `Score: ${args.overallScore}/100 (${args.classification}).
 
-Gere 3-5 pontos fortes e 3-5 pontos de atenção baseado APENAS nesses dados.
-REGRAS: NÃO invente dados. NÃO recomende potência de carregador. NÃO mencione números que não foram fornecidos. NÃO diga "apenas X carregadores" se não tem certeza. Use linguagem profissional de relatório.
+Cidade: ${args.city}/${args.state}, ${args.population.toLocaleString("pt-BR")} habitantes, PIB per capita R$ ${Math.round(args.gdpPerCapita).toLocaleString("pt-BR")}.
+Carregadores DC na cidade: ${args.dcInCity}. EVs na cidade: ${args.evsCity.toLocaleString("pt-BR")}.
+
+Ponto: ${args.establishmentType} a ${args.distanceKm.toFixed(1)} km do centro.
+Concorrentes DC: ${args.dcIn200m} em 200m, ${args.dcIn500m} em 500m, ${args.dcIn1km} em 1km, ${args.dcIn2km} em 2km.
+POIs em 500m: ${args.restaurants} restaurantes, ${args.supermarkets} supermercados, ${args.gasStations} postos, ${args.totalPOIs} no total.
+
+Observações do analista: ${args.observations || "(nenhuma)"}
+
+Gere PONTOS FORTES (3-5 itens) e PONTOS DE ATENÇÃO (3-5 itens) com base APENAS nesses dados.
 
 Retorne SOMENTE o JSON:
 {
   "strengths": ["bullet 1", "bullet 2", "bullet 3"],
   "weaknesses": ["bullet 1", "bullet 2", "bullet 3"],
-  "recommendation": "1-2 frases de recomendação de negócio com base nos dados (sem potência)."
+  "recommendation": "1-2 frases de recomendação executiva, sem mencionar potência de carregador."
 }`;
 
   try {
     const message = await anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
-      max_tokens: 1024,
+      max_tokens: 1500,
       system: systemPrompt,
       messages: [{ role: "user", content: userPrompt }],
     });
@@ -314,7 +324,10 @@ Retorne SOMENTE o JSON:
       return { ...empty, tokensIn, tokensOut };
     }
 
-    let raw = textBlock.text.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
+    let raw = textBlock.text
+      .replace(/```json\s*/gi, "")
+      .replace(/```\s*/gi, "")
+      .trim();
     const start = raw.indexOf("{");
     if (start > 0) raw = raw.substring(start);
 
@@ -335,185 +348,6 @@ Retorne SOMENTE o JSON:
     console.error("score-point: erro Claude:", err instanceof Error ? err.message : err);
     return empty;
   }
-}
-
-// ---------- Cross-check de fontes para concorrentes / DC ----------
-
-interface CrossCheckSource {
-  source: string;
-  total: number | null;
-  dc: number | null;
-  status: "ok" | "partial" | "unavailable";
-  details: string;
-}
-
-interface CrossCheckResult {
-  totalChargers: number;
-  totalDC: number;
-  bestTotalSource: string;
-  bestDCSource: string;
-  sources: CrossCheckSource[];
-}
-
-async function crossCheckCompetitors(
-  city: string,
-  state: string,
-  lat: number,
-  lng: number,
-  googleResults: CompetitorStation[]
-): Promise<CrossCheckResult> {
-  const sources: CrossCheckSource[] = [];
-
-  // FONTE 1: ABVE (dataset oficial fev/2026)
-  const abve = getABVEData(city, state);
-  if (abve) {
-    sources.push({
-      source: "ABVE fev/2026",
-      total: abve.total,
-      dc: abve.dc,
-      status: "ok",
-      details: "Dado oficial",
-    });
-  } else {
-    sources.push({
-      source: "ABVE fev/2026",
-      total: null,
-      dc: null,
-      status: "unavailable",
-      details: "Cidade fora do dataset",
-    });
-  }
-
-  // FONTE 2: Google Places (já buscado upstream — só relata o total)
-  sources.push({
-    source: "Google Places",
-    total: googleResults.length,
-    dc: null,
-    status: "partial",
-    details: "Tipo DC/AC não identificável",
-  });
-
-  // FONTE 3: OpenChargeMap
-  try {
-    const ocmUrl =
-      `https://api.openchargemap.io/v3/poi/?output=json&countrycode=BR&latitude=${lat}` +
-      `&longitude=${lng}&distance=50&distanceunit=KM&maxresults=500&compact=true&verbose=false` +
-      `&key=e7aff4db-e534-4269-8329-00440329ed09`;
-    const ocmRes = await fetch(ocmUrl, { signal: AbortSignal.timeout(10000) });
-    if (ocmRes.ok) {
-      const ocmData = await ocmRes.json();
-      if (Array.isArray(ocmData)) {
-        const ocmDC = ocmData.filter(
-          (s: { Connections?: { PowerKW?: number }[] }) =>
-            s.Connections?.some((c) => typeof c.PowerKW === "number" && c.PowerKW >= 20)
-        ).length;
-        sources.push({
-          source: "OpenChargeMap",
-          total: ocmData.length,
-          dc: ocmDC,
-          status: "ok",
-          details: `${ocmDC} DC confirmados com potência ≥20kW`,
-        });
-      } else {
-        sources.push({
-          source: "OpenChargeMap",
-          total: null,
-          dc: null,
-          status: "unavailable",
-          details: "Resposta inesperada",
-        });
-      }
-    } else {
-      sources.push({
-        source: "OpenChargeMap",
-        total: null,
-        dc: null,
-        status: "unavailable",
-        details: `HTTP ${ocmRes.status}`,
-      });
-    }
-  } catch (err) {
-    console.log("OpenChargeMap erro (ignorando):", err);
-    sources.push({
-      source: "OpenChargeMap",
-      total: null,
-      dc: null,
-      status: "unavailable",
-      details: "Falha na consulta",
-    });
-  }
-
-  // FONTE 4: carregados.com.br (scrape do total)
-  try {
-    const crrUrl = `https://carregados.com.br/estacoes?cidade=${encodeURIComponent(city)}`;
-    const crrRes = await fetch(crrUrl, {
-      headers: { "User-Agent": "Mozilla/5.0" },
-      signal: AbortSignal.timeout(8000),
-    });
-    if (crrRes.ok) {
-      const html = await crrRes.text();
-      const match =
-        html.match(/(\d+)\s*eletropostos?\s*(?:encontrados?|em)/i) ||
-        html.match(/Encontramos\s*(\d+)/i) ||
-        html.match(/conta com (\d+) eletropostos/i) ||
-        html.match(/total[:\s]*(\d+)/i);
-      if (match) {
-        sources.push({
-          source: "carregados.com.br",
-          total: parseInt(match[1], 10),
-          dc: null,
-          status: "partial",
-          details: "Total verificado no site",
-        });
-      } else {
-        sources.push({
-          source: "carregados.com.br",
-          total: null,
-          dc: null,
-          status: "unavailable",
-          details: "Total não encontrado no HTML",
-        });
-      }
-    } else {
-      sources.push({
-        source: "carregados.com.br",
-        total: null,
-        dc: null,
-        status: "unavailable",
-        details: `HTTP ${crrRes.status}`,
-      });
-    }
-  } catch (err) {
-    console.log("carregados.com.br erro (ignorando):", err);
-    sources.push({
-      source: "carregados.com.br",
-      total: null,
-      dc: null,
-      status: "unavailable",
-      details: "Falha na consulta",
-    });
-  }
-
-  // Pegar o MAIOR número verificado de cada fonte
-  const totals = sources.filter((s) => s.total != null) as Array<
-    CrossCheckSource & { total: number }
-  >;
-  const dcs = sources.filter((s) => s.dc != null && s.dc > 0) as Array<
-    CrossCheckSource & { dc: number }
-  >;
-
-  const bestTotal = totals.length ? Math.max(...totals.map((t) => t.total)) : 0;
-  const bestDC = dcs.length ? Math.max(...dcs.map((d) => d.dc)) : 0;
-  const bestTotalSource = totals.find((t) => t.total === bestTotal)?.source ?? "estimativa";
-  const bestDCSource = dcs.find((d) => d.dc === bestDC)?.source ?? "estimativa";
-
-  return {
-    totalChargers: bestTotal,
-    totalDC: bestDC,
-    bestTotalSource,
-    bestDCSource,
-    sources,
-  };
 }
 
 // ---------- Main handler ----------
@@ -544,7 +378,7 @@ export async function POST(request: Request) {
 
     let googleQueriesUsed = 0;
 
-    // 1. Geocode
+    // 1. Geocode (endereço ou lat/lng)
     let geo: { lat: number; lng: number; city: string; state: string } | null = null;
     if (typeof providedLat === "number" && typeof providedLng === "number") {
       let city = "";
@@ -581,104 +415,15 @@ export async function POST(request: Request) {
       );
     }
 
+    const supabase = await createClient();
+
     // 2. Buscar dados ABVE da cidade
     const abve = getABVEData(geo.city, geo.state);
 
-    // 3. IBGE (em paralelo com tudo abaixo)
+    // 3. IBGE em paralelo com tudo abaixo
     const ibgePromise = fetchIBGEData(geo.city, geo.state);
 
-    // 4. Concorrentes via cache (Google Places se cache miss — competitors.ts usa 5 queries)
-    const supabase = await createClient();
-    const competitorsResult = await getCachedOrFetch(
-      geo.city,
-      geo.state,
-      geo.lat,
-      geo.lng,
-      supabase
-    );
-    const allCompetitors = competitorsResult.competitors;
-    const cacheHit = !!competitorsResult.queryStats?.cache;
-    if (!cacheHit) {
-      // 5 queries fixas (queries de competitors.ts) — independente de subareas extras
-      googleQueriesUsed += 5;
-    }
-
-    const chargerInfo = classifyCompetitors(allCompetitors);
-    // Concorrência por raio: SOMENTE Google Places (única fonte com lat/lng confiável e atualizada)
-    const googleOnly = allCompetitors.filter((c) => c.source === "Google Places");
-    const competitorsIn200m = countNearby(geo.lat, geo.lng, googleOnly, 200);
-    const competitorsIn500m = countNearby(geo.lat, geo.lng, googleOnly, 500);
-    const competitorsIn1km = countNearby(geo.lat, geo.lng, googleOnly, 1000);
-    const competitorsIn2km = countNearby(geo.lat, geo.lng, googleOnly, 2000);
-
-    // Cruzamento de fontes (ABVE + Google Places + OpenChargeMap + carregados.com.br)
-    const crossCheck = await crossCheckCompetitors(
-      geo.city,
-      geo.state,
-      geo.lat,
-      geo.lng,
-      googleOnly
-    );
-
-    // 5. POIs no raio (9 categorias)
-    const [
-      restaurants,
-      pharmacies,
-      gasStations,
-      supermarkets,
-      shoppings,
-      hospitals,
-      universities,
-      hotels,
-      parking,
-    ] = await Promise.all([
-      searchNearbyPlaces(geo.lat, geo.lng, "restaurante", "restaurante", 500),
-      searchNearbyPlaces(geo.lat, geo.lng, "farmácia", "farmacia", 500),
-      searchNearbyPlaces(geo.lat, geo.lng, "posto de gasolina", "posto", 500),
-      searchNearbyPlaces(geo.lat, geo.lng, "supermercado", "supermercado", 500),
-      searchNearbyPlaces(geo.lat, geo.lng, "shopping center", "shopping", 1000),
-      searchNearbyPlaces(geo.lat, geo.lng, "hospital", "hospital", 1000),
-      searchNearbyPlaces(geo.lat, geo.lng, "universidade", "universidade", 1000),
-      searchNearbyPlaces(geo.lat, geo.lng, "hotel", "hotel", 1000),
-      searchNearbyPlaces(geo.lat, geo.lng, "estacionamento", "estacionamento", 500),
-    ]);
-    googleQueriesUsed += 9;
-
-    // Validar o ponto (rating/reviews)
-    let pointRating = 0;
-    let pointReviews = 0;
-    if (GOOGLE_MAPS_API_KEY && address) {
-      try {
-        const placeRes = await fetch(
-          "https://places.googleapis.com/v1/places:searchText",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-Goog-Api-Key": GOOGLE_MAPS_API_KEY,
-              "X-Goog-FieldMask": "places.rating,places.userRatingCount",
-            },
-            body: JSON.stringify({
-              textQuery: address,
-              maxResultCount: 1,
-            }),
-          }
-        );
-        googleQueriesUsed += 1;
-        if (placeRes.ok) {
-          const placeData = await placeRes.json();
-          const place = placeData.places?.[0];
-          if (place) {
-            pointRating = place.rating || 0;
-            pointReviews = place.userRatingCount || 0;
-          }
-        }
-      } catch {
-        // continue
-      }
-    }
-
-    // Geocode do centro da cidade
+    // 4. Geocode do centro da cidade (para distância)
     let cityLat = geo.lat;
     let cityLng = geo.lng;
     if (GOOGLE_MAPS_API_KEY && geo.city) {
@@ -700,21 +445,94 @@ export async function POST(request: Request) {
       }
     }
 
-    const ibgeData = await ibgePromise;
+    // 5. Verificar se a cidade já tem carregadores frescos no banco
+    const hasFresh = await cityHasFreshChargers(geo.city, supabase, 7);
+    if (!hasFresh) {
+      // Popular o banco. Cada fonte que funcionar enriquece; se falhar, ignora.
+      const gQueries = await populateChargersFromGoogle(
+        geo.city,
+        geo.state,
+        geo.lat,
+        geo.lng,
+        supabase
+      );
+      googleQueriesUsed += gQueries;
+      await enrichWithOpenChargeMap(geo.city, geo.lat, geo.lng, supabase);
+      await enrichWithCarregados(geo.city, geo.state, supabase);
+      await enrichWithPlugShare(geo.city, geo.lat, geo.lng, supabase);
+    }
 
-    // Dedup POIs
+    // 6. POIs em paralelo (500m e 1km)
+    const [
+      restaurants,
+      supermarkets,
+      gasStations,
+      shoppings,
+      hotels,
+      parkingLots,
+    ] = await Promise.all([
+      searchNearbyPlaces(geo.lat, geo.lng, "restaurante", "restaurante", 500),
+      searchNearbyPlaces(geo.lat, geo.lng, "supermercado", "supermercado", 500),
+      searchNearbyPlaces(geo.lat, geo.lng, "posto de gasolina", "posto", 500),
+      searchNearbyPlaces(geo.lat, geo.lng, "shopping center", "shopping", 1000),
+      searchNearbyPlaces(geo.lat, geo.lng, "hotel", "hotel", 1000),
+      searchNearbyPlaces(geo.lat, geo.lng, "estacionamento", "estacionamento", 500),
+    ]);
+    googleQueriesUsed += 6;
+
+    // Validar rating do ponto (se endereço foi fornecido)
+    let pointRating = 0;
+    let pointReviews = 0;
+    if (GOOGLE_MAPS_API_KEY && address) {
+      try {
+        const placeRes = await fetch(
+          "https://places.googleapis.com/v1/places:searchText",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Goog-Api-Key": GOOGLE_MAPS_API_KEY,
+              "X-Goog-FieldMask": "places.rating,places.userRatingCount",
+            },
+            body: JSON.stringify({ textQuery: address, maxResultCount: 1 }),
+          }
+        );
+        googleQueriesUsed += 1;
+        if (placeRes.ok) {
+          const placeData = await placeRes.json();
+          const place = placeData.places?.[0];
+          if (place) {
+            pointRating = place.rating || 0;
+            pointReviews = place.userRatingCount || 0;
+          }
+        }
+      } catch {
+        // continue
+      }
+    }
+
+    // 7. Buscar carregadores próximos do banco
+    const chargersNear = await getChargersNearPoint(
+      geo.lat,
+      geo.lng,
+      geo.city,
+      supabase
+    );
+
+    const ibgeData = await ibgePromise;
+    const population = ibgeData.population ?? 0;
+    const gdpPerCapita = ibgeData.gdp_per_capita ?? 0;
+
+    // POIs deduplicados em 500m (para variável "Visibilidade e Fluxo")
     const allPOIs: NearbyPlace[] = [];
     const seen = new Set<string>();
     for (const list of [
       restaurants,
-      pharmacies,
-      gasStations,
       supermarkets,
+      gasStations,
       shoppings,
-      hospitals,
-      universities,
       hotels,
-      parking,
+      parkingLots,
     ]) {
       for (const p of list) {
         const key = `${p.lat.toFixed(4)},${p.lng.toFixed(4)}`;
@@ -726,90 +544,78 @@ export async function POST(request: Request) {
     }
     const totalPoisIn500m = allPOIs.filter((p) => p.distance_m <= 500).length;
 
-    // 6. Calcular score (100% código)
+    // Distância ao centro
+    const distanceKm =
+      haversineDistance(geo.lat, geo.lng, cityLat, cityLng) / 1000;
+
+    // 8. Calcular score
     const scoreInput: ScoreInput = {
-      city: geo.city,
-      state: geo.state,
-      population: ibgeData.population,
-      gdpPerCapita: ibgeData.gdp_per_capita,
-      // DC e total: maior valor verificado entre ABVE / OCM / carregados.com.br
-      abveDcCity: crossCheck.totalDC > 0 ? crossCheck.totalDC : abve?.dc ?? null,
-      abveTotalCity: crossCheck.totalChargers > 0 ? crossCheck.totalChargers : abve?.total ?? null,
-      abveEvsSold: abve?.evsSold ?? null,
-      competitorsIn200m,
-      competitorsIn500m,
-      competitorsIn1km,
-      competitorsIn2km,
-      restaurantsIn500m: restaurants.length,
-      supermercadosIn500m: supermarkets.length,
-      farmaciasIn500m: pharmacies.length,
-      shoppingsIn1km: shoppings.length,
-      hospitaisIn1km: hospitals.length,
-      postosIn500m: gasStations.length,
-      hoteisIn1km: hotels.length,
-      totalPoisIn500m,
-      lat: geo.lat,
-      lng: geo.lng,
-      cityLat,
-      cityLng,
+      population,
+      gdpPerCapita,
+      abveDC: abve?.dc ?? 0,
+      abveTotal: abve?.total ?? 0,
+      abveEVs: abve?.evsSold ?? 0,
+      dcIn200m: chargersNear.dcIn200m,
+      dcIn500m: chargersNear.dcIn500m,
+      dcIn1km: chargersNear.dcIn1km,
+      dcIn2km: chargersNear.dcIn2km,
+      dcInCity: chargersNear.dcInCity,
+      totalInCity: chargersNear.totalInCity,
+      restaurants: restaurants.length,
+      supermarkets: supermarkets.length,
+      gasStations: gasStations.length,
+      shoppings: shoppings.length,
+      hotels: hotels.length,
+      parkingLots: parkingLots.length,
+      totalPOIs: totalPoisIn500m,
+      distanceToCenter: distanceKm,
       rating: pointRating,
-      reviews: pointReviews,
+      reviewCount: pointReviews,
       establishmentType: establishment_type || "outro",
-      is24h: ["posto_24h", "hospital_24h", "farmacia_24h", "aeroporto"].includes(
-        establishment_type || ""
-      ),
       observations: establishment_name || "",
     };
 
     const scoreResult = calculateScore(scoreInput);
 
-    // 6.1. Reescrever justificativa das variáveis de DC com cruzamento de fontes
-    const sourcesText = crossCheck.sources
-      .map((s) => {
-        if (s.total == null && s.dc == null) return `${s.source} indisponível`;
-        const parts: string[] = [];
-        if (s.total != null) parts.push(`${s.total} total`);
-        if (s.dc != null) parts.push(`${s.dc} DC`);
-        return `${s.source} ${parts.join("/")}`;
-      })
-      .join(", ");
-    const moreRecentThanAbve =
-      !!abve &&
-      crossCheck.bestDCSource !== "ABVE fev/2026" &&
-      crossCheck.totalDC > abve.dc;
-    const dcJustification =
-      `${crossCheck.totalDC} DC (${crossCheck.bestDCSource})` +
-      (moreRecentThanAbve ? " — dado mais recente que ABVE fev/2026" : "") +
-      `. Verificado: ${sourcesText}`;
-    for (const v of scoreResult.variables) {
-      if (
-        v.name === "Total Carregadores DC na Cidade" ||
-        v.name === "DC na Cidade (Saturação)"
-      ) {
-        v.justification = dcJustification;
-      }
-    }
-
-    // 7. Claude para texto APENAS
-    const distanceKm = haversineDistance(geo.lat, geo.lng, cityLat, cityLng) / 1000;
-    const totalDcForPrompt =
-      crossCheck.totalDC > 0 ? crossCheck.totalDC : abve?.dc ?? 0;
-    const claudeResult = await generateAnalysisText(
-      scoreResult.overallScore,
-      scoreResult.classification,
-      geo.city,
-      geo.state,
-      establishment_type || "outro",
-      establishment_name || "",
-      ibgeData.population,
-      totalDcForPrompt,
-      abve?.evsSold ?? null,
-      distanceKm,
-      competitorsIn200m,
-      totalPoisIn500m
+    // 9. Claude (1x, max 1500 tokens) — apenas pontos fortes/atenção/recomendação
+    const dcCityForPrompt = Math.max(
+      abve?.dc ?? 0,
+      chargersNear.dcInCity || 0
     );
+    const evsCityForPrompt =
+      abve?.evsSold ??
+      Math.round(
+        population *
+          (gdpPerCapita > 50_000
+            ? 0.006
+            : gdpPerCapita > 30_000
+            ? 0.004
+            : 0.002)
+      );
 
-    // 8. Custos
+    const claudeResult = await generateAnalysisText({
+      overallScore: scoreResult.overallScore,
+      classification: scoreResult.classification,
+      city: geo.city,
+      state: geo.state,
+      population,
+      gdpPerCapita,
+      dcInCity: dcCityForPrompt,
+      evsCity: evsCityForPrompt,
+      establishmentType: establishment_type || "outro",
+      distanceKm,
+      dcIn200m: chargersNear.dcIn200m,
+      dcIn500m: chargersNear.dcIn500m,
+      dcIn1km: chargersNear.dcIn1km,
+      dcIn2km: chargersNear.dcIn2km,
+      restaurants: restaurants.length,
+      supermarkets: supermarkets.length,
+      gasStations: gasStations.length,
+      totalPOIs: totalPoisIn500m,
+      observations: establishment_name || "",
+    });
+
+    // 10. Custos
     const claudeCost =
       claudeResult.tokensIn * CLAUDE_INPUT_COST_PER_TOKEN +
       claudeResult.tokensOut * CLAUDE_OUTPUT_COST_PER_TOKEN;
@@ -825,7 +631,7 @@ export async function POST(request: Request) {
       totalCostUsd: Math.round(totalCost * 10000) / 10000,
     };
 
-    // 9. Logar
+    // 11. Logar uso
     await logUsage({
       module: "score",
       city: `${geo.city}/${geo.state}`,
@@ -834,8 +640,32 @@ export async function POST(request: Request) {
       googlePlacesQueries: googleQueriesUsed,
     });
 
-    // 10. Resposta
-    const responseData = {
+    // 12. Carregadores próximos para o mapa (5km)
+    const nearbyChargers = chargersNear.in5km.map((c) => ({
+      name: c.name || "",
+      lat: Number(c.lat),
+      lng: Number(c.lng),
+      address: c.address || "",
+      operator: c.operator || "",
+      powerKW: Number(c.power_kw) || 0,
+      type: c.charger_type,
+      isFastCharge: c.charger_type === "DC",
+      isOperational: true,
+      rating: 0,
+      reviews: 0,
+      distance_m: Math.round(
+        haversineDistance(geo.lat, geo.lng, Number(c.lat), Number(c.lng))
+      ),
+    }));
+
+    // 13. Identificar usuário (custo é admin-only)
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const isAdmin = user?.email === ADMIN_EMAIL;
+
+    // 14. Resposta
+    const responseData: Record<string, unknown> = {
       address: address || "",
       lat: geo.lat,
       lng: geo.lng,
@@ -853,50 +683,28 @@ export async function POST(request: Request) {
       weaknesses: claudeResult.weaknesses,
       recommendation: claudeResult.recommendation,
       nearby_pois: allPOIs,
-      nearby_chargers: allCompetitors
-        .filter(
-          (c) => haversineDistance(geo.lat, geo.lng, c.lat, c.lng) <= 5000
-        )
-        .map((c) => ({
-          name: c.name,
-          lat: c.lat,
-          lng: c.lng,
-          address: c.address,
-          operator: c.operator,
-          powerKW: c.powerKW,
-          type: c.type,
-          source: c.source,
-          isFastCharge: c.isFastCharge,
-          isOperational: c.isOperational,
-          rating: c.rating,
-          reviews: c.reviews,
-          distance_m: Math.round(haversineDistance(geo.lat, geo.lng, c.lat, c.lng)),
-        })),
+      nearby_chargers: nearbyChargers,
       ibge_data: ibgeData,
       abve_data: abve,
-      data_sources: {
-        cross_check: crossCheck.sources,
-        best_total: { value: crossCheck.totalChargers, source: crossCheck.bestTotalSource },
-        best_dc: { value: crossCheck.totalDC, source: crossCheck.bestDCSource },
-      },
       charger_summary: {
-        total: chargerInfo.total,
-        dc: chargerInfo.dc,
-        ac: chargerInfo.ac,
-        in_200m: competitorsIn200m,
-        in_500m: competitorsIn500m,
-        in_1km: competitorsIn1km,
-        in_2km: competitorsIn2km,
-        operators: chargerInfo.operators,
+        total_in_city: chargersNear.totalInCity,
+        dc_in_city: chargersNear.dcInCity,
+        in_200m: chargersNear.in200m.length,
+        in_500m: chargersNear.in500m.length,
+        in_1km: chargersNear.in1km.length,
+        in_2km: chargersNear.in2km.length,
+        dc_in_200m: chargersNear.dcIn200m,
+        dc_in_500m: chargersNear.dcIn500m,
+        dc_in_1km: chargersNear.dcIn1km,
+        dc_in_2km: chargersNear.dcIn2km,
       },
-      cost_breakdown: costBreakdown,
     };
 
-    // 11. Salvar
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    if (isAdmin) {
+      responseData.cost_breakdown = costBreakdown;
+    }
 
+    // 15. Salvar histórico
     let score_id: number | null = null;
     if (user) {
       const { data: inserted } = await supabase

@@ -375,9 +375,7 @@ function scorePoints(
   chargerInfo: { total: number; dc: number },
   competitors: CompetitorStation[],
   cityLat: number,
-  cityLng: number,
-  city: string,
-  state: string
+  cityLng: number
 ) {
   return rawPoints
     .map((p) => {
@@ -389,35 +387,38 @@ function scorePoints(
       const chargersIn1km = countNearby(normalized.lat, normalized.lng, competitors, 1000);
       const chargersIn2km = countNearby(normalized.lat, normalized.lng, competitors, 2000);
 
+      const distanceKm =
+        Math.sqrt(
+          ((normalized.lat - cityLat) * 111) ** 2 +
+            ((normalized.lng - cityLng) *
+              111 *
+              Math.cos((normalized.lat * Math.PI) / 180)) ** 2
+        );
+
       const scoreInput: ScoreInput = {
-        city,
-        state,
-        population,
-        gdpPerCapita,
-        abveDcCity: null,
-        abveTotalCity: null,
-        abveEvsSold: null,
-        establishmentType: normalized.category,
-        is24h: normalized.operacao_24h,
-        observations: normalized.justification,
-        restaurantsIn500m: 3,
-        farmaciasIn500m: 1,
-        supermercadosIn500m: 1,
-        postosIn500m: 2,
-        shoppingsIn1km: 1,
-        hospitaisIn1km: 1,
-        hoteisIn1km: 0,
-        totalPoisIn500m: 8,
-        competitorsIn200m: chargersIn200m,
-        competitorsIn500m: chargersIn500m,
-        competitorsIn1km: chargersIn1km,
-        competitorsIn2km: chargersIn2km,
+        population: population ?? 0,
+        gdpPerCapita: gdpPerCapita ?? 0,
+        abveDC: 0,
+        abveTotal: 0,
+        abveEVs: 0,
+        dcIn200m: chargersIn200m,
+        dcIn500m: chargersIn500m,
+        dcIn1km: chargersIn1km,
+        dcIn2km: chargersIn2km,
+        dcInCity: 0,
+        totalInCity: 0,
+        restaurants: 3,
+        supermarkets: 1,
+        gasStations: 2,
+        shoppings: 1,
+        hotels: 0,
+        parkingLots: 1,
+        totalPOIs: 8,
+        distanceToCenter: distanceKm,
         rating: normalized.rating,
-        reviews: normalized.reviews,
-        lat: normalized.lat,
-        lng: normalized.lng,
-        cityLat,
-        cityLng,
+        reviewCount: normalized.reviews,
+        establishmentType: normalized.category,
+        observations: normalized.justification,
       };
 
       const scoreResult = calculateScore(scoreInput);
@@ -570,9 +571,7 @@ ${carregadosTotal !== null ? `- Total no carregados.com.br: ${carregadosTotal} (
             chargerInfo,
             allCompetitors,
             cityCoords.lat,
-            cityCoords.lng,
-            city,
-            state
+            cityCoords.lng
           );
 
           return {

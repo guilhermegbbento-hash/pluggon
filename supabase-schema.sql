@@ -77,6 +77,29 @@ CREATE TABLE IF NOT EXISTS chargers_cache (
   fetched_at      timestamptz DEFAULT now()
 );
 
+-- 6. ev_chargers — banco próprio de carregadores enriquecido a cada análise
+CREATE TABLE IF NOT EXISTS ev_chargers (
+  id            serial PRIMARY KEY,
+  city          text NOT NULL,
+  state         text NOT NULL,
+  name          text,
+  address       text,
+  lat           decimal,
+  lng           decimal,
+  power_kw      decimal DEFAULT 0,
+  charger_type  text DEFAULT 'unknown', -- AC, DC, unknown
+  connector     text,                    -- CCS2, Tipo2, CHAdeMO, etc
+  operator      text,                    -- Shell, Zletric, Tupinambá, etc
+  source        text,                    -- google_places, openchargemap, carregados, plugshare, manual
+  verified      boolean DEFAULT false,
+  created_at    timestamptz DEFAULT now(),
+  updated_at    timestamptz DEFAULT now()
+);
+ALTER TABLE ev_chargers DISABLE ROW LEVEL SECURITY;
+CREATE INDEX IF NOT EXISTS idx_ev_chargers_city ON ev_chargers (city);
+CREATE INDEX IF NOT EXISTS idx_ev_chargers_location ON ev_chargers (lat, lng);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ev_chargers_unique ON ev_chargers (lat, lng, name);
+
 -- 5. usage_logs
 CREATE TABLE IF NOT EXISTS usage_logs (
   id              serial PRIMARY KEY,
