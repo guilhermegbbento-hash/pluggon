@@ -1,6 +1,6 @@
 // ============================================================
 // Scoring Engine — Pluggon
-// 37 variáveis em 7 categorias + bônus de observações.
+// 35 variáveis em 7 categorias + bônus de observações.
 // Score 100% calculado por código. Dados: IBGE, ABVE, Google Places, banco interno.
 // ============================================================
 
@@ -41,8 +41,6 @@ export interface ScoreInput {
   gasStations: number;
   parkingLots: number;
   totalPOIs: number;
-  pharmacies?: number;
-  banks?: number;
 
   // Google Places — 1km
   shoppings: number;
@@ -894,44 +892,20 @@ export function calculateScore(input: ScoreInput): ScoreResult {
   // CATEGORIA 7 — AMENIDADES (3%)
   // ============================================================
 
-  // V35 — Restaurantes/cafés em 500m (peso 1)
-  const v40 =
-    input.restaurants >= 10 ? 9 :
-    input.restaurants >= 5 ? 7 :
-    input.restaurants >= 2 ? 5 : 3;
+  // V35 — Amenidades no entorno 500m (peso 1)
+  const amenitiesTotal = input.restaurants + input.supermarkets;
+  const vAmen =
+    amenitiesTotal >= 30 ? 10 :
+    amenitiesTotal >= 20 ? 9 :
+    amenitiesTotal >= 10 ? 7 :
+    amenitiesTotal >= 5 ? 5 :
+    amenitiesTotal >= 2 ? 4 : 2;
   add(
-    "Restaurantes e cafés (500m)",
+    "Amenidades no entorno 500m",
     "Amenidades",
-    v40,
+    vAmen,
     1,
-    `${input.restaurants} opções de alimentação em 500m`,
-    "Google Places"
-  );
-
-  // V36 — Supermercados em 500m (peso 1)
-  const v41 =
-    input.supermarkets >= 2 ? 8 :
-    input.supermarkets >= 1 ? 6 : 3;
-  add(
-    "Supermercados (500m)",
-    "Amenidades",
-    v41,
-    1,
-    `${input.supermarkets} supermercados em 500m`,
-    "Google Places"
-  );
-
-  // V37 — Comércio geral em 500m (peso 1)
-  const generalCommerce = (input.pharmacies ?? 0) + (input.banks ?? 0);
-  const v42 =
-    generalCommerce >= 5 ? 8 :
-    generalCommerce >= 2 ? 6 : 3;
-  add(
-    "Comércio geral (500m)",
-    "Amenidades",
-    v42,
-    1,
-    `${generalCommerce} estabelecimentos comerciais (farmácias e bancos) em 500m`,
+    `${amenitiesTotal} amenidades em 500m (${input.restaurants} restaurantes/cafés, ${input.supermarkets} supermercados)`,
     "Google Places"
   );
 

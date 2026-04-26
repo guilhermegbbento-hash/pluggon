@@ -56,8 +56,6 @@ interface ScoreResult {
   category_scores: Record<string, number>;
   scoring_variables: ScoringVariable[];
   strengths: string[];
-  weaknesses: string[];
-  recommendation: string;
   nearby_pois: NearbyPlace[];
   nearby_chargers: NearbyPlace[];
   ibge_data: {
@@ -1070,46 +1068,21 @@ function ScorePageInner() {
             )}
           </div>
 
-          {/* Strengths + Weaknesses */}
-          <div className="grid gap-6 md:grid-cols-2">
-            <div className="rounded-xl border border-[#C9A84C]/30 bg-[#C9A84C]/5 p-5">
-              <h3 className="mb-3 text-base font-semibold text-[#C9A84C]">✓ Pontos Fortes</h3>
-              <ul className="space-y-2">
-                {result.strengths.length === 0 && (
-                  <li className="text-sm text-[#8B949E]">Nenhum ponto forte gerado.</li>
-                )}
-                {result.strengths.map((s, i) => (
-                  <li key={i} className="flex items-start gap-2 text-sm text-[#C9D1D9]">
-                    <span className="mt-1 text-[#C9A84C]">•</span>
-                    {s}
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            <div className="rounded-xl border border-[#FFC107]/30 bg-[#FFC107]/5 p-5">
-              <h3 className="mb-3 text-base font-semibold text-[#FFC107]">⚠ Pontos de Atenção</h3>
-              <ul className="space-y-2">
-                {result.weaknesses.length === 0 && (
-                  <li className="text-sm text-[#8B949E]">Nenhum ponto de atenção gerado.</li>
-                )}
-                {result.weaknesses.map((w, i) => (
-                  <li key={i} className="flex items-start gap-2 text-sm text-[#C9D1D9]">
-                    <span className="mt-1 text-[#FFC107]">•</span>
-                    {w}
-                  </li>
-                ))}
-              </ul>
-            </div>
+          {/* Strengths */}
+          <div className="rounded-xl border border-[#C9A84C]/30 bg-[#C9A84C]/5 p-5">
+            <h3 className="mb-3 text-base font-semibold text-[#C9A84C]">✓ Pontos Fortes</h3>
+            <ul className="space-y-2">
+              {result.strengths.length === 0 && (
+                <li className="text-sm text-[#8B949E]">Nenhum ponto forte gerado.</li>
+              )}
+              {result.strengths.map((s, i) => (
+                <li key={i} className="flex items-start gap-2 text-sm text-[#C9D1D9]">
+                  <span className="mt-1 text-[#C9A84C]">•</span>
+                  {s}
+                </li>
+              ))}
+            </ul>
           </div>
-
-          {/* Recommendation */}
-          {result.recommendation && (
-            <div className="rounded-xl border border-[#2196F3]/30 bg-[#2196F3]/5 p-5">
-              <h3 className="mb-3 text-base font-semibold text-[#2196F3]">Recomendação</h3>
-              <p className="text-sm leading-relaxed text-[#C9D1D9]">{result.recommendation}</p>
-            </div>
-          )}
 
           {/* Cost Card — admin only */}
           {canSeeCost && result.cost_breakdown && (

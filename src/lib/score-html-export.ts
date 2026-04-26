@@ -37,8 +37,6 @@ export interface ScoreExportData {
   scoring_variables?: VariableData[];
   variables?: VariableData[];
   strengths: string[];
-  weaknesses: string[];
-  recommendation: string;
   nearby_pois: NearbyPlace[];
   nearby_chargers: NearbyPlace[];
   ibge_data: {
@@ -250,9 +248,6 @@ export function buildScoreHtml(r: ScoreExportData): string {
   const strengthsHtml = (r.strengths || [])
     .map((s) => `<li>${esc(s)}</li>`)
     .join("");
-  const weaknessesHtml = (r.weaknesses || [])
-    .map((s) => `<li>${esc(s)}</li>`)
-    .join("");
 
   const pois = (r.nearby_pois || []).map((p) => ({
     lat: p.lat,
@@ -383,21 +378,16 @@ export function buildScoreHtml(r: ScoreExportData): string {
   .var-bar { height: 6px; background: #21262D; border-radius: 3px; overflow: hidden; }
   .var-fill { height: 100%; border-radius: 3px; }
   .var-just { margin: 6px 0 0; font-size: 11px; color: #8B949E; }
-  .strengths, .weaknesses, .recommendation {
+  .strengths {
     border-radius: 12px;
     padding: 20px;
     margin-bottom: 16px;
     border: 1px solid;
+    background: #1a5928;
+    border-color: #2ea043;
   }
-  .strengths { background: #1a5928; border-color: #2ea043; }
   .strengths h3 { color: #7ee695; margin-top: 0; }
   .strengths li { color: #c7f0d4; }
-  .weaknesses { background: #5a4a10; border-color: #C9A84C; }
-  .weaknesses h3 { color: #FFC107; margin-top: 0; }
-  .weaknesses li { color: #f5e6b3; }
-  .recommendation { background: #0d3b5a; border-color: #2196F3; }
-  .recommendation h3 { color: #79c0ff; margin-top: 0; }
-  .recommendation p { color: #c7e4fa; margin: 0; }
   ul { padding-left: 20px; margin: 8px 0; }
   li { margin-bottom: 6px; font-size: 13px; line-height: 1.6; }
   .footer {
@@ -446,18 +436,6 @@ export function buildScoreHtml(r: ScoreExportData): string {
     <div class="strengths">
       <h3>✓ Pontos Fortes</h3>
       <ul>${strengthsHtml}</ul>
-    </div>
-
-    <!-- WEAKNESSES -->
-    <div class="weaknesses">
-      <h3>⚠ Pontos de Atenção</h3>
-      <ul>${weaknessesHtml}</ul>
-    </div>
-
-    <!-- RECOMMENDATION -->
-    <div class="recommendation">
-      <h3>💡 Recomendação</h3>
-      <p>${esc(r.recommendation)}</p>
     </div>
 
     <div class="footer">PLUGGON by BLEV Educação | Gerado em ${esc(date)}</div>

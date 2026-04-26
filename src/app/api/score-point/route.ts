@@ -242,8 +242,6 @@ async function fetchIBGEData(city: string, state: string): Promise<IBGEData> {
 
 interface ClaudeTextResult {
   strengths: string[];
-  weaknesses: string[];
-  recommendation: string;
   tokensIn: number;
   tokensOut: number;
 }
@@ -266,46 +264,44 @@ async function generateAnalysisText(args: {
   restaurants: number;
   supermarkets: number;
   gasStations: number;
-  totalPOIs: number;
+  shoppings: number;
+  hotels: number;
+  hasHubNearby: boolean;
   observations: string;
 }): Promise<ClaudeTextResult> {
   const empty: ClaudeTextResult = {
     strengths: [],
-    weaknesses: [],
-    recommendation: "",
     tokensIn: 0,
     tokensOut: 0,
   };
 
-  const systemPrompt = `Você é analista de mercado da PLUGGON, plataforma de inteligência para eletromobilidade no Brasil.
-
-REGRAS INVIOLÁVEIS:
-- Gere relatório profissional baseado APENAS nos dados fornecidos.
-- Nunca invente dados.
-- Nunca recomende potência de carregador (não diga "DC 80kW", "150kW", "50kW", etc).
-- Nunca questione, altere ou comente o score (já foi calculado pelo sistema).
-- Linguagem de relatório executivo, sem emojis.
-- Cada bullet com no máximo 22 palavras e referenciando pelo menos um dado real fornecido.
-- Responda APENAS com JSON válido, sem markdown, sem texto extra.`;
+  const systemPrompt = `Você é analista de mercado da PLUGGON, plataforma de inteligência para eletromobilidade no Brasil. Gere relatórios executivos baseados APENAS nos dados fornecidos. Responda APENAS com JSON válido, sem markdown, sem texto extra.`;
 
   const userPrompt = `Score: ${args.overallScore}/100 (${args.classification}).
+Dados verificados:
+- Cidade: ${args.city}/${args.state}, ${args.population.toLocaleString("pt-BR")} habitantes, PIB R$${Math.round(args.gdpPerCapita).toLocaleString("pt-BR")}
+- EVs na cidade: ${args.evsCity.toLocaleString("pt-BR")}
+- Carregadores DC cidade: ${args.dcInCity} (ABVE)
+- Ponto: ${args.establishmentType} a ${args.distanceKm.toFixed(1)}km do centro
+- Concorrentes DC: ${args.dcIn200m} em 200m, ${args.dcIn500m} em 500m, ${args.dcIn1km} em 1km, ${args.dcIn2km} em 2km
+- POIs 500m: ${args.restaurants} restaurantes, ${args.supermarkets} supermercados, ${args.gasStations} postos combustível
+- POIs 1km+: ${args.shoppings} shoppings, ${args.hotels} hotéis
+- Hub transporte próximo: ${args.hasHubNearby ? "sim" : "não"}
+- Observações do analista: ${args.observations || "(nenhuma)"}
 
-Cidade: ${args.city}/${args.state}, ${args.population.toLocaleString("pt-BR")} habitantes, PIB per capita R$ ${Math.round(args.gdpPerCapita).toLocaleString("pt-BR")}.
-Carregadores DC na cidade: ${args.dcInCity}. EVs na cidade: ${args.evsCity.toLocaleString("pt-BR")}.
-
-Ponto: ${args.establishmentType} a ${args.distanceKm.toFixed(1)} km do centro.
-Concorrentes DC: ${args.dcIn200m} em 200m, ${args.dcIn500m} em 500m, ${args.dcIn1km} em 1km, ${args.dcIn2km} em 2km.
-POIs em 500m: ${args.restaurants} restaurantes, ${args.supermarkets} supermercados, ${args.gasStations} postos, ${args.totalPOIs} no total.
-
-Observações do analista: ${args.observations || "(nenhuma)"}
-
-Gere PONTOS FORTES (3-5 itens) e PONTOS DE ATENÇÃO (3-5 itens) com base APENAS nesses dados.
+Gere APENAS 3-5 PONTOS FORTES deste ponto.
+REGRAS ABSOLUTAS:
+- Use APENAS os dados fornecidos acima. NUNCA invente números.
+- NUNCA diga "apenas X carregadores" com número diferente do fornecido.
+- NUNCA recomende potência de carregador.
+- NUNCA mencione dados que não foram fornecidos.
+- Se um dado é bom, mencione. Se é ruim, NÃO mencione (não tem pontos de atenção).
+- Cada ponto forte deve ter o DADO REAL que justifica. Ex: "30 restaurantes em 500m garantem alto tempo de permanência"
+- Linguagem profissional de relatório executivo. Sem emojis.
 
 Retorne SOMENTE o JSON:
 {
-  "strengths": ["bullet 1", "bullet 2", "bullet 3"],
-  "weaknesses": ["bullet 1", "bullet 2", "bullet 3"],
-  "recommendation": "1-2 frases de recomendação executiva, sem mencionar potência de carregador."
+  "strengths": ["bullet 1", "bullet 2", "bullet 3"]
 }`;
 
   try {
@@ -335,9 +331,6 @@ Retorne SOMENTE o JSON:
       const parsed = JSON.parse(raw);
       return {
         strengths: Array.isArray(parsed.strengths) ? parsed.strengths : [],
-        weaknesses: Array.isArray(parsed.weaknesses) ? parsed.weaknesses : [],
-        recommendation:
-          typeof parsed.recommendation === "string" ? parsed.recommendation : "",
         tokensIn,
         tokensOut,
       };
@@ -738,7 +731,9 @@ export async function POST(request: Request) {
       restaurants: restaurants.length,
       supermarkets: supermarkets.length,
       gasStations: gasStations.length,
-      totalPOIs: totalPoisIn500m,
+      shoppings: shoppings.length,
+      hotels: hotels.length,
+      hasHubNearby: airports.length > 0 || busStations.length > 0,
       observations: establishment_name || "",
     });
 
@@ -807,8 +802,6 @@ export async function POST(request: Request) {
       category_scores: scoreResult.categoryScores,
       scoring_variables: scoreResult.variables,
       strengths: claudeResult.strengths,
-      weaknesses: claudeResult.weaknesses,
-      recommendation: claudeResult.recommendation,
       nearby_pois: allPOIs,
       nearby_chargers: nearbyChargers,
       ibge_data: ibgeData,
@@ -849,8 +842,8 @@ export async function POST(request: Request) {
           classification: scoreResult.classification,
           variables_json: scoreResult.variables,
           strengths: claudeResult.strengths,
-          weaknesses: claudeResult.weaknesses,
-          recommendation: claudeResult.recommendation,
+          weaknesses: [],
+          recommendation: "",
           full_json: responseData,
           status: "done",
         })

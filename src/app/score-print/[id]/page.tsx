@@ -42,8 +42,6 @@ interface ScoreData {
   variables?: VariableData[];
   scoring_variables?: VariableData[];
   strengths: string[];
-  weaknesses: string[];
-  recommendation: string;
   nearby_pois: NearbyPlace[];
   nearby_chargers: NearbyPlace[];
   ibge_data: {
@@ -815,30 +813,16 @@ export default function ScorePrintPage() {
           </div>
         ))}
 
-        {/* ===== STRENGTHS / WEAKNESSES / RECOMMENDATION ===== */}
+        {/* ===== STRENGTHS ===== */}
         <div className="page">
           <h2>Conclusões</h2>
-          <div className="highlights">
-            <div className="box-strength">
-              <h3>✓ Pontos Fortes</h3>
-              <ul>
-                {(data.strengths || []).map((s, i) => (
-                  <li key={i}>{s}</li>
-                ))}
-              </ul>
-            </div>
-            <div className="box-weakness">
-              <h3>⚠ Pontos de Atenção</h3>
-              <ul>
-                {(data.weaknesses || []).map((w, i) => (
-                  <li key={i}>{w}</li>
-                ))}
-              </ul>
-            </div>
-          </div>
-          <div className="box-reco">
-            <h3>💡 Recomendação</h3>
-            <p>{data.recommendation}</p>
+          <div className="box-strength">
+            <h3>✓ Pontos Fortes</h3>
+            <ul>
+              {(data.strengths || []).map((s, i) => (
+                <li key={i}>{s}</li>
+              ))}
+            </ul>
           </div>
 
           <div className="bp-footer">
