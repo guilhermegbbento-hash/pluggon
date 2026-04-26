@@ -519,6 +519,31 @@ export async function POST(request: Request) {
       supabase
     );
 
+    // Debug — concorrentes por raio
+    const formatChargerLabel = (c: { name: string; address: string }) => {
+      const name = (c.name || "").trim() || "Sem nome";
+      const addr = (c.address || "").trim();
+      return addr ? `${name} - ${addr}` : name;
+    };
+    const dcNamesIn200m = chargersNear.in200m
+      .filter((c) => c.charger_type === "DC")
+      .map(formatChargerLabel);
+    const dcNamesIn500m = chargersNear.in500m
+      .filter((c) => c.charger_type === "DC")
+      .map(formatChargerLabel);
+    const dcNamesIn1km = chargersNear.in1km
+      .filter((c) => c.charger_type === "DC")
+      .map(formatChargerLabel);
+    const dcNamesIn2km = chargersNear.in2km
+      .filter((c) => c.charger_type === "DC")
+      .map(formatChargerLabel);
+
+    console.log("=== CONCORRENTES POR RAIO ===");
+    console.log("DC 200m:", chargersNear.dcIn200m, dcNamesIn200m);
+    console.log("DC 500m:", chargersNear.dcIn500m, dcNamesIn500m);
+    console.log("DC 1km:", chargersNear.dcIn1km, dcNamesIn1km);
+    console.log("DC 2km:", chargersNear.dcIn2km, dcNamesIn2km);
+
     const ibgeData = await ibgePromise;
     const population = ibgeData.population ?? 0;
     const gdpPerCapita = ibgeData.gdp_per_capita ?? 0;
@@ -561,6 +586,10 @@ export async function POST(request: Request) {
       dcIn2km: chargersNear.dcIn2km,
       dcInCity: chargersNear.dcInCity,
       totalInCity: chargersNear.totalInCity,
+      dcNamesIn200m,
+      dcNamesIn500m,
+      dcNamesIn1km,
+      dcNamesIn2km,
       restaurants: restaurants.length,
       supermarkets: supermarkets.length,
       gasStations: gasStations.length,

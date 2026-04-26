@@ -29,6 +29,12 @@ export interface ScoreInput {
   dcInCity: number;   // DC achados pelo Google/OpenChargeMap/etc
   totalInCity: number;
 
+  // Nomes dos concorrentes DC em cada raio (para justificativas)
+  dcNamesIn200m?: string[];
+  dcNamesIn500m?: string[];
+  dcNamesIn1km?: string[];
+  dcNamesIn2km?: string[];
+
   // POIs Google Places
   restaurants: number;   // 500m
   supermarkets: number;  // 500m
@@ -196,42 +202,106 @@ export function calculateScore(input: ScoreInput): ScoreResult {
   );
 
   // ===== 2. CONCORRÊNCIA (25%) =====
-
-  const dc200 =
-    input.dcIn200m === 0 ? 10 :
-    input.dcIn200m === 1 ? 5 :
-    input.dcIn200m === 2 ? 3 : 1;
-  add(
-    "Concorrência Direta (200m)",
-    "Concorrência",
-    dc200,
-    3,
-    `${input.dcIn200m} carregadores rápidos em 200 metros`
+  // Em pontos de alto fluxo (rodoviária, aeroporto, shopping, posto/hospital 24h),
+  // 1-2 concorrentes próximos VALIDAM a demanda em vez de prejudicar o score.
+  const highFlowTypes = [
+    "rodoviaria",
+    "aeroporto",
+    "shopping",
+    "posto_24h",
+    "hospital_24h",
+  ];
+  const isHighFlow = highFlowTypes.includes(
+    (input.establishmentType || "").toLowerCase()
   );
 
-  const dc500 =
-    input.dcIn500m === 0 ? 10 :
-    input.dcIn500m <= 2 ? 7 :
-    input.dcIn500m <= 5 ? 5 : 3;
-  add(
-    "Concorrência Próxima (500m)",
-    "Concorrência",
-    dc500,
-    3,
-    `${input.dcIn500m} carregadores rápidos em 500 metros`
-  );
+  const fmtNames = (names?: string[], max = 2): string => {
+    if (!names || names.length === 0) return "";
+    if (names.length <= max) return `: ${names.join("; ")}`;
+    const extra = names.length - max;
+    return `: ${names.slice(0, max).join("; ")} (+${extra})`;
+  };
 
-  const dc1k =
-    input.dcIn1km === 0 ? 9 :
-    input.dcIn1km <= 3 ? 7 :
-    input.dcIn1km <= 8 ? 5 : 3;
-  add(
-    "Concorrência Regional (1km)",
-    "Concorrência",
-    dc1k,
-    2,
-    `${input.dcIn1km} carregadores rápidos em 1 km`
-  );
+  // V6. Concorrência 200m
+  if (isHighFlow) {
+    const dc200 =
+      input.dcIn200m === 0 ? 8 :
+      input.dcIn200m <= 2 ? 9 :
+      input.dcIn200m <= 4 ? 6 : 4;
+    const just =
+      input.dcIn200m === 0
+        ? "Nenhum concorrente direto — oportunidade aberta em ponto de alto fluxo"
+        : input.dcIn200m <= 2
+        ? `${input.dcIn200m} carregador(es) rápido(s) em 200m — valida a demanda do local${fmtNames(input.dcNamesIn200m)}`
+        : `${input.dcIn200m} carregadores rápidos em 200m — mercado validado mas disputado${fmtNames(input.dcNamesIn200m)}`;
+    add("Validação de Demanda (200m)", "Concorrência", dc200, 3, just);
+  } else {
+    const dc200 =
+      input.dcIn200m === 0 ? 10 :
+      input.dcIn200m === 1 ? 5 :
+      input.dcIn200m === 2 ? 3 : 1;
+    add(
+      "Concorrência Direta (200m)",
+      "Concorrência",
+      dc200,
+      3,
+      `${input.dcIn200m} carregadores rápidos em 200 metros${fmtNames(input.dcNamesIn200m)}`
+    );
+  }
+
+  // Concorrência 500m
+  if (isHighFlow) {
+    const dc500 =
+      input.dcIn500m === 0 ? 7 :
+      input.dcIn500m <= 3 ? 9 :
+      input.dcIn500m <= 6 ? 6 : 4;
+    const just =
+      input.dcIn500m === 0
+        ? "Nenhum concorrente em 500m — oportunidade aberta em ponto de alto fluxo"
+        : input.dcIn500m <= 3
+        ? `${input.dcIn500m} carregador(es) rápido(s) em 500m — valida a demanda da região${fmtNames(input.dcNamesIn500m)}`
+        : `${input.dcIn500m} carregadores rápidos em 500m — região validada mas disputada${fmtNames(input.dcNamesIn500m)}`;
+    add("Validação de Demanda (500m)", "Concorrência", dc500, 3, just);
+  } else {
+    const dc500 =
+      input.dcIn500m === 0 ? 10 :
+      input.dcIn500m <= 2 ? 7 :
+      input.dcIn500m <= 5 ? 5 : 3;
+    add(
+      "Concorrência Próxima (500m)",
+      "Concorrência",
+      dc500,
+      3,
+      `${input.dcIn500m} carregadores rápidos em 500 metros${fmtNames(input.dcNamesIn500m)}`
+    );
+  }
+
+  // Concorrência 1km
+  if (isHighFlow) {
+    const dc1k =
+      input.dcIn1km === 0 ? 6 :
+      input.dcIn1km <= 5 ? 8 :
+      input.dcIn1km <= 10 ? 6 : 4;
+    const just =
+      input.dcIn1km === 0
+        ? "Nenhum concorrente em 1km — oportunidade aberta em ponto de alto fluxo"
+        : input.dcIn1km <= 5
+        ? `${input.dcIn1km} carregador(es) rápido(s) em 1km — valida a demanda regional${fmtNames(input.dcNamesIn1km)}`
+        : `${input.dcIn1km} carregadores rápidos em 1km — região saturada${fmtNames(input.dcNamesIn1km)}`;
+    add("Validação Regional (1km)", "Concorrência", dc1k, 2, just);
+  } else {
+    const dc1k =
+      input.dcIn1km === 0 ? 9 :
+      input.dcIn1km <= 3 ? 7 :
+      input.dcIn1km <= 8 ? 5 : 3;
+    add(
+      "Concorrência Regional (1km)",
+      "Concorrência",
+      dc1k,
+      2,
+      `${input.dcIn1km} carregadores rápidos em 1 km${fmtNames(input.dcNamesIn1km)}`
+    );
+  }
 
   const dc2k =
     input.dcIn2km <= 2 ? 9 :
@@ -242,7 +312,7 @@ export function calculateScore(input: ScoreInput): ScoreResult {
     "Concorrência",
     dc2k,
     2,
-    `${input.dcIn2km} carregadores rápidos em 2 km`
+    `${input.dcIn2km} carregadores rápidos em 2 km${fmtNames(input.dcNamesIn2km)}`
   );
 
   const ratioScore =
