@@ -1,6 +1,6 @@
 // ============================================================
 // Scoring Engine — Pluggon
-// 42 variáveis em 7 categorias + bônus de observações.
+// 37 variáveis em 7 categorias + bônus de observações.
 // Score 100% calculado por código. Dados: IBGE, ABVE, Google Places, banco interno.
 // ============================================================
 
@@ -49,18 +49,15 @@ export interface ScoreInput {
   hotels: number;
 
   // Google Places — 2km
-  universitiesIn2km?: number;
-  hospitalsIn2km?: number;
+  universities: number;
+  hospitals: number;
 
-  // Google Places — 5km
-  hasAirportNearby?: boolean;
+  // Google Places — hubs de transporte
+  hasAirportNearby: boolean;
+  hasRodoviariaNearby: boolean;
 
   // Geocoding
   distanceToCenter: number; // km
-
-  // Local (Google Places)
-  rating: number;
-  reviewCount: number;
 
   // Usuário
   establishmentType: string;
@@ -124,42 +121,6 @@ function fmtNames(names?: string[], max = 2): string {
   if (names.length <= max) return `: ${names.join("; ")}`;
   const extra = names.length - max;
   return `: ${names.slice(0, max).join("; ")} (+${extra})`;
-}
-
-function extractOperators(names: string[]): string[] {
-  const known = [
-    "Shell",
-    "Zletric",
-    "Tupinambá",
-    "EZVolt",
-    "Volvo",
-    "BYD",
-    "Porto",
-    "Raízen",
-    "Ipiranga",
-    "EVMo",
-    "Petrobras",
-    "Tesla",
-    "WEG",
-    "ABB",
-    "Eletro",
-    "EDP",
-    "Enel",
-    "Neocharge",
-    "Voltaria",
-    "ChargeNow",
-  ];
-  const found = new Set<string>();
-  for (const name of names) {
-    const upper = (name || "").toUpperCase();
-    for (const op of known) {
-      if (upper.includes(op.toUpperCase())) {
-        found.add(op);
-        break;
-      }
-    }
-  }
-  return Array.from(found);
 }
 
 export function calculateScore(input: ScoreInput): ScoreResult {
@@ -527,55 +488,45 @@ export function calculateScore(input: ScoreInput): ScoreResult {
     "Google Places"
   );
 
-  // V19 — Proximidade ao aeroporto (peso 2)
-  let v19: number;
-  let v19Label: string;
-  let v19Source: ScoreSource;
-  if (tipoKey === "aeroporto") {
-    v19 = 10;
-    v19Label = "é o aeroporto";
-    v19Source = "Usuário";
-  } else if (input.hasAirportNearby) {
-    v19 = 7;
-    v19Label = "está próximo a um aeroporto (5km)";
-    v19Source = "Google Places";
-  } else {
-    v19 = 4;
-    v19Label = "não está próximo a aeroporto";
-    v19Source = "Cálculo";
-  }
-  add(
-    "Proximidade ao aeroporto",
-    "Tráfego e Mobilidade",
-    v19,
-    2,
-    `Ponto ${v19Label}`,
-    v19Source
-  );
-
-  // V20 — Proximidade à rodoviária (peso 2)
-  let v20: number;
-  let v20Label: string;
-  if (tipoKey === "rodoviaria") {
-    v20 = 10;
-    v20Label = "é a rodoviária";
+  // V19 — Proximidade a hub de transporte (peso 3) — aeroporto + rodoviária (substitui V19+V20 antigas)
+  let vHub: number;
+  let vHubLabel: string;
+  let vHubSource: ScoreSource;
+  if (tipoKey === "aeroporto" || tipoKey === "rodoviaria") {
+    vHub = 10;
+    vHubLabel =
+      tipoKey === "aeroporto"
+        ? "é o próprio aeroporto"
+        : "é a própria rodoviária";
+    vHubSource = "Usuário";
+  } else if (input.hasAirportNearby || input.hasRodoviariaNearby) {
+    vHub = 8;
+    const hubs: string[] = [];
+    if (input.hasAirportNearby) hubs.push("aeroporto (5km)");
+    if (input.hasRodoviariaNearby) hubs.push("rodoviária (3km)");
+    vHubLabel = `está próximo a ${hubs.join(" e ")}`;
+    vHubSource = "Google Places";
   } else if (input.distanceToCenter < 2 && input.population > 200_000) {
-    v20 = 7;
-    v20Label = "está próximo à rodoviária (centro de cidade > 200k hab.)";
+    vHub = 6;
+    vHubLabel = `está em região central de cidade grande (${input.distanceToCenter.toFixed(
+      1
+    )}km do centro, ${fmtInt(input.population)} hab.)`;
+    vHubSource = "Cálculo";
   } else {
-    v20 = 4;
-    v20Label = "verificar proximidade à rodoviária";
+    vHub = 4;
+    vHubLabel = "está distante de hubs de transporte identificados";
+    vHubSource = "Cálculo";
   }
   add(
-    "Proximidade à rodoviária",
+    "Proximidade a hub de transporte",
     "Tráfego e Mobilidade",
-    v20,
-    2,
-    `Ponto ${v20Label}`,
-    v20 === 10 ? "Usuário" : "Cálculo"
+    vHub,
+    3,
+    `Ponto ${vHubLabel}`,
+    vHubSource
   );
 
-  // V21 — Potencial turístico/regional (peso 1)
+  // V20 — Potencial turístico/regional (peso 1)
   const v21 =
     input.hotels >= 5 ? 9 :
     input.hotels >= 2 ? 7 :
@@ -597,7 +548,7 @@ export function calculateScore(input: ScoreInput): ScoreResult {
   // CATEGORIA 4 — CONCORRÊNCIA (20%)
   // ============================================================
 
-  // V22 — DC na cidade total (peso 2)
+  // V21 — DC na cidade total (peso 2)
   const v22 =
     dcCity < 5 ? 9 :
     dcCity <= 15 ? 8 :
@@ -612,7 +563,7 @@ export function calculateScore(input: ScoreInput): ScoreResult {
     input.abveDC ? "ABVE" : "Cálculo"
   );
 
-  // V23 — Concorrentes DC em 200m (peso 3) — sensível a high flow
+  // V22 — Concorrentes DC em 200m (peso 3) — sensível a high flow
   let v23: number;
   let v23Just: string;
   if (isHighFlow) {
@@ -650,7 +601,7 @@ export function calculateScore(input: ScoreInput): ScoreResult {
     v23Just
   );
 
-  // V24 — Concorrentes DC em 500m (peso 3) — sensível a high flow
+  // V23 — Concorrentes DC em 500m (peso 3) — sensível a high flow
   let v24: number;
   let v24Just: string;
   if (isHighFlow) {
@@ -685,7 +636,7 @@ export function calculateScore(input: ScoreInput): ScoreResult {
     v24Just
   );
 
-  // V25 — Concorrentes DC em 1km (peso 2)
+  // V24 — Concorrentes DC em 1km (peso 2)
   const v25 =
     input.dcIn1km === 0 ? 9 :
     input.dcIn1km <= 3 ? 7 :
@@ -698,7 +649,7 @@ export function calculateScore(input: ScoreInput): ScoreResult {
     `${input.dcIn1km} carregadores rápidos em 1km${fmtNames(input.dcNamesIn1km)}`
   );
 
-  // V26 — Concorrentes DC em 2km (peso 2)
+  // V25 — Concorrentes DC em 2km (peso 2)
   const v26 =
     input.dcIn2km <= 2 ? 9 :
     input.dcIn2km <= 5 ? 7 :
@@ -711,7 +662,7 @@ export function calculateScore(input: ScoreInput): ScoreResult {
     `${input.dcIn2km} carregadores rápidos em 2km${fmtNames(input.dcNamesIn2km)}`
   );
 
-  // V27 — Ratio EVs por carregador DC (peso 3)
+  // V26 — Ratio EVs por carregador DC (peso 3)
   const v27 =
     ratioEVperCharger > 200 ? 10 :
     ratioEVperCharger > 100 ? 9 :
@@ -730,21 +681,7 @@ export function calculateScore(input: ScoreInput): ScoreResult {
     `${ratioEVperCharger} veículos elétricos por carregador DC na cidade — ${v27Label}`
   );
 
-  // V28 — Operadores identificados (peso 1)
-  const allDcNames = [
-    ...(input.dcNamesIn200m || []),
-    ...(input.dcNamesIn500m || []),
-    ...(input.dcNamesIn1km || []),
-    ...(input.dcNamesIn2km || []),
-  ];
-  const operators = extractOperators(allDcNames);
-  const v28Just =
-    operators.length > 0
-      ? `Operadores identificados na região: ${operators.slice(0, 5).join(", ")}`
-      : "Nenhum operador identificado por nome na região";
-  add("Operadores identificados", "Concorrência", 6, 1, v28Just);
-
-  // V29 — Gap de cobertura (peso 2)
+  // V27 — Gap de cobertura (peso 2)
   let v29: number;
   let v29Label: string;
   if (input.dcIn1km === 0 && input.population > 200_000) {
@@ -772,7 +709,7 @@ export function calculateScore(input: ScoreInput): ScoreResult {
   // CATEGORIA 5 — LOCALIZAÇÃO E ACESSO (15%)
   // ============================================================
 
-  // V30 — Distância ao centro (peso 3)
+  // V28 — Distância ao centro (peso 3)
   const v30 =
     input.distanceToCenter < 1 ? 10 :
     input.distanceToCenter < 2 ? 9 :
@@ -788,7 +725,7 @@ export function calculateScore(input: ScoreInput): ScoreResult {
     `${input.distanceToCenter.toFixed(1)}km do centro da cidade`
   );
 
-  // V31 — Visibilidade e fluxo (peso 3)
+  // V29 — Visibilidade e fluxo (peso 3)
   const v31 =
     input.totalPOIs > 25 ? 10 :
     input.totalPOIs > 15 ? 8 :
@@ -807,56 +744,7 @@ export function calculateScore(input: ScoreInput): ScoreResult {
     "Google Places"
   );
 
-  // V32 — Reputação Google do local (peso 1)
-  let v32: number;
-  let v32Just: string;
-  if (input.rating > 0) {
-    v32 =
-      input.rating > 4.5 ? 9 :
-      input.rating > 4.0 ? 8 :
-      input.rating > 3.5 ? 6 :
-      input.rating > 3.0 ? 5 : 4;
-    v32Just = `${input.rating.toFixed(1)} estrelas no Google (${input.reviewCount} avaliações)`;
-  } else {
-    v32 = 5;
-    v32Just = "Sem avaliação no Google (neutro)";
-  }
-  add(
-    "Reputação Google do local",
-    "Localização e Acesso",
-    v32,
-    1,
-    v32Just,
-    "Google Places"
-  );
-
-  // V33 — Facilidade de acesso (peso 2)
-  const accessScores: Record<string, number> = {
-    shopping: 9,
-    aeroporto: 9,
-    supermercado: 9,
-    posto_24h: 8,
-    hotel: 8,
-    rodoviaria: 7,
-    hospital_24h: 7,
-    estacionamento: 7,
-    universidade: 6,
-    restaurante: 6,
-    terreno: 5,
-    outro: 5,
-  };
-  const v33 = accessScores[tipoKey] ?? 5;
-  const v33Label = v33 >= 8 ? "fácil" : v33 >= 6 ? "moderado" : "limitado";
-  add(
-    "Facilidade de acesso ao ponto",
-    "Localização e Acesso",
-    v33,
-    2,
-    `${tipoKey} tipicamente oferece acesso ${v33Label} para veículos`,
-    "Usuário"
-  );
-
-  // V34 — Proximidade a centros corporativos (peso 1)
+  // V30 — Proximidade a centros corporativos (peso 1)
   const v34 =
     input.distanceToCenter < 3 && input.population > 500_000 ? 8 :
     input.distanceToCenter < 5 && input.population > 300_000 ? 6 : 4;
@@ -871,35 +759,29 @@ export function calculateScore(input: ScoreInput): ScoreResult {
     )}km do centro em cidade de ${fmtInt(input.population)} hab.)`
   );
 
-  // V35 — Proximidade a universidades (peso 1)
-  const universities = input.universitiesIn2km ?? 0;
-  const v35 = universities >= 2 ? 8 : universities >= 1 ? 6 : 4;
+  // V31 — Proximidade a geradores de fluxo (peso 2) — universidades + hospitais + shoppings (substitui V35+V36 antigas)
+  const generators =
+    (input.universities ?? 0) +
+    (input.hospitals ?? 0) +
+    (input.shoppings ?? 0);
+  const vGen =
+    generators >= 5 ? 10 :
+    generators >= 3 ? 8 :
+    generators >= 1 ? 6 : 4;
   add(
-    "Proximidade a universidades",
+    "Proximidade a geradores de fluxo",
     "Localização e Acesso",
-    v35,
-    1,
-    `${universities} universidade(s) em 2km`,
-    universities > 0 ? "Google Places" : "Cálculo"
-  );
-
-  // V36 — Proximidade a hospitais (peso 1)
-  const hospitals = input.hospitalsIn2km ?? 0;
-  const v36 = hospitals >= 2 ? 8 : hospitals >= 1 ? 6 : 4;
-  add(
-    "Proximidade a hospitais",
-    "Localização e Acesso",
-    v36,
-    1,
-    `${hospitals} hospital(is) em 2km — fluxo 24h`,
-    hospitals > 0 ? "Google Places" : "Cálculo"
+    vGen,
+    2,
+    `${generators} gerador(es) de fluxo no entorno (${input.universities ?? 0} universidades em 2km, ${input.hospitals ?? 0} hospitais em 2km, ${input.shoppings ?? 0} shoppings em 1km)`,
+    generators > 0 ? "Google Places" : "Cálculo"
   );
 
   // ============================================================
   // CATEGORIA 6 — TIPO DE PONTO (7%)
   // ============================================================
 
-  // V37 — Adequação do tipo (peso 3)
+  // V32 — Adequação do tipo (peso 3)
   const tipoScores: Record<string, number> = {
     aeroporto: 10,
     rodoviaria: 10,
@@ -944,7 +826,7 @@ export function calculateScore(input: ScoreInput): ScoreResult {
     "Usuário"
   );
 
-  // V38 — Potencial de operação contínua (peso 3)
+  // V33 — Potencial de operação contínua (peso 3)
   const opScores: Record<string, number> = {
     posto_24h: 10,
     aeroporto: 10,
@@ -970,7 +852,7 @@ export function calculateScore(input: ScoreInput): ScoreResult {
     "Usuário"
   );
 
-  // V39 — Tempo de permanência (peso 2)
+  // V34 — Tempo de permanência (peso 2)
   const dwellScores: Record<string, number> = {
     shopping: 10,
     hotel: 10,
@@ -1012,7 +894,7 @@ export function calculateScore(input: ScoreInput): ScoreResult {
   // CATEGORIA 7 — AMENIDADES (3%)
   // ============================================================
 
-  // V40 — Restaurantes/cafés em 500m (peso 1)
+  // V35 — Restaurantes/cafés em 500m (peso 1)
   const v40 =
     input.restaurants >= 10 ? 9 :
     input.restaurants >= 5 ? 7 :
@@ -1026,7 +908,7 @@ export function calculateScore(input: ScoreInput): ScoreResult {
     "Google Places"
   );
 
-  // V41 — Supermercados em 500m (peso 1)
+  // V36 — Supermercados em 500m (peso 1)
   const v41 =
     input.supermarkets >= 2 ? 8 :
     input.supermarkets >= 1 ? 6 : 3;
@@ -1039,7 +921,7 @@ export function calculateScore(input: ScoreInput): ScoreResult {
     "Google Places"
   );
 
-  // V42 — Comércio geral em 500m (peso 1)
+  // V37 — Comércio geral em 500m (peso 1)
   const generalCommerce = (input.pharmacies ?? 0) + (input.banks ?? 0);
   const v42 =
     generalCommerce >= 5 ? 8 :

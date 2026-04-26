@@ -151,14 +151,24 @@ function haversine(lat1: number, lng1: number, lat2: number, lng2: number): numb
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+function normalizeCity(city: string): string {
+  if (!city) return "";
+  return city
+    .trim()
+    .split(/\s+/)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(" ");
+}
+
 async function upsertCharger(
   supabase: SupabaseClient,
   charger: Omit<ChargerRow, "id">
 ) {
   try {
+    const normalized = { ...charger, city: normalizeCity(charger.city) };
     await supabase
       .from("ev_chargers")
-      .upsert(charger, { onConflict: "lat,lng,name", ignoreDuplicates: false });
+      .upsert(normalized, { onConflict: "lat,lng,name", ignoreDuplicates: false });
   } catch (e) {
     console.error("upsertCharger error:", e);
   }
@@ -332,8 +342,7 @@ const STATE_SLUGS: Record<string, string> = {
 export async function enrichWithCarregados(
   city: string,
   state: string,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _supabase: SupabaseClient
+  supabase: SupabaseClient
 ): Promise<void> {
   try {
     const stateSlug = STATE_SLUGS[state] || state.toLowerCase();
@@ -362,12 +371,37 @@ export async function enrichWithCarregados(
       console.log("carregados.com.br total para", city, ":", totalMatch[1]);
     }
 
-    // Extrai pares lat/lng se houver no HTML (best effort)
+    // Extrai pares lat/lng do HTML (best effort) e tenta salvar
     const coordsRegex =
       /lat['":\s]+([-\d.]+)[\s,'"]+(?:lng|lon|longitude)['":\s]+([-\d.]+)/gi;
+    const seen = new Set<string>();
+    let saved = 0;
     let match;
     while ((match = coordsRegex.exec(html)) !== null) {
-      console.log("carregados coord:", match[1], match[2]);
+      const lat = parseFloat(match[1]);
+      const lng = parseFloat(match[2]);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+      const key = `${lat.toFixed(5)},${lng.toFixed(5)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      await upsertCharger(supabase, {
+        city,
+        state,
+        name: `Eletroposto carregados.com.br ${key}`,
+        address: "",
+        lat,
+        lng,
+        power_kw: 0,
+        charger_type: "unknown",
+        operator: "",
+        source: "carregados",
+        verified: false,
+      });
+      saved++;
+    }
+    if (saved > 0) {
+      console.log("carregados.com.br salvou", saved, "estações para", city);
     }
   } catch (e) {
     console.log("carregados.com.br indisponível (ignorando):", e);
@@ -444,7 +478,7 @@ export async function cityHasFreshChargers(
     const { count } = await supabase
       .from("ev_chargers")
       .select("id", { count: "exact", head: true })
-      .eq("city", city)
+      .ilike("city", normalizeCity(city))
       .gte("updated_at", cutoff);
     return (count || 0) > 0;
   } catch {
@@ -480,7 +514,7 @@ export async function getChargersNearPoint(
     const { data: cityChargers } = await supabase
       .from("ev_chargers")
       .select("*")
-      .eq("city", city);
+      .ilike("city", normalizeCity(city));
 
     const chargers = (cityChargers || []) as ChargerRow[];
 

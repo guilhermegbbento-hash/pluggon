@@ -462,7 +462,7 @@ export async function POST(request: Request) {
       await enrichWithPlugShare(geo.city, geo.lat, geo.lng, supabase);
     }
 
-    // 6. POIs em paralelo (500m e 1km)
+    // 6. POIs em paralelo (raios variados por categoria)
     const [
       restaurants,
       supermarkets,
@@ -470,46 +470,35 @@ export async function POST(request: Request) {
       shoppings,
       hotels,
       parkingLots,
+      airports,
+      busStations,
+      universities,
+      hospitals,
     ] = await Promise.all([
-      searchNearbyPlaces(geo.lat, geo.lng, "restaurante", "restaurante", 500),
-      searchNearbyPlaces(geo.lat, geo.lng, "supermercado", "supermercado", 500),
-      searchNearbyPlaces(geo.lat, geo.lng, "posto de gasolina", "posto", 500),
-      searchNearbyPlaces(geo.lat, geo.lng, "shopping center", "shopping", 1000),
-      searchNearbyPlaces(geo.lat, geo.lng, "hotel", "hotel", 1000),
-      searchNearbyPlaces(geo.lat, geo.lng, "estacionamento", "estacionamento", 500),
+      searchNearbyPlaces(geo.lat, geo.lng, "restaurante café lanchonete padaria", "restaurante", 500),
+      searchNearbyPlaces(geo.lat, geo.lng, "supermercado mercado mercearia", "supermercado", 500),
+      searchNearbyPlaces(geo.lat, geo.lng, "posto de gasolina posto combustível", "posto", 500),
+      searchNearbyPlaces(geo.lat, geo.lng, "shopping center centro comercial", "shopping", 1000),
+      searchNearbyPlaces(geo.lat, geo.lng, "hotel pousada", "hotel", 1000),
+      searchNearbyPlaces(geo.lat, geo.lng, "estacionamento parking", "estacionamento", 500),
+      searchNearbyPlaces(geo.lat, geo.lng, "aeroporto airport", "aeroporto", 5000),
+      searchNearbyPlaces(geo.lat, geo.lng, "rodoviária terminal rodoviário bus station", "rodoviaria", 3000),
+      searchNearbyPlaces(geo.lat, geo.lng, "universidade faculdade", "universidade", 2000),
+      searchNearbyPlaces(geo.lat, geo.lng, "hospital pronto socorro", "hospital", 2000),
     ]);
-    googleQueriesUsed += 6;
+    googleQueriesUsed += 10;
 
-    // Validar rating do ponto (se endereço foi fornecido)
-    let pointRating = 0;
-    let pointReviews = 0;
-    if (GOOGLE_MAPS_API_KEY && address) {
-      try {
-        const placeRes = await fetch(
-          "https://places.googleapis.com/v1/places:searchText",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-Goog-Api-Key": GOOGLE_MAPS_API_KEY,
-              "X-Goog-FieldMask": "places.rating,places.userRatingCount",
-            },
-            body: JSON.stringify({ textQuery: address, maxResultCount: 1 }),
-          }
-        );
-        googleQueriesUsed += 1;
-        if (placeRes.ok) {
-          const placeData = await placeRes.json();
-          const place = placeData.places?.[0];
-          if (place) {
-            pointRating = place.rating || 0;
-            pointReviews = place.userRatingCount || 0;
-          }
-        }
-      } catch {
-        // continue
-      }
-    }
+    console.log("=== POIs ENCONTRADOS ===");
+    console.log("Restaurantes/cafés:", restaurants.length);
+    console.log("Supermercados:", supermarkets.length);
+    console.log("Postos:", gasStations.length);
+    console.log("Shoppings:", shoppings.length);
+    console.log("Hotéis:", hotels.length);
+    console.log("Estacionamentos:", parkingLots.length);
+    console.log("Aeroportos:", airports.length);
+    console.log("Rodoviárias:", busStations.length);
+    console.log("Universidades:", universities.length);
+    console.log("Hospitais:", hospitals.length);
 
     // 7. Buscar carregadores próximos do banco
     const chargersNear = await getChargersNearPoint(
@@ -568,6 +557,7 @@ export async function POST(request: Request) {
       }
     }
     const totalPoisIn500m = allPOIs.filter((p) => p.distance_m <= 500).length;
+    console.log("Total POIs 500m:", totalPoisIn500m);
 
     // Distância ao centro
     const distanceKm =
@@ -596,10 +586,12 @@ export async function POST(request: Request) {
       shoppings: shoppings.length,
       hotels: hotels.length,
       parkingLots: parkingLots.length,
+      universities: universities.length,
+      hospitals: hospitals.length,
+      hasAirportNearby: airports.length > 0,
+      hasRodoviariaNearby: busStations.length > 0,
       totalPOIs: totalPoisIn500m,
       distanceToCenter: distanceKm,
-      rating: pointRating,
-      reviewCount: pointReviews,
       establishmentType: establishment_type || "outro",
       observations: establishment_name || "",
     };
