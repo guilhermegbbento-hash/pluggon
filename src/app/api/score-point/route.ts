@@ -7,7 +7,7 @@ import {
 } from "@/lib/competitors";
 import type { CompetitorStation } from "@/lib/competitors";
 import { calculateScore } from "@/lib/scoring-engine";
-import type { ScoreInput, ScoreVariable } from "@/lib/scoring-engine";
+import type { ScoreInput } from "@/lib/scoring-engine";
 import { logUsage } from "@/lib/usage-logger";
 import { getABVEData } from "@/lib/abve-real-data";
 
@@ -246,13 +246,18 @@ interface ClaudeTextResult {
 }
 
 async function generateAnalysisText(
-  scoreVariables: ScoreVariable[],
   overallScore: number,
   classification: string,
   city: string,
   state: string,
   establishmentType: string,
-  observations: string
+  observations: string,
+  population: number | null,
+  totalDC: number,
+  evsSold: number | null,
+  distanceKm: number,
+  competitorsIn200m: number,
+  totalPoisIn500m: number
 ): Promise<ClaudeTextResult> {
   const empty: ClaudeTextResult = {
     strengths: [],
@@ -262,36 +267,31 @@ async function generateAnalysisText(
     tokensOut: 0,
   };
 
-  const variablesSummary = scoreVariables
-    .map(
-      (v) =>
-        `[${v.category}] ${v.name}: ${v.score}/10 (peso ${v.weight}, ${v.source}) — ${v.justification}`
-    )
-    .join("\n");
+  const popStr = population != null ? `${population.toLocaleString("pt-BR")} habitantes` : "população não informada";
+  const evsStr = evsSold != null ? `${evsSold.toLocaleString("pt-BR")} veículos elétricos` : "número de veículos elétricos não informado";
+  const dcStr = totalDC > 0 ? `${totalDC} carregadores rápidos` : "número de carregadores rápidos não informado";
 
-  const systemPrompt = `Você é a BLEV, plataforma de inteligência para eletromobilidade no Brasil.
+  const systemPrompt = `Você é a PLUGGON, plataforma de inteligência para eletromobilidade no Brasil.
 
 REGRAS INVIOLÁVEIS:
-- Score JÁ FOI calculado pelo sistema. NUNCA altere, comente ou questione o score.
-- NUNCA invente dados: estatísticas, quantidades, percentuais, rankings, vendas. Use APENAS os dados listados na entrada.
-- NUNCA recomende potência de carregador. Não fale "DC 80kW", "150kW", "50kW", etc.
-- NUNCA mencione recomendação de instalação técnica.
-- Sua tarefa é APENAS interpretar os dados em prosa: pontos fortes (3 a 5 bullets) e pontos de atenção (3 a 5 bullets), e uma recomendação de NEGÓCIO sucinta.
-- Cada bullet deve ter no máximo 18 palavras e referenciar pelo menos um dado real fornecido.
+- O score JÁ FOI calculado pelo sistema. NUNCA altere, comente ou questione o score.
+- NÃO invente dados. NÃO mencione números que não foram fornecidos.
+- NÃO recomende potência de carregador. Não fale "DC 80kW", "150kW", "50kW", etc.
+- NÃO diga "apenas X carregadores" se não tem certeza.
+- Use linguagem profissional de relatório.
+- Cada bullet com no máximo 22 palavras e referenciando pelo menos um dado real fornecido.
 - Responda APENAS com JSON válido, sem markdown, sem texto extra.`;
 
-  const userPrompt = `DADOS:
-- Cidade: ${city}, ${state}
-- Tipo do ponto: ${establishmentType}
-- Observações do usuário: ${observations || "(nenhuma)"}
+  const userPrompt = `Score calculado: ${overallScore}/100 (${classification}).
+Dados da cidade: ${popStr}, ${dcStr}, ${evsStr}.
+Dados do ponto: ${establishmentType}, ${distanceKm.toFixed(1)}km do centro, ${competitorsIn200m} concorrentes diretos em 200m, ${totalPoisIn500m} pontos de interesse em 500m.
+Observações do usuário: ${observations || "(nenhuma)"}
+Cidade/UF: ${city}/${state}.
 
-SCORE CALCULADO (NÃO ALTERAR): ${overallScore}/100 — ${classification}
+Gere 3-5 pontos fortes e 3-5 pontos de atenção baseado APENAS nesses dados.
+REGRAS: NÃO invente dados. NÃO recomende potência de carregador. NÃO mencione números que não foram fornecidos. NÃO diga "apenas X carregadores" se não tem certeza. Use linguagem profissional de relatório.
 
-VARIÁVEIS COM DADOS REAIS:
-${variablesSummary}
-
-Gere SOMENTE o JSON abaixo. NÃO mude o score. NÃO invente dados. NÃO recomende potência de carregador.
-
+Retorne SOMENTE o JSON:
 {
   "strengths": ["bullet 1", "bullet 2", "bullet 3"],
   "weaknesses": ["bullet 1", "bullet 2", "bullet 3"],
@@ -791,14 +791,22 @@ export async function POST(request: Request) {
     }
 
     // 7. Claude para texto APENAS
+    const distanceKm = haversineDistance(geo.lat, geo.lng, cityLat, cityLng) / 1000;
+    const totalDcForPrompt =
+      crossCheck.totalDC > 0 ? crossCheck.totalDC : abve?.dc ?? 0;
     const claudeResult = await generateAnalysisText(
-      scoreResult.variables,
       scoreResult.overallScore,
       scoreResult.classification,
       geo.city,
       geo.state,
       establishment_type || "outro",
-      establishment_name || ""
+      establishment_name || "",
+      ibgeData.population,
+      totalDcForPrompt,
+      abve?.evsSold ?? null,
+      distanceKm,
+      competitorsIn200m,
+      totalPoisIn500m
     );
 
     // 8. Custos

@@ -71,12 +71,12 @@ export interface ScoreResult {
 }
 
 const CATEGORY_WEIGHTS: Record<string, number> = {
-  CIDADE: 0.20,
-  CONCORRENCIA: 0.25,
-  ENTORNO: 0.20,
-  LOCALIZACAO: 0.15,
-  TIPO: 0.10,
-  OBSERVACOES: 0.10,
+  CIDADE: 0.15,
+  CONCORRENCIA: 0.20,
+  ENTORNO: 0.18,
+  LOCALIZACAO: 0.22,
+  TIPO: 0.17,
+  OBSERVACOES: 0.08,
 };
 
 function haversineKm(
@@ -272,20 +272,21 @@ export function calculateScore(input: ScoreInput): ScoreResult {
   }
 
   // ===== CATEGORIA 2: CONCORRÊNCIA (5 vars) =====
-  // 6. DC na cidade (peso 3) — ABVE
+  // 6. DC na cidade (peso 3)
   if (abveDc != null) {
     const d = abveDc;
     const dScore =
-      d < 10 ? 9 :
-      d <= 30 ? 7 :
-      d <= 80 ? 5 :
-      d <= 200 ? 4 : 3;
+      d < 5 ? 10 :
+      d <= 15 ? 8 :
+      d <= 50 ? 7 :
+      d <= 100 ? 6 :
+      d <= 200 ? 5 : 4;
     add(
       "DC na Cidade (Saturação)",
       "CONCORRENCIA",
       dScore,
       3,
-      `${d} DC na cidade — ${d < 10 ? "muito baixo, alta oportunidade" : d <= 30 ? "baixo" : d <= 80 ? "médio" : d <= 200 ? "alto" : "saturado"}`,
+      `${d} carregadores rápidos identificados na cidade`,
       "ABVE"
     );
   } else {
@@ -294,7 +295,7 @@ export function calculateScore(input: ScoreInput): ScoreResult {
       "CONCORRENCIA",
       6,
       3,
-      "Cidade sem dados ABVE",
+      "Sem inventário de carregadores rápidos disponível para a cidade",
       "ABVE"
     );
   }
@@ -308,7 +309,7 @@ export function calculateScore(input: ScoreInput): ScoreResult {
       "CONCORRENCIA",
       s,
       3,
-      `${c} carregadores em 200m (Google Places)`,
+      `${c} carregadores em 200m`,
       "Google Places"
     );
   }
@@ -316,13 +317,13 @@ export function calculateScore(input: ScoreInput): ScoreResult {
   // 8. Concorrentes 500m (peso 3) — Google Places
   {
     const c = input.competitorsIn500m;
-    const s = c === 0 ? 10 : c <= 2 ? 7 : c <= 5 ? 5 : c <= 10 ? 3 : 1;
+    const s = c === 0 ? 9 : c <= 2 ? 7 : c <= 5 ? 5 : c <= 10 ? 3 : 1;
     add(
       "Concorrentes em 500m",
       "CONCORRENCIA",
       s,
       3,
-      `${c} carregadores em 500m (Google Places)`,
+      `${c} carregadores em 500m`,
       "Google Places"
     );
   }
@@ -477,9 +478,11 @@ export function calculateScore(input: ScoreInput): ScoreResult {
   const distKm = haversineKm(input.lat, input.lng, input.cityLat, input.cityLng);
   {
     const s =
-      distKm < 2 ? 10 :
-      distKm < 4 ? 8 :
-      distKm < 7 ? 6 :
+      distKm < 1 ? 10 :
+      distKm < 2 ? 9 :
+      distKm < 3 ? 8 :
+      distKm < 5 ? 7 :
+      distKm < 8 ? 6 :
       distKm < 12 ? 4 : 2;
     add(
       "Distância ao Centro",
@@ -539,17 +542,18 @@ export function calculateScore(input: ScoreInput): ScoreResult {
   // ===== CATEGORIA 5: TIPO ESTABELECIMENTO (3 vars) =====
   // 22. Adequação do tipo (peso 3)
   const tipoMap: Record<string, number> = {
-    posto_24h: 10,
     aeroporto: 10,
+    rodoviaria: 10,
+    posto_24h: 9,
     shopping: 9,
-    rodoviaria: 9,
-    hospital_24h: 8,
     hotel: 8,
+    hospital_24h: 8,
     supermercado: 7,
     estacionamento: 7,
     universidade: 7,
-    restaurante: 6,
     terreno: 6,
+    restaurante: 6,
+    outro: 5,
   };
   const tipoKey = (input.establishmentType || "outro").toLowerCase();
   const tipoScore = tipoMap[tipoKey] ?? 5;
@@ -563,19 +567,31 @@ export function calculateScore(input: ScoreInput): ScoreResult {
   );
 
   // 23. Potencial operação contínua (peso 3)
-  const operacaoTipos24h = ["posto_24h", "hospital_24h", "aeroporto"];
-  const operacaoSemi = ["shopping", "rodoviaria", "supermercado", "hotel"];
+  const operacaoMap: Record<string, number> = {
+    posto_24h: 10,
+    aeroporto: 10,
+    hospital_24h: 10,
+    hotel: 9,
+    rodoviaria: 9,
+    shopping: 7,
+    supermercado: 7,
+    estacionamento: 6,
+    universidade: 4,
+    restaurante: 5,
+    terreno: 5,
+    outro: 4,
+  };
   let operacaoScore: number;
   let operacaoJust: string;
-  if (input.is24h || operacaoTipos24h.includes(tipoKey)) {
+  if (input.is24h) {
     operacaoScore = 10;
     operacaoJust = "Operação 24h confirmada";
-  } else if (operacaoSemi.includes(tipoKey)) {
-    operacaoScore = 7;
-    operacaoJust = "Operação semi-contínua (estendida)";
   } else {
-    operacaoScore = 4;
-    operacaoJust = "Operação comercial padrão";
+    operacaoScore = operacaoMap[tipoKey] ?? 4;
+    if (operacaoScore >= 9) operacaoJust = "Operação 24h típica do segmento";
+    else if (operacaoScore >= 7) operacaoJust = "Operação semi-contínua (estendida)";
+    else if (operacaoScore >= 5) operacaoJust = "Operação comercial padrão";
+    else operacaoJust = "Operação restrita";
   }
   add(
     "Potencial Operação Contínua",
@@ -721,12 +737,12 @@ export function calculateScore(input: ScoreInput): ScoreResult {
   const pop = input.population ?? 200_000;
   const cityFactor =
     pop > 2_000_000 ? 1.00 :
-    pop > 1_000_000 ? 0.95 :
-    pop > 500_000 ? 0.88 :
-    pop > 200_000 ? 0.80 :
-    pop > 100_000 ? 0.70 : 0.58;
+    pop > 1_000_000 ? 0.98 :
+    pop > 500_000 ? 0.94 :
+    pop > 200_000 ? 0.88 :
+    pop > 100_000 ? 0.82 : 0.75;
 
-  const finalMultiplier = 0.7 + 0.3 * cityFactor;
+  const finalMultiplier = 0.85 + 0.15 * cityFactor;
   const overallScore = clamp(Math.round(rawScore * finalMultiplier), 0, 100);
 
   const classification =

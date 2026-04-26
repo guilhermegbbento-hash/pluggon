@@ -3,6 +3,9 @@
 import { useState, useEffect, useRef, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { buildScoreHtml } from "@/lib/score-html-export";
+import { createClient } from "@/lib/supabase/client";
+
+const COST_VIEWER_EMAIL = "guilhermegbbento@gmail.com";
 
 // ---------- Types ----------
 
@@ -136,19 +139,19 @@ const CATEGORY_ICONS: Record<string, string> = {
 };
 
 const SOURCE_BADGE: Record<ScoreSource, { bg: string; fg: string; label: string }> = {
-  ABVE: { bg: "#1F8F4F22", fg: "#3FB373", label: "ABVE" },
-  "Google Places": { bg: "#2196F322", fg: "#5BB3F0", label: "Google Places" },
-  IBGE: { bg: "#8B949E22", fg: "#A6ADBA", label: "IBGE" },
-  Cálculo: { bg: "#FFC10722", fg: "#FFC107", label: "Cálculo" },
+  ABVE: { bg: "#C9A84C22", fg: "#C9A84C", label: "Análise PLUGGON" },
+  "Google Places": { bg: "#C9A84C22", fg: "#C9A84C", label: "Análise PLUGGON" },
+  IBGE: { bg: "#5BB3F022", fg: "#5BB3F0", label: "Dados demográficos oficiais" },
+  Cálculo: { bg: "#C9A84C22", fg: "#C9A84C", label: "Análise PLUGGON" },
   Usuário: { bg: "#A06CD522", fg: "#B98AE0", label: "Usuário" },
 };
 
 const LOADING_STEPS = [
   "Geocodificando endereço...",
-  "Buscando dados ABVE da cidade...",
-  "Consultando IBGE...",
+  "Carregando inteligência da cidade...",
+  "Carregando dados demográficos oficiais...",
   "Identificando concorrentes...",
-  "Buscando POIs no entorno...",
+  "Buscando pontos de interesse no entorno...",
   "Calculando score (28 variáveis)...",
   "Gerando análise textual...",
 ];
@@ -235,12 +238,12 @@ function recomputeObservationScore(text: string): {
 
 // Recompute final score from current variables (used after observation edit)
 const CATEGORY_WEIGHTS: Record<string, number> = {
-  CIDADE: 0.20,
-  CONCORRENCIA: 0.25,
-  ENTORNO: 0.20,
-  LOCALIZACAO: 0.15,
-  TIPO: 0.10,
-  OBSERVACOES: 0.10,
+  CIDADE: 0.15,
+  CONCORRENCIA: 0.20,
+  ENTORNO: 0.18,
+  LOCALIZACAO: 0.22,
+  TIPO: 0.17,
+  OBSERVACOES: 0.08,
 };
 
 function recomputeOverall(
@@ -266,7 +269,7 @@ function recomputeOverall(
   for (const [cat, w] of Object.entries(CATEGORY_WEIGHTS)) {
     rawScore += (categoryScores[cat] || 0) * 10 * w;
   }
-  const finalMultiplier = 0.7 + 0.3 * cityFactor;
+  const finalMultiplier = 0.85 + 0.15 * cityFactor;
   const overallScore = Math.max(0, Math.min(100, Math.round(rawScore * finalMultiplier)));
   const classification =
     overallScore >= 85 ? "PREMIUM" :
@@ -480,8 +483,16 @@ function ScorePageInner() {
   // Local state for client-side observation re-edit
   const [extraObservation, setExtraObservation] = useState("");
   const [obsDraftOpen, setObsDraftOpen] = useState(false);
+  const [canSeeCost, setCanSeeCost] = useState(false);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user?.email === COST_VIEWER_EMAIL) setCanSeeCost(true);
+    });
+  }, []);
 
   useEffect(() => {
     if (document.getElementById("leaflet-css")) {
@@ -640,7 +651,7 @@ function ScorePageInner() {
     <div>
       <h1 className="text-2xl font-bold text-white">Score do Ponto</h1>
       <p className="mt-1 text-[#8B949E]">
-        Score 100% calculado por código a partir de dados verificáveis (ABVE, IBGE, Google Places).
+        Score 100% calculado por código a partir de dados verificáveis e dados demográficos oficiais.
       </p>
 
       {/* Form */}
@@ -649,6 +660,20 @@ function ScorePageInner() {
         className="mt-6 rounded-xl border border-[#30363D] bg-[#161B22] p-6"
       >
         <div className="grid gap-4 md:grid-cols-2">
+          <div className="md:col-span-2">
+            <label className="mb-1.5 block text-sm font-medium text-[#C9D1D9]">
+              Observações <span className="text-[#484F58]">(opcional)</span>
+            </label>
+            <textarea
+              value={establishmentName}
+              onChange={(e) => setEstablishmentName(e.target.value)}
+              placeholder="Ex: terreno próprio, frente pra avenida, operação 24h, próximo rodovia BR-277..."
+              rows={3}
+              className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-3 text-white placeholder-[#484F58] outline-none transition-colors focus:border-[#C9A84C]"
+              disabled={loading}
+            />
+          </div>
+
           <div className="md:col-span-2">
             <label className="mb-1.5 block text-sm font-medium text-[#C9D1D9]">
               Localização *
@@ -712,7 +737,7 @@ function ScorePageInner() {
             )}
           </div>
 
-          <div>
+          <div className="md:col-span-2">
             <label className="mb-1.5 block text-sm font-medium text-[#C9D1D9]">
               Tipo de estabelecimento *
             </label>
@@ -730,20 +755,6 @@ function ScorePageInner() {
                 </option>
               ))}
             </select>
-          </div>
-
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-[#C9D1D9]">
-              Observações <span className="text-[#484F58]">(opcional)</span>
-            </label>
-            <textarea
-              value={establishmentName}
-              onChange={(e) => setEstablishmentName(e.target.value)}
-              placeholder="Ex: terreno próprio, frente pra avenida principal, transformador trifásico..."
-              rows={3}
-              className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-3 text-white placeholder-[#484F58] outline-none transition-colors focus:border-[#C9A84C]"
-              disabled={loading}
-            />
           </div>
         </div>
 
@@ -860,13 +871,13 @@ function ScorePageInner() {
               </p>
             </div>
             <div className="rounded-lg border border-[#30363D] bg-[#161B22] p-4">
-              <p className="text-xs text-[#8B949E]">DC na Cidade (ABVE)</p>
+              <p className="text-xs text-[#8B949E]">Carregadores rápidos na cidade</p>
               <p className="mt-1 text-xl font-bold text-white">
                 {result.abve_data?.dc ?? "N/D"}
               </p>
             </div>
             <div className="rounded-lg border border-[#30363D] bg-[#161B22] p-4">
-              <p className="text-xs text-[#8B949E]">EVs na Cidade (ABVE)</p>
+              <p className="text-xs text-[#8B949E]">EVs na cidade</p>
               <p className="mt-1 text-xl font-bold text-white">
                 {result.abve_data?.evsSold?.toLocaleString("pt-BR") ?? "N/D"}
               </p>
@@ -887,9 +898,18 @@ function ScorePageInner() {
                 Variáveis do Score ({sortedVariables.length})
               </h3>
               <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
-                {(Object.keys(SOURCE_BADGE) as ScoreSource[]).map((s) => (
-                  <SourceBadge key={s} source={s} />
-                ))}
+                {(() => {
+                  const seenLabels = new Set<string>();
+                  const unique: ScoreSource[] = [];
+                  for (const s of Object.keys(SOURCE_BADGE) as ScoreSource[]) {
+                    const label = SOURCE_BADGE[s].label;
+                    if (!seenLabels.has(label)) {
+                      seenLabels.add(label);
+                      unique.push(s);
+                    }
+                  }
+                  return unique.map((s) => <SourceBadge key={s} source={s} />);
+                })()}
               </div>
             </div>
             <div className="overflow-x-auto">
@@ -950,8 +970,8 @@ function ScorePageInner() {
             </div>
           </div>
 
-          {/* Fontes de Dados (cruzamento de fontes para concorrentes / DC) */}
-          {result.data_sources && (
+          {/* Fontes de Dados (cruzamento de fontes para concorrentes / DC) — admin only */}
+          {canSeeCost && result.data_sources && (
             <div className="overflow-hidden rounded-xl border border-[#30363D] bg-[#161B22]">
               <div className="flex items-center justify-between border-b border-[#30363D] px-5 py-3">
                 <h3 className="text-base font-semibold text-white">
@@ -1115,7 +1135,8 @@ function ScorePageInner() {
             </div>
           )}
 
-          {/* Cost Card */}
+          {/* Cost Card — admin only */}
+          {canSeeCost && (
           <div className="rounded-xl border border-[#30363D] bg-[#161B22] p-5">
             <h3 className="mb-3 text-base font-semibold text-white">💰 Custo desta análise</h3>
             <div className="grid gap-3 md:grid-cols-3">
@@ -1148,6 +1169,7 @@ function ScorePageInner() {
               </div>
             </div>
           </div>
+          )}
 
           {/* CTA */}
           <div className="flex flex-wrap items-center justify-center gap-3">

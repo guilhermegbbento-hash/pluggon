@@ -92,12 +92,12 @@ const CATEGORY_LABELS: Record<string, string> = {
   OBSERVACOES: "Observações",
 };
 
-const SOURCE_BADGE: Record<string, { bg: string; fg: string }> = {
-  ABVE: { bg: "#1F8F4F22", fg: "#3FB373" },
-  "Google Places": { bg: "#2196F322", fg: "#5BB3F0" },
-  IBGE: { bg: "#8B949E22", fg: "#A6ADBA" },
-  "Cálculo": { bg: "#FFC10722", fg: "#FFC107" },
-  "Usuário": { bg: "#A06CD522", fg: "#B98AE0" },
+const SOURCE_BADGE: Record<string, { bg: string; fg: string; label: string }> = {
+  ABVE: { bg: "#C9A84C22", fg: "#C9A84C", label: "Análise PLUGGON" },
+  "Google Places": { bg: "#C9A84C22", fg: "#C9A84C", label: "Análise PLUGGON" },
+  IBGE: { bg: "#5BB3F022", fg: "#5BB3F0", label: "Dados demográficos oficiais" },
+  "Cálculo": { bg: "#C9A84C22", fg: "#C9A84C", label: "Análise PLUGGON" },
+  "Usuário": { bg: "#A06CD522", fg: "#B98AE0", label: "Usuário" },
 };
 
 const VARIABLE_LABELS: Record<string, string> = {
@@ -227,7 +227,7 @@ export function buildScoreHtml(r: ScoreExportData): string {
           const pct = (v.score / 10) * 100;
           const srcKey = v.source || "Cálculo";
           const srcCfg = SOURCE_BADGE[srcKey] || SOURCE_BADGE["Cálculo"];
-          const srcBadge = `<span style="display:inline-block;padding:2px 6px;border-radius:4px;background:${srcCfg.bg};color:${srcCfg.fg};font-size:10px;font-weight:600;margin-right:6px;">${esc(srcKey)}</span>`;
+          const srcBadge = `<span style="display:inline-block;padding:2px 6px;border-radius:4px;background:${srcCfg.bg};color:${srcCfg.fg};font-size:10px;font-weight:600;margin-right:6px;">${esc(srcCfg.label)}</span>`;
           return `
             <div class="var">
               <div class="var-head">
@@ -246,16 +246,6 @@ export function buildScoreHtml(r: ScoreExportData): string {
         </div>`;
     })
     .join("");
-
-  const costHtml = r.cost_breakdown
-    ? `
-        <div class="card" style="margin-top:24px;">
-          <h3 style="margin:0 0 12px;color:#fff;font-size:16px;">💰 Custo desta análise</h3>
-          <p style="margin:4px 0;color:#C9D1D9;font-size:13px;">Google Places: ${r.cost_breakdown.googleQueries} queries · US$ ${r.cost_breakdown.googleCostUsd.toFixed(4)}</p>
-          <p style="margin:4px 0;color:#C9D1D9;font-size:13px;">Claude: ${r.cost_breakdown.claudeTokensIn} in / ${r.cost_breakdown.claudeTokensOut} out · US$ ${r.cost_breakdown.claudeCostUsd.toFixed(4)}</p>
-          <p style="margin:8px 0 0;color:#C9A84C;font-weight:700;font-size:15px;">Total: US$ ${r.cost_breakdown.totalCostUsd.toFixed(4)}</p>
-        </div>`
-    : "";
 
   const strengthsHtml = (r.strengths || [])
     .map((s) => `<li>${esc(s)}</li>`)
@@ -469,8 +459,6 @@ export function buildScoreHtml(r: ScoreExportData): string {
       <h3>💡 Recomendação</h3>
       <p>${esc(r.recommendation)}</p>
     </div>
-
-    ${costHtml}
 
     <div class="footer">PLUGGON by BLEV Educação | Gerado em ${esc(date)}</div>
   </div>
