@@ -1,12 +1,16 @@
 // Generates a self-contained dark-theme HTML string from a ScorePoint result.
 // Embeds Leaflet (from CDN) to render a mini map centered on the point.
 
+type ScoreSource = "ABVE" | "Google Places" | "IBGE" | "Cálculo" | "Usuário";
+
 interface VariableData {
+  id?: number;
   name: string;
   category: string;
   score: number;
-  weight: string;
+  weight: number | string;
   justification: string;
+  source?: ScoreSource;
 }
 
 interface NearbyPlace {
@@ -30,7 +34,8 @@ export interface ScoreExportData {
   establishment_name: string;
   overall_score: number;
   classification: string;
-  variables: VariableData[];
+  scoring_variables?: VariableData[];
+  variables?: VariableData[];
   strengths: string[];
   weaknesses: string[];
   recommendation: string;
@@ -40,8 +45,16 @@ export interface ScoreExportData {
     population: number | null;
     gdp_total: number | null;
     gdp_per_capita: number | null;
-    idhm: number | null;
-    fleet_total: number | null;
+    idhm?: number | null;
+    fleet_total?: number | null;
+  };
+  cost_breakdown?: {
+    googleQueries: number;
+    googleCostUsd: number;
+    claudeTokensIn: number;
+    claudeTokensOut: number;
+    claudeCostUsd: number;
+    totalCostUsd: number;
   };
 }
 
@@ -62,14 +75,29 @@ const CLASSIFICATION_COLOR: Record<string, string> = {
 };
 
 const CATEGORY_ICONS: Record<string, string> = {
-  "Demanda e Mobilidade": "🚗",
-  "Frota de EVs": "⚡",
-  "Concorrência e Saturação": "🏁",
-  "Infraestrutura do Local": "🔌",
-  "Amenidades e Conveniência": "🏪",
-  "Demografia e Economia": "👥",
-  "Potencial Comercial": "💰",
-  "Exclusivas Brasil": "🇧🇷",
+  CIDADE: "🏙️",
+  CONCORRENCIA: "🏁",
+  ENTORNO: "🏪",
+  LOCALIZACAO: "📍",
+  TIPO: "🏢",
+  OBSERVACOES: "📝",
+};
+
+const CATEGORY_LABELS: Record<string, string> = {
+  CIDADE: "Cidade",
+  CONCORRENCIA: "Concorrência",
+  ENTORNO: "Entorno",
+  LOCALIZACAO: "Localização",
+  TIPO: "Tipo de Estabelecimento",
+  OBSERVACOES: "Observações",
+};
+
+const SOURCE_BADGE: Record<string, { bg: string; fg: string }> = {
+  ABVE: { bg: "#1F8F4F22", fg: "#3FB373" },
+  "Google Places": { bg: "#2196F322", fg: "#5BB3F0" },
+  IBGE: { bg: "#8B949E22", fg: "#A6ADBA" },
+  "Cálculo": { bg: "#FFC10722", fg: "#FFC107" },
+  "Usuário": { bg: "#A06CD522", fg: "#B98AE0" },
 };
 
 const VARIABLE_LABELS: Record<string, string> = {
@@ -182,9 +210,10 @@ export function buildScoreHtml(r: ScoreExportData): string {
     year: "numeric",
   });
 
-  // Group variables by category
+  // Group variables by category (prefer scoring_variables, fallback to legacy variables)
+  const allVars: VariableData[] = r.scoring_variables || r.variables || [];
   const byCategory: Record<string, VariableData[]> = {};
-  for (const v of r.variables || []) {
+  for (const v of allVars) {
     if (!byCategory[v.category]) byCategory[v.category] = [];
     byCategory[v.category].push(v);
   }
@@ -196,10 +225,13 @@ export function buildScoreHtml(r: ScoreExportData): string {
           const label = VARIABLE_LABELS[v.name] || v.name;
           const col = scoreColor(v.score);
           const pct = (v.score / 10) * 100;
+          const srcKey = v.source || "Cálculo";
+          const srcCfg = SOURCE_BADGE[srcKey] || SOURCE_BADGE["Cálculo"];
+          const srcBadge = `<span style="display:inline-block;padding:2px 6px;border-radius:4px;background:${srcCfg.bg};color:${srcCfg.fg};font-size:10px;font-weight:600;margin-right:6px;">${esc(srcKey)}</span>`;
           return `
             <div class="var">
               <div class="var-head">
-                <span class="var-name">${esc(label)}</span>
+                <span class="var-name">${srcBadge}${esc(label)}</span>
                 <span class="var-score" style="color:${col}">${v.score.toFixed(1)}</span>
               </div>
               <div class="var-bar"><div class="var-fill" style="width:${pct}%;background:${col}"></div></div>
@@ -209,11 +241,21 @@ export function buildScoreHtml(r: ScoreExportData): string {
         .join("");
       return `
         <div class="cat">
-          <h3>${CATEGORY_ICONS[cat] || "📊"} ${esc(cat)}</h3>
+          <h3>${CATEGORY_ICONS[cat] || "📊"} ${esc(CATEGORY_LABELS[cat] || cat)}</h3>
           ${rows}
         </div>`;
     })
     .join("");
+
+  const costHtml = r.cost_breakdown
+    ? `
+        <div class="card" style="margin-top:24px;">
+          <h3 style="margin:0 0 12px;color:#fff;font-size:16px;">💰 Custo desta análise</h3>
+          <p style="margin:4px 0;color:#C9D1D9;font-size:13px;">Google Places: ${r.cost_breakdown.googleQueries} queries · US$ ${r.cost_breakdown.googleCostUsd.toFixed(4)}</p>
+          <p style="margin:4px 0;color:#C9D1D9;font-size:13px;">Claude: ${r.cost_breakdown.claudeTokensIn} in / ${r.cost_breakdown.claudeTokensOut} out · US$ ${r.cost_breakdown.claudeCostUsd.toFixed(4)}</p>
+          <p style="margin:8px 0 0;color:#C9A84C;font-weight:700;font-size:15px;">Total: US$ ${r.cost_breakdown.totalCostUsd.toFixed(4)}</p>
+        </div>`
+    : "";
 
   const strengthsHtml = (r.strengths || [])
     .map((s) => `<li>${esc(s)}</li>`)
@@ -427,6 +469,8 @@ export function buildScoreHtml(r: ScoreExportData): string {
       <h3>💡 Recomendação</h3>
       <p>${esc(r.recommendation)}</p>
     </div>
+
+    ${costHtml}
 
     <div class="footer">PLUGGON by BLEV Educação | Gerado em ${esc(date)}</div>
   </div>

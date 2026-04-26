@@ -6,12 +6,16 @@ import { createClient } from "@/lib/supabase/client";
 
 // ---------- Types ----------
 
+type ScoreSource = "ABVE" | "Google Places" | "IBGE" | "Cálculo" | "Usuário";
+
 interface VariableData {
+  id?: number;
   name: string;
   category: string;
   score: number;
-  weight: string;
+  weight: number | string;
   justification: string;
+  source?: ScoreSource;
 }
 
 interface NearbyPlace {
@@ -35,7 +39,8 @@ interface ScoreData {
   establishment_name: string;
   overall_score: number;
   classification: string;
-  variables: VariableData[];
+  variables?: VariableData[];
+  scoring_variables?: VariableData[];
   strengths: string[];
   weaknesses: string[];
   recommendation: string;
@@ -45,8 +50,16 @@ interface ScoreData {
     population: number | null;
     gdp_total: number | null;
     gdp_per_capita: number | null;
-    idhm: number | null;
-    fleet_total: number | null;
+    idhm?: number | null;
+    fleet_total?: number | null;
+  };
+  cost_breakdown?: {
+    googleQueries: number;
+    googleCostUsd: number;
+    claudeTokensIn: number;
+    claudeTokensOut: number;
+    claudeCostUsd: number;
+    totalCostUsd: number;
   };
 }
 
@@ -69,14 +82,21 @@ const CLASSIFICATION_COLOR: Record<string, string> = {
 };
 
 const CATEGORY_ICONS: Record<string, string> = {
-  "Demanda e Mobilidade": "🚗",
-  "Frota de EVs": "⚡",
-  "Concorrência e Saturação": "🏁",
-  "Infraestrutura do Local": "🔌",
-  "Amenidades e Conveniência": "🏪",
-  "Demografia e Economia": "👥",
-  "Potencial Comercial": "💰",
-  "Exclusivas Brasil": "🇧🇷",
+  CIDADE: "🏙️",
+  CONCORRENCIA: "🏁",
+  ENTORNO: "🏪",
+  LOCALIZACAO: "📍",
+  TIPO: "🏢",
+  OBSERVACOES: "📝",
+};
+
+const CATEGORY_LABELS: Record<string, string> = {
+  CIDADE: "Cidade",
+  CONCORRENCIA: "Concorrência",
+  ENTORNO: "Entorno",
+  LOCALIZACAO: "Localização",
+  TIPO: "Tipo de Estabelecimento",
+  OBSERVACOES: "Observações",
 };
 
 const VARIABLE_LABELS: Record<string, string> = {
@@ -335,9 +355,10 @@ export default function ScorePrintPage() {
     year: "numeric",
   });
 
-  // group variables
+  // group variables (prefer scoring_variables, fallback to legacy variables)
+  const allVars: VariableData[] = data.scoring_variables || data.variables || [];
   const byCategory: Record<string, VariableData[]> = {};
-  for (const v of data.variables || []) {
+  for (const v of allVars) {
     if (!byCategory[v.category]) byCategory[v.category] = [];
     byCategory[v.category].push(v);
   }
@@ -742,7 +763,7 @@ export default function ScorePrintPage() {
         {Object.entries(byCategory).map(([cat, vars]) => (
           <div className="page" key={cat}>
             <h2>
-              {CATEGORY_ICONS[cat] || "📊"} {cat}
+              {CATEGORY_ICONS[cat] || "📊"} {CATEGORY_LABELS[cat] || cat}
             </h2>
             <table className="var-table">
               <thead>

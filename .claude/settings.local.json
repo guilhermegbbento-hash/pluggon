@@ -10,7 +10,8 @@
       "Bash(xargs wc:*)",
       "Bash(git:*)",
       "Bash(grep -E \"\\\\.ts$\")",
-      "Bash(npx eslint:*)"
+      "Bash(npx eslint:*)",
+      "Bash(node *)"
     ]
   }
 }

@@ -1,0 +1,126 @@
+export interface CityABVEData {
+  city: string;
+  state: string;
+  ac: number;
+  dc: number;
+  total: number;
+  evsSold?: number; // vendas 2022-2026
+}
+
+export const ABVE_CHARGERS_DATA: CityABVEData[] = [
+  // TOP CIDADES BRASIL - Eletropostos
+  { city: 'São Paulo', state: 'SP', ac: 2011, dc: 402, total: 2413, evsSold: 92065 },
+  { city: 'Rio de Janeiro', state: 'RJ', ac: 802, dc: 131, total: 933, evsSold: 29691 },
+  { city: 'Brasília', state: 'DF', ac: 460, dc: 361, total: 821, evsSold: 57447 },
+  { city: 'Curitiba', state: 'PR', ac: 305, dc: 199, total: 504, evsSold: 21921 },
+  { city: 'Goiânia', state: 'GO', ac: 242, dc: 150, total: 392, evsSold: 12336 },
+  { city: 'Fortaleza', state: 'CE', ac: 230, dc: 146, total: 376, evsSold: 11070 },
+  { city: 'Porto Alegre', state: 'RS', ac: 232, dc: 103, total: 335, evsSold: 12539 },
+  { city: 'Belo Horizonte', state: 'MG', ac: 206, dc: 105, total: 311, evsSold: 37879 },
+  { city: 'Recife', state: 'PE', ac: 188, dc: 107, total: 295, evsSold: 11119 },
+  { city: 'Campinas', state: 'SP', ac: 213, dc: 81, total: 294 },
+  { city: 'Salvador', state: 'BA', ac: 200, dc: 77, total: 277, evsSold: 13082 },
+  { city: 'Florianópolis', state: 'SC', ac: 220, dc: 53, total: 273, evsSold: 8355 },
+  { city: 'Ribeirão Preto', state: 'SP', ac: 123, dc: 45, total: 168, evsSold: 6054 },
+  { city: 'Natal', state: 'RN', ac: 103, dc: 56, total: 159 },
+  { city: 'Maceió', state: 'AL', ac: 99, dc: 54, total: 153, evsSold: 6804 },
+  { city: 'João Pessoa', state: 'PB', ac: 69, dc: 80, total: 149 },
+  { city: 'Barueri', state: 'SP', ac: 112, dc: 26, total: 138 },
+  { city: 'Maringá', state: 'PR', ac: 91, dc: 45, total: 136 },
+  { city: 'Manaus', state: 'AM', ac: 67, dc: 63, total: 130, evsSold: 7735 },
+  { city: 'Aracaju', state: 'SE', ac: 77, dc: 44, total: 121 },
+  { city: 'Cuiabá', state: 'MT', ac: 81, dc: 37, total: 118, evsSold: 5844 },
+  { city: 'São José dos Campos', state: 'SP', ac: 70, dc: 46, total: 116 },
+  { city: 'Gramado', state: 'RS', ac: 95, dc: 15, total: 110 },
+  { city: 'Joinville', state: 'SC', ac: 78, dc: 32, total: 110 },
+  { city: 'Campo Grande', state: 'MS', ac: 69, dc: 37, total: 106 },
+  { city: 'Balneário Camboriú', state: 'SC', ac: 86, dc: 17, total: 103 },
+  { city: 'Belém', state: 'PA', ac: 52, dc: 41, total: 93 },
+  { city: 'Uberlândia', state: 'MG', ac: 49, dc: 44, total: 93 },
+  { city: 'Caxias do Sul', state: 'RS', ac: 49, dc: 43, total: 92 },
+  { city: 'São Bernardo do Campo', state: 'SP', ac: 65, dc: 26, total: 91 },
+  { city: 'São Luís', state: 'MA', ac: 36, dc: 54, total: 90 },
+  { city: 'São José do Rio Preto', state: 'SP', ac: 64, dc: 23, total: 87 },
+  { city: 'São José dos Pinhais', state: 'PR', ac: 41, dc: 45, total: 86 },
+  { city: 'Teresina', state: 'PI', ac: 46, dc: 39, total: 85 },
+  { city: 'Londrina', state: 'PR', ac: 48, dc: 36, total: 84 },
+  { city: 'Cascavel', state: 'PR', ac: 51, dc: 31, total: 82 },
+  { city: 'Vitória', state: 'ES', ac: 57, dc: 24, total: 81 },
+  { city: 'Guarulhos', state: 'SP', ac: 59, dc: 21, total: 80 },
+  { city: 'Contagem', state: 'MG', ac: 54, dc: 22, total: 76 },
+  { city: 'Campos do Jordão', state: 'SP', ac: 70, dc: 3, total: 73 },
+  { city: 'Foz do Iguaçu', state: 'PR', ac: 54, dc: 19, total: 73 },
+  { city: 'Santo André', state: 'SP', ac: 49, dc: 23, total: 72 },
+  { city: 'Campina Grande', state: 'PB', ac: 50, dc: 18, total: 68 },
+  { city: 'Jundiaí', state: 'SP', ac: 43, dc: 18, total: 61 },
+  { city: 'Juiz de Fora', state: 'MG', ac: 44, dc: 16, total: 60 },
+  { city: 'Mogi das Cruzes', state: 'SP', ac: 42, dc: 17, total: 59 },
+  { city: 'Santa Maria', state: 'RS', ac: 29, dc: 29, total: 58 },
+  { city: 'São José', state: 'SC', ac: 38, dc: 20, total: 58 },
+  { city: 'Passo Fundo', state: 'RS', ac: 29, dc: 28, total: 57 },
+  { city: 'Piracicaba', state: 'SP', ac: 37, dc: 20, total: 57 },
+  { city: 'Serra', state: 'ES', ac: 24, dc: 32, total: 56 },
+  { city: 'Chapecó', state: 'SC', ac: 40, dc: 14, total: 54 },
+  { city: 'Mossoró', state: 'RN', ac: 24, dc: 30, total: 54 },
+  { city: 'Sorocaba', state: 'SP', ac: 36, dc: 14, total: 50 },
+  { city: 'Indaiatuba', state: 'SP', ac: 35, dc: 10, total: 45 },
+  { city: 'São Roque', state: 'SP', ac: 40, dc: 5, total: 45 },
+  { city: 'Ponta Grossa', state: 'PR', ac: 31, dc: 17, total: 48 },
+  { city: 'Caruaru', state: 'PE', ac: 22, dc: 23, total: 45 },
+  { city: 'Jaboatão dos Guararapes', state: 'PE', ac: 13, dc: 30, total: 43 },
+  { city: 'Santana de Parnaíba', state: 'SP', ac: 35, dc: 4, total: 39 },
+  { city: 'São Caetano do Sul', state: 'SP', ac: 29, dc: 8, total: 37 },
+  { city: 'Guarujá', state: 'SP', ac: 28, dc: 7, total: 35 },
+  { city: 'São Sebastião', state: 'SP', ac: 32, dc: 3, total: 35 },
+  { city: 'Limeira', state: 'SP', ac: 22, dc: 12, total: 34 },
+  { city: 'Bertioga', state: 'SP', ac: 22, dc: 11, total: 33 },
+  { city: 'Cotia', state: 'SP', ac: 25, dc: 7, total: 32 },
+  { city: 'Osasco', state: 'SP', ac: 24, dc: 7, total: 31 },
+  { city: 'Guarapuava', state: 'PR', ac: 22, dc: 9, total: 31 },
+  { city: 'Itu', state: 'SP', ac: 19, dc: 11, total: 30 },
+  { city: 'Olímpia', state: 'SP', ac: 28, dc: 2, total: 30 },
+  { city: 'Pato Branco', state: 'PR', ac: 20, dc: 6, total: 26 },
+  { city: 'Ipojuca', state: 'PE', ac: 20, dc: 5, total: 25 },
+  { city: 'Toledo', state: 'PR', ac: 19, dc: 4, total: 23 },
+  { city: 'Petrolina', state: 'PE', ac: 5, dc: 16, total: 21 },
+  { city: 'Garanhuns', state: 'PE', ac: 8, dc: 6, total: 14 },
+  { city: 'Olinda', state: 'PE', ac: 4, dc: 10, total: 14 },
+  { city: 'Campo Largo', state: 'PR', ac: 12, dc: 4, total: 16 },
+  { city: 'Umuarama', state: 'PR', ac: 4, dc: 12, total: 16 },
+  { city: 'Apucarana', state: 'PR', ac: 8, dc: 7, total: 15 },
+  { city: 'Cabo de Santo Agostinho', state: 'PE', ac: 6, dc: 6, total: 12 },
+  { city: 'Arcoverde', state: 'PE', ac: 8, dc: 2, total: 10 },
+];
+
+// Dados nacionais
+export const ABVE_NATIONAL = {
+  lastUpdate: '2026-02',
+  totalChargers: 21061,
+  totalAC: 14582,
+  totalDC: 6479,
+  totalEVs: 778502,
+  marketSharePct: 2.16,
+  topModels: [
+    { model: 'Toyota Cross XRX Hybrid', qty: 53099 },
+    { model: 'BYD Dolphin Mini', qty: 50975 },
+    { model: 'BYD Song Plus', qty: 46010 },
+    { model: 'BYD Dolphin GS 180EV', qty: 34126 },
+    { model: 'BYD Song Pro', qty: 32386 },
+  ]
+};
+
+// Dados por estado
+export const ABVE_STATES: Record<string, { ac: number, dc: number, total: number, evsSold: number }> = {
+  'SP': { ac: 4606, dc: 1270, total: 5876, evsSold: 92065 },
+  'PR': { ac: 965, dc: 635, total: 1600, evsSold: 21921 },
+  'PE': { ac: 360, dc: 257, total: 617, evsSold: 11119 },
+};
+
+// Buscar dados de uma cidade
+export function getABVEData(city: string, state: string): CityABVEData | null {
+  const normalizedCity = city.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  return ABVE_CHARGERS_DATA.find(d => {
+    const dCity = d.city.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    return dCity === normalizedCity && d.state === state;
+  }) || null;
+}

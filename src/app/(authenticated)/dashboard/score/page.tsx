@@ -1,17 +1,21 @@
 "use client";
 
-import { useState, useEffect, useRef, Suspense } from "react";
+import { useState, useEffect, useRef, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { buildScoreHtml } from "@/lib/score-html-export";
 
 // ---------- Types ----------
 
-interface VariableData {
+type ScoreSource = "ABVE" | "Google Places" | "IBGE" | "Cálculo" | "Usuário";
+
+interface ScoringVariable {
+  id: number;
   name: string;
   category: string;
   score: number;
-  weight: string;
+  weight: number;
   justification: string;
+  source: ScoreSource;
 }
 
 interface NearbyPlace {
@@ -25,6 +29,15 @@ interface NearbyPlace {
   distance_m: number;
 }
 
+interface CostBreakdown {
+  googleQueries: number;
+  googleCostUsd: number;
+  claudeTokensIn: number;
+  claudeTokensOut: number;
+  claudeCostUsd: number;
+  totalCostUsd: number;
+}
+
 interface ScoreResult {
   address: string;
   lat: number;
@@ -34,8 +47,11 @@ interface ScoreResult {
   establishment_type: string;
   establishment_name: string;
   overall_score: number;
+  raw_score: number;
+  city_factor: number;
   classification: string;
-  variables: VariableData[];
+  category_scores: Record<string, number>;
+  scoring_variables: ScoringVariable[];
   strengths: string[];
   weaknesses: string[];
   recommendation: string;
@@ -46,8 +62,16 @@ interface ScoreResult {
     gdp_total: number | null;
     gdp_per_capita: number | null;
     idhm: number | null;
-    fleet_total: number | null;
   };
+  abve_data?: {
+    city: string;
+    state: string;
+    ac: number;
+    dc: number;
+    total: number;
+    evsSold?: number;
+  } | null;
+  cost_breakdown: CostBreakdown;
 }
 
 // ---------- Constants ----------
@@ -73,124 +97,49 @@ const ESTABLISHMENT_TYPES: Record<string, string> = {
 
 const CLASSIFICATION_CONFIG: Record<
   string,
-  { label: string; color: string; min: number }
+  { label: string; color: string }
 > = {
-  PREMIUM: { label: "Premium", color: "#C9A84C", min: 85 },
-  ESTRATEGICO: { label: "Estratégico", color: "#2196F3", min: 70 },
-  VIAVEL: { label: "Viável", color: "#FFC107", min: 55 },
-  MARGINAL: { label: "Marginal", color: "#FF9800", min: 40 },
-  REJEITADO: { label: "Rejeitado", color: "#F44336", min: 0 },
+  PREMIUM: { label: "Premium", color: "#C9A84C" },
+  ESTRATÉGICO: { label: "Estratégico", color: "#2196F3" },
+  VIÁVEL: { label: "Viável", color: "#FFC107" },
+  MARGINAL: { label: "Marginal", color: "#FF9800" },
+  "NÃO RECOMENDADO": { label: "Não Recomendado", color: "#F44336" },
 };
 
-const VARIABLE_LABELS: Record<string, string> = {
-  // 1. Demanda e Mobilidade (15)
-  volume_veiculos_dia: "Volume Veículos/Dia",
-  fluxo_motoristas_app: "Fluxo Motoristas App",
-  proximidade_corredores: "Proximidade Corredores Principais",
-  fluxo_pico_manha: "Fluxo Pico Manhã",
-  fluxo_pico_noite: "Fluxo Pico Noite",
-  fluxo_noturno: "Fluxo Noturno",
-  fluxo_fim_semana: "Fluxo Fim de Semana",
-  padrao_trafego: "Padrão de Tráfego",
-  proximidade_rodovias: "Proximidade Rodovias",
-  distancia_centro: "Distância ao Centro",
-  pontos_taxi_uber: "Pontos Taxi/Uber Próximos",
-  proximidade_terminal_onibus: "Proximidade Terminal Ônibus",
-  proximidade_aeroporto: "Proximidade Aeroporto",
-  proximidade_rodoviaria: "Proximidade Rodoviária",
-  veiculos_por_habitante: "Veículos por Habitante",
-  // 2. Frota de EVs (10)
-  total_evs_cidade: "Total EVs na Cidade",
-  crescimento_frota_12m: "Crescimento Frota 12 Meses",
-  evs_por_carregador_rapido: "EVs por Carregador Rápido",
-  vendas_mensais_evs: "Vendas Mensais EVs",
-  concessionarias_ev: "Concessionárias EV",
-  market_share_evs: "Market Share EVs",
-  projecao_frota_5anos: "Projeção Frota 5 Anos",
-  frotas_corporativas_ev: "Frotas Corporativas Elétricas",
-  locadoras_com_evs: "Locadoras com EVs",
-  densidade_evs_km2: "Densidade EVs/km²",
-  // 3. Concorrência e Saturação (10)
-  total_carregadores_cidade: "Total Carregadores Cidade",
-  carregadores_dc_rapidos: "Carregadores DC Rápidos",
-  carregadores_ac: "Carregadores AC",
-  carregadores_raio_2km: "Carregadores Raio 2km",
-  carregadores_raio_5km: "Carregadores Raio 5km",
-  tipo_concorrentes: "Tipo Concorrentes Próximos",
-  preco_medio_kwh: "Preço Médio kWh",
-  disponibilidade_concorrentes: "Disponibilidade Concorrentes",
-  operadores_cidade: "Operadores na Cidade",
-  saturacao_mercado: "Saturação de Mercado",
-  // 4. Infraestrutura do Local (10)
-  rede_eletrica: "Rede Elétrica",
-  custo_conexao: "Custo Conexão",
-  acessibilidade_entrada_saida: "Acessibilidade Entrada/Saída",
-  espaco_fisico: "Espaço Físico",
-  seguranca_local: "Segurança Local",
-  iluminacao: "Iluminação",
-  acessibilidade_pne: "Acessibilidade PNE",
-  operacao_24h: "Operação 24h",
-  cobertura_chuva: "Cobertura contra Chuva",
-  distancia_quadro_eletrico: "Distância Quadro Elétrico",
-  // 5. Amenidades e Conveniência (10)
-  tempo_permanencia: "Tempo de Permanência",
-  conveniencia: "Conveniência",
-  visibilidade: "Visibilidade",
-  tipo_estabelecimento_score: "Tipo de Estabelecimento",
-  servicos_raio_200m: "Serviços Raio 200m",
-  restaurantes_raio_300m: "Restaurantes Raio 300m",
-  farmacias_24h_raio_500m: "Farmácias 24h Raio 500m",
-  wifi_disponivel: "Wi-Fi Disponível",
-  estacionamento_vigilancia: "Estacionamento com Vigilância",
-  loja_conveniencia: "Loja de Conveniência",
-  // 6. Demografia e Economia (10)
-  populacao: "População",
-  pib_per_capita: "PIB Per Capita",
-  pib_total: "PIB Total",
-  idhm: "IDHM",
-  renda_media_bairro: "Renda Média do Bairro",
-  perfil_socioeconomico: "Perfil Socioeconômico",
-  densidade_populacional: "Densidade Populacional",
-  crescimento_populacional: "Crescimento Populacional",
-  frota_total_veiculos: "Frota Total Veículos",
-  veiculos_por_hab: "Veículos por Habitante",
-  // 7. Potencial Comercial (10)
-  potencial_parceria: "Potencial de Parceria",
-  diferencial_competitivo: "Diferencial Competitivo",
-  receitas_complementares: "Receitas Complementares",
-  potencial_b2b_frotas: "Potencial B2B/Frotas",
-  potencial_clube_assinatura: "Potencial Clube Assinatura",
-  alinhamento_pluggon: "Alinhamento Pluggon",
-  custo_aluguel_regiao: "Custo Aluguel Região",
-  potencial_expansao: "Potencial Expansão",
-  incentivos_governamentais: "Incentivos Governamentais",
-  tarifa_energia: "Tarifa de Energia",
-  // 8. Exclusivas Brasil (5)
-  usina_solar_gd: "Usina Solar GD",
-  custo_energia_solar_gd: "Custo Energia Solar GD",
-  postos_gnv_proximos: "Postos GNV Próximos",
-  polos_universitarios: "Polos Universitários",
-  corredor_eletrovias: "Corredor Eletrovias",
+const CATEGORY_LABELS: Record<string, string> = {
+  CIDADE: "Cidade",
+  CONCORRENCIA: "Concorrência",
+  ENTORNO: "Entorno",
+  LOCALIZACAO: "Localização",
+  TIPO: "Tipo de Estabelecimento",
+  OBSERVACOES: "Observações",
 };
 
 const CATEGORY_ICONS: Record<string, string> = {
-  "Demanda e Mobilidade": "🚗",
-  "Frota de EVs": "⚡",
-  "Concorrência e Saturação": "🏁",
-  "Infraestrutura do Local": "🔌",
-  "Amenidades e Conveniência": "🏪",
-  "Demografia e Economia": "👥",
-  "Potencial Comercial": "💰",
-  "Exclusivas Brasil": "🇧🇷",
+  CIDADE: "🏙️",
+  CONCORRENCIA: "🏁",
+  ENTORNO: "🏪",
+  LOCALIZACAO: "📍",
+  TIPO: "🏢",
+  OBSERVACOES: "📝",
+};
+
+const SOURCE_BADGE: Record<ScoreSource, { bg: string; fg: string; label: string }> = {
+  ABVE: { bg: "#1F8F4F22", fg: "#3FB373", label: "ABVE" },
+  "Google Places": { bg: "#2196F322", fg: "#5BB3F0", label: "Google Places" },
+  IBGE: { bg: "#8B949E22", fg: "#A6ADBA", label: "IBGE" },
+  Cálculo: { bg: "#FFC10722", fg: "#FFC107", label: "Cálculo" },
+  Usuário: { bg: "#A06CD522", fg: "#B98AE0", label: "Usuário" },
 };
 
 const LOADING_STEPS = [
   "Geocodificando endereço...",
+  "Buscando dados ABVE da cidade...",
+  "Consultando IBGE...",
+  "Identificando concorrentes...",
   "Buscando POIs no entorno...",
-  "Identificando carregadores concorrentes...",
-  "Consultando dados do IBGE...",
-  "Analisando 80 variáveis com IA...",
-  "Calculando score final...",
+  "Calculando score (28 variáveis)...",
+  "Gerando análise textual...",
 ];
 
 const POI_COLORS: Record<string, string> = {
@@ -199,13 +148,20 @@ const POI_COLORS: Record<string, string> = {
   posto: "#FFE66D",
   shopping: "#A06CD5",
   hospital: "#FF8A5C",
-  carregador_ev: "#F44336",
+  universidade: "#4ECDC4",
+  hotel: "#5BB3F0",
+  estacionamento: "#FFC107",
+  supermercado: "#3FB373",
 };
 
 // ---------- Helpers ----------
 
 function getClassificationColor(classification: string): string {
   return CLASSIFICATION_CONFIG[classification]?.color || "#8B949E";
+}
+
+function getClassificationLabel(classification: string): string {
+  return CLASSIFICATION_CONFIG[classification]?.label || classification;
 }
 
 function getScoreColor(score: number): string {
@@ -216,7 +172,100 @@ function getScoreColor(score: number): string {
   return "#F44336";
 }
 
-// ---------- Animated Gauge Component ----------
+// Recompute observation variable client-side (zero API cost)
+function recomputeObservationScore(text: string): {
+  score: number;
+  justification: string;
+} {
+  const obs = (text || "").toLowerCase();
+  let score = 5;
+  const matchedPos: string[] = [];
+  const matchedNeg: string[] = [];
+  const positivas = [
+    "rodovia", "br-", "transformador", "energia trifásica", "trifasica", "trifásica",
+    "estacionamento", "movimento", "fluxo", "24h", "24 horas", "vagas", "câmera",
+    "camera", "segurança", "seguranca", "iluminação", "iluminacao", "avenida principal",
+    "esquina", "frente", "visível", "visivel", "próprio", "proprio", "parceria",
+    "subestação", "subestacao",
+  ];
+  const negativas = [
+    "rua sem saída", "sem saida", "violência", "violencia", "perigoso", "abandonado",
+    "alagamento", "enchente", "rede precária", "precaria", "monofásico", "monofasico",
+    "sem energia", "obras", "interditado", "longe", "isolado", "deserto",
+  ];
+  for (const k of positivas) {
+    if (obs.includes(k)) {
+      score += 0.7;
+      matchedPos.push(k);
+    }
+  }
+  for (const k of negativas) {
+    if (obs.includes(k)) {
+      score -= 1.0;
+      matchedNeg.push(k);
+    }
+  }
+  score = Math.max(0, Math.min(10, Math.round(score * 10) / 10));
+  let justification: string;
+  if (!obs.trim()) {
+    justification = "Sem observações fornecidas";
+  } else {
+    const parts: string[] = [];
+    if (matchedPos.length)
+      parts.push(`+${matchedPos.length} positivas: ${matchedPos.slice(0, 3).join(", ")}`);
+    if (matchedNeg.length)
+      parts.push(`-${matchedNeg.length} negativas: ${matchedNeg.slice(0, 3).join(", ")}`);
+    justification = parts.length
+      ? parts.join(" | ")
+      : "Observação fornecida sem palavras-chave reconhecidas";
+  }
+  return { score, justification };
+}
+
+// Recompute final score from current variables (used after observation edit)
+const CATEGORY_WEIGHTS: Record<string, number> = {
+  CIDADE: 0.20,
+  CONCORRENCIA: 0.25,
+  ENTORNO: 0.20,
+  LOCALIZACAO: 0.15,
+  TIPO: 0.10,
+  OBSERVACOES: 0.10,
+};
+
+function recomputeOverall(
+  variables: ScoringVariable[],
+  cityFactor: number
+): { rawScore: number; overallScore: number; classification: string; categoryScores: Record<string, number> } {
+  const categoryScores: Record<string, number> = {};
+  for (const cat of Object.keys(CATEGORY_WEIGHTS)) {
+    const inCat = variables.filter((v) => v.category === cat);
+    if (!inCat.length) {
+      categoryScores[cat] = 0;
+      continue;
+    }
+    let weighted = 0;
+    let totalW = 0;
+    for (const v of inCat) {
+      weighted += v.score * v.weight;
+      totalW += v.weight;
+    }
+    categoryScores[cat] = totalW > 0 ? weighted / totalW : 0;
+  }
+  let rawScore = 0;
+  for (const [cat, w] of Object.entries(CATEGORY_WEIGHTS)) {
+    rawScore += (categoryScores[cat] || 0) * 10 * w;
+  }
+  const finalMultiplier = 0.7 + 0.3 * cityFactor;
+  const overallScore = Math.max(0, Math.min(100, Math.round(rawScore * finalMultiplier)));
+  const classification =
+    overallScore >= 85 ? "PREMIUM" :
+    overallScore >= 70 ? "ESTRATÉGICO" :
+    overallScore >= 55 ? "VIÁVEL" :
+    overallScore >= 40 ? "MARGINAL" : "NÃO RECOMENDADO";
+  return { rawScore: Math.round(rawScore * 10) / 10, overallScore, classification, categoryScores };
+}
+
+// ---------- Animated Gauge ----------
 
 function ScoreGauge({
   score,
@@ -227,7 +276,7 @@ function ScoreGauge({
 }) {
   const [animatedScore, setAnimatedScore] = useState(0);
   const color = getClassificationColor(classification);
-  const classLabel = CLASSIFICATION_CONFIG[classification]?.label || classification;
+  const classLabel = getClassificationLabel(classification);
 
   useEffect(() => {
     let frame: number;
@@ -253,14 +302,7 @@ function ScoreGauge({
     <div className="flex flex-col items-center gap-4">
       <div className="relative" style={{ width: 220, height: 220 }}>
         <svg width="220" height="220" viewBox="0 0 220 220">
-          <circle
-            cx="110"
-            cy="110"
-            r="90"
-            fill="none"
-            stroke="#21262D"
-            strokeWidth="12"
-          />
+          <circle cx="110" cy="110" r="90" fill="none" stroke="#21262D" strokeWidth="12" />
           <circle
             cx="110"
             cy="110"
@@ -290,7 +332,7 @@ function ScoreGauge({
   );
 }
 
-// ---------- Mini Map Component ----------
+// ---------- Mini Map ----------
 
 function MiniMap({
   lat,
@@ -313,7 +355,6 @@ function MiniMap({
       addTo: (m: unknown) => LLayer;
       bindPopup: (s: string) => LLayer;
     }
-
     const L = (window as unknown as Record<string, unknown>).L as {
       map: (el: HTMLElement, opts: Record<string, unknown>) => unknown;
       tileLayer: (url: string, opts: Record<string, unknown>) => LLayer;
@@ -322,7 +363,6 @@ function MiniMap({
       marker: (latlng: [number, number], opts?: Record<string, unknown>) => LLayer;
       divIcon: (opts: Record<string, unknown>) => unknown;
     };
-
     if (!L) return;
 
     const map = L.map(mapRef.current, {
@@ -336,7 +376,6 @@ function MiniMap({
       maxZoom: 19,
     }).addTo(map);
 
-    // 500m radius circle
     L.circle([lat, lng], {
       radius: 500,
       color: "#C9A84C",
@@ -346,9 +385,8 @@ function MiniMap({
       dashArray: "5,5",
     }).addTo(map);
 
-    // Main point marker
     const mainIcon = L.divIcon({
-      html: `<div style="width:20px;height:20px;background:#C9A84C;border:3px solid white;border-radius:50%;box-shadow:0 0 10px rgba(0,217,126,0.5);"></div>`,
+      html: `<div style="width:20px;height:20px;background:#C9A84C;border:3px solid white;border-radius:50%;"></div>`,
       iconSize: [20, 20] as unknown as Record<string, unknown>,
       iconAnchor: [10, 10] as unknown as Record<string, unknown>,
       className: "",
@@ -357,7 +395,6 @@ function MiniMap({
       .addTo(map)
       .bindPopup("<b>Ponto analisado</b>");
 
-    // POIs
     pois.forEach((poi) => {
       const poiColor = POI_COLORS[poi.type] || "#8B949E";
       L.circleMarker([poi.lat, poi.lng], {
@@ -371,7 +408,6 @@ function MiniMap({
         .bindPopup(`<b>${poi.name}</b><br>${poi.type} · ${poi.distance_m}m`);
     });
 
-    // Chargers (red)
     chargers.forEach((c) => {
       const chargerIcon = L.divIcon({
         html: `<div style="width:14px;height:14px;background:#F44336;border:2px solid white;border-radius:50%;"></div>`,
@@ -390,45 +426,17 @@ function MiniMap({
   return <div ref={mapRef} className="h-full w-full rounded-lg" />;
 }
 
-// ---------- Variable Bar Component ----------
+// ---------- Source Badge ----------
 
-const WEIGHT_CONFIG: Record<string, { label: string; color: string }> = {
-  alto: { label: "x3", color: "#F44336" },
-  medio: { label: "x2", color: "#FFC107" },
-  baixo: { label: "x1", color: "#8B949E" },
-};
-
-function VariableBar({ variable }: { variable: VariableData }) {
-  const label = VARIABLE_LABELS[variable.name] || variable.name;
-  const color = getScoreColor(variable.score);
-  const pct = (variable.score / 10) * 100;
-  const weightKey = variable.weight?.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") || "medio";
-  const weightCfg = WEIGHT_CONFIG[weightKey] || WEIGHT_CONFIG.medio;
-
+function SourceBadge({ source }: { source: ScoreSource }) {
+  const cfg = SOURCE_BADGE[source];
   return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-[#C9D1D9]">{label}</span>
-          <span
-            className="rounded px-1.5 py-0.5 text-[10px] font-semibold"
-            style={{ backgroundColor: weightCfg.color + "20", color: weightCfg.color }}
-          >
-            {weightCfg.label}
-          </span>
-        </div>
-        <span className="text-sm font-semibold" style={{ color }}>
-          {variable.score.toFixed(1)}
-        </span>
-      </div>
-      <div className="h-2 w-full rounded-full bg-[#21262D]">
-        <div
-          className="h-2 rounded-full transition-all duration-1000"
-          style={{ width: `${pct}%`, backgroundColor: color }}
-        />
-      </div>
-      <p className="text-xs text-[#8B949E]">{variable.justification}</p>
-    </div>
+    <span
+      className="inline-flex rounded px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap"
+      style={{ backgroundColor: cfg.bg, color: cfg.fg }}
+    >
+      {cfg.label}
+    </span>
   );
 }
 
@@ -457,9 +465,13 @@ function ScorePageInner() {
   const [result, setResult] = useState<ScoreResult | null>(null);
   const [scoreId, setScoreId] = useState<number | null>(null);
   const [leafletLoaded, setLeafletLoaded] = useState(false);
+
+  // Local state for client-side observation re-edit
+  const [extraObservation, setExtraObservation] = useState("");
+  const [obsDraftOpen, setObsDraftOpen] = useState(false);
+
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Load Leaflet
   useEffect(() => {
     if (document.getElementById("leaflet-css")) {
       setLeafletLoaded(true);
@@ -477,14 +489,11 @@ function ScorePageInner() {
     document.head.appendChild(js);
   }, []);
 
-  // Loading step animation
   useEffect(() => {
     if (loading) {
       setLoadingStep(0);
       intervalRef.current = setInterval(() => {
-        setLoadingStep((prev) =>
-          prev < LOADING_STEPS.length - 1 ? prev + 1 : prev
-        );
+        setLoadingStep((prev) => (prev < LOADING_STEPS.length - 1 ? prev + 1 : prev));
       }, 3000);
     } else if (intervalRef.current) {
       clearInterval(intervalRef.current);
@@ -495,18 +504,12 @@ function ScorePageInner() {
   }, [loading]);
 
   function parseGoogleMapsLink(link: string): { lat: number; lng: number } | null {
-    // Formato 1: https://www.google.com/maps/place/.../@-25.4284,-49.2733,17z
     const match1 = link.match(/@(-?\d+\.?\d*),(-?\d+\.?\d*)/);
     if (match1) return { lat: parseFloat(match1[1]), lng: parseFloat(match1[2]) };
-
-    // Formato 2: https://maps.google.com/?q=-25.4284,-49.2733
     const match2 = link.match(/[?&]q=(-?\d+\.?\d*),(-?\d+\.?\d*)/);
     if (match2) return { lat: parseFloat(match2[1]), lng: parseFloat(match2[2]) };
-
-    // Formato 3: https://www.google.com/maps?ll=-25.4284,-49.2733
     const match3 = link.match(/ll=(-?\d+\.?\d*),(-?\d+\.?\d*)/);
     if (match3) return { lat: parseFloat(match3[1]), lng: parseFloat(match3[2]) };
-
     return null;
   }
 
@@ -517,33 +520,31 @@ function ScorePageInner() {
 
     if (!link.trim()) return;
 
-    // Check for short links
     if (/goo\.gl/.test(link)) {
-      setGmapsError("Link curto não suportado. Abra o Google Maps, clique no local e copie o link completo da barra de endereço.");
+      setGmapsError(
+        "Link curto não suportado. Abra o Google Maps, clique no local e copie o link completo da barra de endereço."
+      );
       return;
     }
 
     const coords = parseGoogleMapsLink(link);
     if (!coords) {
-      setGmapsError("Não foi possível extrair coordenadas deste link. Copie o link completo da barra de endereço do Google Maps.");
+      setGmapsError(
+        "Não foi possível extrair coordenadas deste link. Copie o link completo da barra de endereço do Google Maps."
+      );
       return;
     }
 
     setParsedCoords(coords);
 
-    // Reverse geocode to get address
     try {
-      const res = await fetch(
-        `/api/reverse-geocode?lat=${coords.lat}&lng=${coords.lng}`
-      );
+      const res = await fetch(`/api/reverse-geocode?lat=${coords.lat}&lng=${coords.lng}`);
       if (res.ok) {
         const data = await res.json();
-        if (data.address) {
-          setAddress(data.address);
-        }
+        if (data.address) setAddress(data.address);
       }
     } catch {
-      // Silently fail - coords are still usable
+      // continue
     }
   }
 
@@ -554,6 +555,7 @@ function ScorePageInner() {
     setLoading(true);
     setError("");
     setResult(null);
+    setExtraObservation("");
 
     try {
       const payload: Record<string, unknown> = {
@@ -586,20 +588,48 @@ function ScorePageInner() {
     }
   }
 
-  // Group variables by category
-  const variablesByCategory: Record<string, VariableData[]> = {};
-  if (result?.variables) {
-    for (const v of result.variables) {
-      if (!variablesByCategory[v.category]) variablesByCategory[v.category] = [];
-      variablesByCategory[v.category].push(v);
-    }
+  function applyObservation() {
+    if (!result) return;
+    const baseObs = (result.establishment_name || "").trim();
+    const merged = [baseObs, extraObservation.trim()].filter(Boolean).join(" | ");
+    const recomp = recomputeObservationScore(merged);
+
+    const newVars = result.scoring_variables.map((v) =>
+      v.category === "OBSERVACOES"
+        ? { ...v, score: recomp.score, justification: recomp.justification }
+        : v
+    );
+    const newAgg = recomputeOverall(newVars, result.city_factor);
+    setResult({
+      ...result,
+      scoring_variables: newVars,
+      raw_score: newAgg.rawScore,
+      overall_score: newAgg.overallScore,
+      classification: newAgg.classification,
+      category_scores: newAgg.categoryScores,
+      establishment_name: merged,
+    });
+    setExtraObservation("");
+    setObsDraftOpen(false);
   }
+
+  // Group + sort variables
+  const sortedVariables = useMemo(() => {
+    if (!result) return [];
+    const order = ["CIDADE", "CONCORRENCIA", "ENTORNO", "LOCALIZACAO", "TIPO", "OBSERVACOES"];
+    return [...result.scoring_variables].sort((a, b) => {
+      const da = order.indexOf(a.category);
+      const db = order.indexOf(b.category);
+      if (da !== db) return da - db;
+      return a.id - b.id;
+    });
+  }, [result]);
 
   return (
     <div>
       <h1 className="text-2xl font-bold text-white">Score do Ponto</h1>
       <p className="mt-1 text-[#8B949E]">
-        Avalie a qualidade de um ponto específico para instalação de eletroposto.
+        Score 100% calculado por código a partir de dados verificáveis (ABVE, IBGE, Google Places).
       </p>
 
       {/* Form */}
@@ -641,7 +671,10 @@ function ScorePageInner() {
               <input
                 type="text"
                 value={address}
-                onChange={(e) => { setAddress(e.target.value); setParsedCoords(null); }}
+                onChange={(e) => {
+                  setAddress(e.target.value);
+                  setParsedCoords(null);
+                }}
                 placeholder="Ex: Av. Paulista, 1000, São Paulo, SP"
                 className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-3 text-white placeholder-[#484F58] outline-none transition-colors focus:border-[#C9A84C]"
                 disabled={loading}
@@ -653,13 +686,11 @@ function ScorePageInner() {
                   type="text"
                   value={gmapsLink}
                   onChange={(e) => handleGmapsLink(e.target.value)}
-                  placeholder="Cole aqui o link do Google Maps (ex: https://maps.google.com/...)"
+                  placeholder="Cole aqui o link do Google Maps"
                   className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-3 text-white placeholder-[#484F58] outline-none transition-colors focus:border-[#C9A84C]"
                   disabled={loading}
                 />
-                {gmapsError && (
-                  <p className="mt-1.5 text-sm text-yellow-400">{gmapsError}</p>
-                )}
+                {gmapsError && <p className="mt-1.5 text-sm text-yellow-400">{gmapsError}</p>}
                 {parsedCoords && (
                   <p className="mt-1.5 text-sm text-green-400">
                     Coordenadas extraídas: {parsedCoords.lat.toFixed(6)}, {parsedCoords.lng.toFixed(6)}
@@ -692,13 +723,12 @@ function ScorePageInner() {
 
           <div>
             <label className="mb-1.5 block text-sm font-medium text-[#C9D1D9]">
-              Observações importantes{" "}
-              <span className="text-[#484F58]">(opcional)</span>
+              Observações <span className="text-[#484F58]">(opcional)</span>
             </label>
             <textarea
               value={establishmentName}
               onChange={(e) => setEstablishmentName(e.target.value)}
-              placeholder="Ex: terreno próprio, próximo ao Jardim Botânico, frente pra avenida principal, tem transformador dedicado..."
+              placeholder="Ex: terreno próprio, frente pra avenida principal, transformador trifásico..."
               rows={3}
               className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-3 text-white placeholder-[#484F58] outline-none transition-colors focus:border-[#C9A84C]"
               disabled={loading}
@@ -723,23 +753,7 @@ function ScorePageInner() {
               Analisando...
             </>
           ) : (
-            <>
-              <svg
-                width="20"
-                height="20"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-                />
-              </svg>
-              Analisar Ponto
-            </>
+            <>Analisar Ponto</>
           )}
         </button>
 
@@ -748,12 +762,7 @@ function ScorePageInner() {
             {LOADING_STEPS.map((step, i) => (
               <div key={i} className="flex items-center gap-2 text-sm">
                 {i < loadingStep ? (
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 16 16"
-                    fill="#C9A84C"
-                  >
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="#C9A84C">
                     <path d="M8 0a8 8 0 110 16A8 8 0 018 0zm3.78 5.22a.75.75 0 00-1.06 0L7 8.94 5.28 7.22a.75.75 0 00-1.06 1.06l2.25 2.25a.75.75 0 001.06 0l4.25-4.25a.75.75 0 000-1.06z" />
                   </svg>
                 ) : i === loadingStep ? (
@@ -761,11 +770,7 @@ function ScorePageInner() {
                 ) : (
                   <div className="h-4 w-4 rounded-full border border-[#30363D]" />
                 )}
-                <span
-                  className={
-                    i <= loadingStep ? "text-[#C9D1D9]" : "text-[#484F58]"
-                  }
-                >
+                <span className={i <= loadingStep ? "text-[#C9D1D9]" : "text-[#484F58]"}>
                   {step}
                 </span>
               </div>
@@ -777,49 +782,35 @@ function ScorePageInner() {
       {/* Results */}
       {result && (
         <div className="mt-8 space-y-6">
-          {/* Top: Gauge + Map + Info */}
+          {/* Top: Gauge + Map */}
           <div className="grid gap-6 lg:grid-cols-3">
-            {/* Gauge */}
             <div className="flex flex-col items-center justify-center rounded-xl border border-[#30363D] bg-[#161B22] p-6">
-              <ScoreGauge
-                score={result.overall_score}
-                classification={result.classification}
-              />
+              <ScoreGauge score={result.overall_score} classification={result.classification} />
               <div className="mt-4 text-center">
                 <p className="text-sm text-[#8B949E]">{result.address}</p>
                 <p className="mt-1 text-xs text-[#484F58]">
-                  {result.city} - {result.state} · {result.lat.toFixed(5)},{" "}
-                  {result.lng.toFixed(5)}
+                  {result.city} - {result.state} · {result.lat.toFixed(5)}, {result.lng.toFixed(5)}
+                </p>
+                <p className="mt-2 text-[11px] text-[#484F58]">
+                  Score bruto: {result.raw_score} | Fator cidade: {result.city_factor.toFixed(2)}
                 </p>
               </div>
             </div>
 
-            {/* Mini Map */}
             <div className="overflow-hidden rounded-xl border border-[#30363D] bg-[#161B22] lg:col-span-2">
               <div className="flex items-center justify-between border-b border-[#30363D] px-4 py-3">
-                <h3 className="text-sm font-semibold text-white">
-                  Mapa do Entorno (500m)
-                </h3>
+                <h3 className="text-sm font-semibold text-white">Mapa do Entorno (500m)</h3>
                 <div className="flex items-center gap-3 text-xs text-[#8B949E]">
                   <span className="flex items-center gap-1">
-                    <span
-                      className="inline-block h-2.5 w-2.5 rounded-full"
-                      style={{ backgroundColor: "#C9A84C" }}
-                    />
+                    <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: "#C9A84C" }} />
                     Ponto
                   </span>
                   <span className="flex items-center gap-1">
-                    <span
-                      className="inline-block h-2.5 w-2.5 rounded-full"
-                      style={{ backgroundColor: "#F44336" }}
-                    />
+                    <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: "#F44336" }} />
                     Carregadores
                   </span>
                   <span className="flex items-center gap-1">
-                    <span
-                      className="inline-block h-2.5 w-2.5 rounded-full"
-                      style={{ backgroundColor: "#4ECDC4" }}
-                    />
+                    <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: "#4ECDC4" }} />
                     POIs
                   </span>
                 </div>
@@ -842,82 +833,176 @@ function ScorePageInner() {
           </div>
 
           {/* Stats bar */}
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <div className="rounded-lg border border-[#30363D] bg-[#161B22] p-4">
-              <p className="text-xs text-[#8B949E]">POIs no Entorno</p>
-              <p className="mt-1 text-2xl font-bold text-white">
-                {result.nearby_pois.length}
-              </p>
-            </div>
-            <div className="rounded-lg border border-[#30363D] bg-[#161B22] p-4">
-              <p className="text-xs text-[#8B949E]">Carregadores Próximos</p>
-              <p className="mt-1 text-2xl font-bold text-white">
-                {result.nearby_chargers.length}
-              </p>
-            </div>
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
             <div className="rounded-lg border border-[#30363D] bg-[#161B22] p-4">
               <p className="text-xs text-[#8B949E]">População</p>
-              <p className="mt-1 text-2xl font-bold text-white">
+              <p className="mt-1 text-xl font-bold text-white">
                 {result.ibge_data.population?.toLocaleString("pt-BR") ?? "N/D"}
               </p>
             </div>
             <div className="rounded-lg border border-[#30363D] bg-[#161B22] p-4">
-              <p className="text-xs text-[#8B949E]">PIB per Capita</p>
-              <p className="mt-1 text-2xl font-bold text-white">
+              <p className="text-xs text-[#8B949E]">PIB per capita</p>
+              <p className="mt-1 text-xl font-bold text-white">
                 {result.ibge_data.gdp_per_capita
                   ? `R$ ${Math.round(result.ibge_data.gdp_per_capita).toLocaleString("pt-BR")}`
                   : "N/D"}
               </p>
             </div>
+            <div className="rounded-lg border border-[#30363D] bg-[#161B22] p-4">
+              <p className="text-xs text-[#8B949E]">DC na Cidade (ABVE)</p>
+              <p className="mt-1 text-xl font-bold text-white">
+                {result.abve_data?.dc ?? "N/D"}
+              </p>
+            </div>
+            <div className="rounded-lg border border-[#30363D] bg-[#161B22] p-4">
+              <p className="text-xs text-[#8B949E]">EVs na Cidade (ABVE)</p>
+              <p className="mt-1 text-xl font-bold text-white">
+                {result.abve_data?.evsSold?.toLocaleString("pt-BR") ?? "N/D"}
+              </p>
+            </div>
+            <div className="rounded-lg border border-[#30363D] bg-[#161B22] p-4">
+              <p className="text-xs text-[#8B949E]">Concorrentes 500m</p>
+              <p className="mt-1 text-xl font-bold text-white">
+                {result.scoring_variables.find((v) => v.name === "Concorrentes em 500m")?.score ?? "—"}
+                <span className="ml-1 text-sm font-normal text-[#8B949E]">/10</span>
+              </p>
+            </div>
           </div>
 
-          {/* Variables by Category */}
-          <div className="grid gap-6 md:grid-cols-2">
-            {Object.entries(variablesByCategory).map(([category, vars]) => (
-              <div
-                key={category}
-                className="rounded-xl border border-[#30363D] bg-[#161B22] p-5"
-              >
-                <h3 className="mb-4 flex items-center gap-2 text-base font-semibold text-white">
-                  <span>{CATEGORY_ICONS[category] || "📊"}</span>
-                  {category}
+          {/* Variables Table */}
+          <div className="overflow-hidden rounded-xl border border-[#30363D] bg-[#161B22]">
+            <div className="flex items-center justify-between border-b border-[#30363D] px-5 py-3">
+              <h3 className="text-base font-semibold text-white">
+                Variáveis do Score ({sortedVariables.length})
+              </h3>
+              <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+                {(Object.keys(SOURCE_BADGE) as ScoreSource[]).map((s) => (
+                  <SourceBadge key={s} source={s} />
+                ))}
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-[#0D1117] text-left text-xs uppercase text-[#8B949E]">
+                  <tr>
+                    <th className="px-4 py-2.5 font-medium">#</th>
+                    <th className="px-4 py-2.5 font-medium">Variável</th>
+                    <th className="px-4 py-2.5 font-medium">Categoria</th>
+                    <th className="px-4 py-2.5 font-medium text-center">Peso</th>
+                    <th className="px-4 py-2.5 font-medium text-center">Nota</th>
+                    <th className="px-4 py-2.5 font-medium">Fonte</th>
+                    <th className="px-4 py-2.5 font-medium">Justificativa</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedVariables.map((v) => {
+                    const color = getScoreColor(v.score);
+                    return (
+                      <tr key={v.id} className="border-t border-[#21262D] hover:bg-[#0D1117]">
+                        <td className="px-4 py-3 text-xs text-[#8B949E]">{v.id}</td>
+                        <td className="px-4 py-3 text-[#C9D1D9]">{v.name}</td>
+                        <td className="px-4 py-3 text-xs text-[#8B949E]">
+                          {CATEGORY_ICONS[v.category]} {CATEGORY_LABELS[v.category] || v.category}
+                        </td>
+                        <td className="px-4 py-3 text-center text-xs text-[#8B949E]">×{v.weight}</td>
+                        <td className="px-4 py-3 text-center">
+                          <span className="text-base font-bold" style={{ color }}>
+                            {v.score.toFixed(1)}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3"><SourceBadge source={v.source} /></td>
+                        <td className="px-4 py-3 text-xs text-[#8B949E]">{v.justification}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Category scores summary */}
+            <div className="border-t border-[#30363D] bg-[#0D1117] px-5 py-3">
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
+                {Object.entries(result.category_scores).map(([cat, score]) => (
+                  <div key={cat} className="text-xs">
+                    <div className="text-[#8B949E]">
+                      {CATEGORY_ICONS[cat]} {CATEGORY_LABELS[cat] || cat}
+                    </div>
+                    <div
+                      className="mt-0.5 text-base font-bold"
+                      style={{ color: getScoreColor(score) }}
+                    >
+                      {score.toFixed(1)}<span className="ml-1 text-[10px] text-[#8B949E]">/10</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Adicionar Observação (zero custo) */}
+          <div className="rounded-xl border border-[#A06CD5]/30 bg-[#A06CD5]/5 p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-base font-semibold text-[#B98AE0]">
+                  ➕ Adicionar Observação
                 </h3>
-                <div className="space-y-4">
-                  {vars.map((v) => (
-                    <VariableBar key={v.name} variable={v} />
-                  ))}
+                <p className="mt-1 text-xs text-[#8B949E]">
+                  Recalcula apenas a variável de Observações (custo zero — sem chamadas de API).
+                </p>
+              </div>
+              {!obsDraftOpen && (
+                <button
+                  type="button"
+                  onClick={() => setObsDraftOpen(true)}
+                  className="rounded-lg border border-[#A06CD5] bg-transparent px-4 py-1.5 text-sm font-semibold text-[#B98AE0] transition-colors hover:bg-[#A06CD5]/10"
+                >
+                  Adicionar
+                </button>
+              )}
+            </div>
+            {obsDraftOpen && (
+              <div className="mt-3 space-y-3">
+                <textarea
+                  value={extraObservation}
+                  onChange={(e) => setExtraObservation(e.target.value)}
+                  placeholder="Ex: terreno tem transformador trifásico dedicado, esquina movimentada, câmeras 24h..."
+                  rows={3}
+                  className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-3 text-sm text-white placeholder-[#484F58] outline-none transition-colors focus:border-[#A06CD5]"
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={applyObservation}
+                    disabled={!extraObservation.trim()}
+                    className="rounded-lg bg-[#A06CD5] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#8B5DBF] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Aplicar e Recalcular
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setExtraObservation("");
+                      setObsDraftOpen(false);
+                    }}
+                    className="rounded-lg border border-[#30363D] bg-transparent px-4 py-2 text-sm text-[#8B949E] hover:text-white"
+                  >
+                    Cancelar
+                  </button>
                 </div>
               </div>
-            ))}
+            )}
           </div>
 
-          {/* Strengths + Weaknesses + Recommendation */}
+          {/* Strengths + Weaknesses */}
           <div className="grid gap-6 md:grid-cols-2">
-            {/* Strengths */}
             <div className="rounded-xl border border-[#C9A84C]/30 bg-[#C9A84C]/5 p-5">
-              <h3 className="mb-3 flex items-center gap-2 text-base font-semibold text-[#C9A84C]">
-                <svg
-                  width="20"
-                  height="20"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="#C9A84C"
-                  strokeWidth={2}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M5 13l4 4L19 7"
-                  />
-                </svg>
-                Pontos Fortes
-              </h3>
+              <h3 className="mb-3 text-base font-semibold text-[#C9A84C]">✓ Pontos Fortes</h3>
               <ul className="space-y-2">
+                {result.strengths.length === 0 && (
+                  <li className="text-sm text-[#8B949E]">Nenhum ponto forte gerado.</li>
+                )}
                 {result.strengths.map((s, i) => (
-                  <li
-                    key={i}
-                    className="flex items-start gap-2 text-sm text-[#C9D1D9]"
-                  >
+                  <li key={i} className="flex items-start gap-2 text-sm text-[#C9D1D9]">
                     <span className="mt-1 text-[#C9A84C]">•</span>
                     {s}
                   </li>
@@ -925,31 +1010,14 @@ function ScorePageInner() {
               </ul>
             </div>
 
-            {/* Weaknesses */}
             <div className="rounded-xl border border-[#FFC107]/30 bg-[#FFC107]/5 p-5">
-              <h3 className="mb-3 flex items-center gap-2 text-base font-semibold text-[#FFC107]">
-                <svg
-                  width="20"
-                  height="20"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="#FFC107"
-                  strokeWidth={2}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-                Pontos de Atenção
-              </h3>
+              <h3 className="mb-3 text-base font-semibold text-[#FFC107]">⚠ Pontos de Atenção</h3>
               <ul className="space-y-2">
+                {result.weaknesses.length === 0 && (
+                  <li className="text-sm text-[#8B949E]">Nenhum ponto de atenção gerado.</li>
+                )}
                 {result.weaknesses.map((w, i) => (
-                  <li
-                    key={i}
-                    className="flex items-start gap-2 text-sm text-[#C9D1D9]"
-                  >
+                  <li key={i} className="flex items-start gap-2 text-sm text-[#C9D1D9]">
                     <span className="mt-1 text-[#FFC107]">•</span>
                     {w}
                   </li>
@@ -959,27 +1027,45 @@ function ScorePageInner() {
           </div>
 
           {/* Recommendation */}
-          <div className="rounded-xl border border-[#2196F3]/30 bg-[#2196F3]/5 p-5">
-            <h3 className="mb-3 flex items-center gap-2 text-base font-semibold text-[#2196F3]">
-              <svg
-                width="20"
-                height="20"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="#2196F3"
-                strokeWidth={2}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
-                />
-              </svg>
-              Recomendação
-            </h3>
-            <p className="text-sm leading-relaxed text-[#C9D1D9]">
-              {result.recommendation}
-            </p>
+          {result.recommendation && (
+            <div className="rounded-xl border border-[#2196F3]/30 bg-[#2196F3]/5 p-5">
+              <h3 className="mb-3 text-base font-semibold text-[#2196F3]">Recomendação</h3>
+              <p className="text-sm leading-relaxed text-[#C9D1D9]">{result.recommendation}</p>
+            </div>
+          )}
+
+          {/* Cost Card */}
+          <div className="rounded-xl border border-[#30363D] bg-[#161B22] p-5">
+            <h3 className="mb-3 text-base font-semibold text-white">💰 Custo desta análise</h3>
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="rounded-lg border border-[#2196F3]/20 bg-[#2196F3]/5 p-3">
+                <p className="text-xs text-[#5BB3F0]">Google Places</p>
+                <p className="mt-1 text-lg font-bold text-white">
+                  {result.cost_breakdown.googleQueries} queries
+                </p>
+                <p className="text-xs text-[#8B949E]">
+                  US$ {result.cost_breakdown.googleCostUsd.toFixed(4)}
+                </p>
+              </div>
+              <div className="rounded-lg border border-[#A06CD5]/20 bg-[#A06CD5]/5 p-3">
+                <p className="text-xs text-[#B98AE0]">Claude (texto)</p>
+                <p className="mt-1 text-lg font-bold text-white">
+                  {(result.cost_breakdown.claudeTokensIn + result.cost_breakdown.claudeTokensOut).toLocaleString("pt-BR")} tokens
+                </p>
+                <p className="text-xs text-[#8B949E]">
+                  in {result.cost_breakdown.claudeTokensIn} / out {result.cost_breakdown.claudeTokensOut} · US$ {result.cost_breakdown.claudeCostUsd.toFixed(4)}
+                </p>
+              </div>
+              <div className="rounded-lg border border-[#C9A84C]/20 bg-[#C9A84C]/5 p-3">
+                <p className="text-xs text-[#C9A84C]">Total</p>
+                <p className="mt-1 text-lg font-bold text-white">
+                  US$ {result.cost_breakdown.totalCostUsd.toFixed(4)}
+                </p>
+                <p className="text-xs text-[#8B949E]">
+                  ≈ R$ {(result.cost_breakdown.totalCostUsd * 5).toFixed(3)}
+                </p>
+              </div>
+            </div>
           </div>
 
           {/* CTA */}
@@ -994,11 +1080,8 @@ function ScorePageInner() {
                 window.open(`/score-print/${scoreId}`, "_blank");
               }}
               disabled={!scoreId}
-              className="flex items-center gap-2 rounded-lg bg-[#C9A84C] px-6 py-3 font-semibold text-[#0D1117] transition-colors hover:bg-[#B89443] disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-lg bg-[#C9A84C] px-6 py-3 font-semibold text-[#0D1117] transition-colors hover:bg-[#B89443] disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-              </svg>
               Exportar PDF
             </button>
 
@@ -1017,11 +1100,8 @@ function ScorePageInner() {
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
               }}
-              className="flex items-center gap-2 rounded-lg bg-[#C9A84C] px-6 py-3 font-semibold text-[#0D1117] transition-colors hover:bg-[#B89443]"
+              className="rounded-lg bg-[#C9A84C] px-6 py-3 font-semibold text-[#0D1117] transition-colors hover:bg-[#B89443]"
             >
-              <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
               Exportar HTML
             </button>
 
@@ -1031,11 +1111,8 @@ function ScorePageInner() {
                 setResult(null);
                 setScoreId(null);
               }}
-              className="flex items-center gap-2 rounded-lg border border-[#C9A84C] bg-transparent px-6 py-3 font-semibold text-[#C9A84C] transition-colors hover:bg-[#C9A84C]/10"
+              className="rounded-lg border border-[#C9A84C] bg-transparent px-6 py-3 font-semibold text-[#C9A84C] transition-colors hover:bg-[#C9A84C]/10"
             >
-              <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
               Nova Análise
             </button>
           </div>
