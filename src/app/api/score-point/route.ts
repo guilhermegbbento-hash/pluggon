@@ -6,6 +6,7 @@ import { logUsage } from "@/lib/usage-logger";
 import { getABVEData } from "@/lib/abve-real-data";
 import {
   populateChargersFromGoogle,
+  populateChargersLocal,
   enrichWithOpenChargeMap,
   enrichWithCarregados,
   enrichWithPlugShare,
@@ -89,60 +90,49 @@ interface NearbyPlace {
   distance_m: number;
 }
 
-async function searchNearbyPlaces(
+// Nearby Search (OLD API): suporta type filter nativo e devolve resultados muito mais
+// precisos que o Text Search da Places API v1 para categorias bem-definidas.
+async function searchNearbyOld(
   lat: number,
   lng: number,
-  textQuery: string,
   type: string,
-  radiusM = 500
+  radiusM: number,
+  label: string
 ): Promise<NearbyPlace[]> {
   if (!GOOGLE_MAPS_API_KEY) return [];
   try {
-    const res = await fetch(
-      "https://places.googleapis.com/v1/places:searchText",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Goog-Api-Key": GOOGLE_MAPS_API_KEY,
-          "X-Goog-FieldMask":
-            "places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount",
-        },
-        body: JSON.stringify({
-          textQuery,
-          locationBias: {
-            circle: {
-              center: { latitude: lat, longitude: lng },
-              radius: radiusM,
-            },
-          },
-          languageCode: "pt-BR",
-          maxResultCount: 20,
-        }),
-      }
-    );
+    const url =
+      `https://maps.googleapis.com/maps/api/place/nearbysearch/json` +
+      `?location=${lat},${lng}&radius=${radiusM}&type=${type}` +
+      `&language=pt-BR&key=${GOOGLE_MAPS_API_KEY}`;
+    const res = await fetch(url);
     if (!res.ok) return [];
     const data = await res.json();
-    if (!data.places) return [];
-
-    return data.places
-      .map((p: {
-        displayName?: { text?: string };
-        formattedAddress?: string;
-        location?: { latitude?: number; longitude?: number };
-        rating?: number;
-        userRatingCount?: number;
-      }) => {
-        const plat = p.location?.latitude || 0;
-        const plng = p.location?.longitude || 0;
+    if (data.status && data.status !== "OK" && data.status !== "ZERO_RESULTS") {
+      console.warn(
+        `searchNearbyOld(${type}) status=${data.status}`,
+        data.error_message || ""
+      );
+    }
+    const results = (data.results || []) as Array<{
+      name?: string;
+      vicinity?: string;
+      geometry?: { location?: { lat?: number; lng?: number } };
+      rating?: number;
+      user_ratings_total?: number;
+    }>;
+    return results
+      .map((p) => {
+        const plat = p.geometry?.location?.lat ?? 0;
+        const plng = p.geometry?.location?.lng ?? 0;
         return {
-          name: p.displayName?.text || "",
+          name: p.name || "",
           lat: plat,
           lng: plng,
-          address: p.formattedAddress || "",
-          type,
+          address: p.vicinity || "",
+          type: label,
           rating: p.rating ?? null,
-          reviews: p.userRatingCount ?? null,
+          reviews: p.user_ratings_total ?? null,
           distance_m: Math.round(haversineDistance(lat, lng, plat, plng)),
         };
       })
@@ -150,6 +140,16 @@ async function searchNearbyPlaces(
   } catch {
     return [];
   }
+}
+
+function deduplicateByLocation(places: NearbyPlace[]): NearbyPlace[] {
+  const seen = new Set<string>();
+  return places.filter((p) => {
+    const key = `${p.lat.toFixed(4)},${p.lng.toFixed(4)}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 // ---------- IBGE ----------
@@ -462,8 +462,119 @@ export async function POST(request: Request) {
       await enrichWithPlugShare(geo.city, geo.lat, geo.lng, supabase);
     }
 
-    // 6. POIs em paralelo (raios variados por categoria)
-    const [
+    // Sempre faz uma busca local (2km do ponto) — o sweep amplo da cidade pode
+    // perder carregadores discretos próximos ao endereço sendo analisado.
+    googleQueriesUsed += await populateChargersLocal(
+      geo.city,
+      geo.state,
+      geo.lat,
+      geo.lng,
+      supabase
+    );
+
+    // 6. POIs — primeiro tenta o cache (point_pois_cache em ~100m, < 30 dias)
+    interface PoiBundle {
+      restaurants: NearbyPlace[];
+      supermarkets: NearbyPlace[];
+      gasStations: NearbyPlace[];
+      shoppings: NearbyPlace[];
+      hotels: NearbyPlace[];
+      parkingLots: NearbyPlace[];
+      airports: NearbyPlace[];
+      busStations: NearbyPlace[];
+      universities: NearbyPlace[];
+      hospitals: NearbyPlace[];
+    }
+
+    let poiBundle: PoiBundle | null = null;
+    let poiSource = "google";
+    try {
+      const latDelta = 0.001; // ~110m
+      const lngDelta = 0.001;
+      const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const { data: cacheRows } = await supabase
+        .from("point_pois_cache")
+        .select("lat, lng, pois_json, created_at")
+        .gte("lat", geo.lat - latDelta)
+        .lte("lat", geo.lat + latDelta)
+        .gte("lng", geo.lng - lngDelta)
+        .lte("lng", geo.lng + lngDelta)
+        .gte("created_at", cutoff)
+        .order("created_at", { ascending: false })
+        .limit(5);
+
+      const hit = (cacheRows || []).find(
+        (r: { lat: number; lng: number }) =>
+          haversineDistance(geo!.lat, geo!.lng, Number(r.lat), Number(r.lng)) <= 100
+      );
+      if (hit && hit.pois_json) {
+        poiBundle = hit.pois_json as PoiBundle;
+        poiSource = "cache";
+      }
+    } catch (e) {
+      console.warn("point_pois_cache read failed:", e);
+    }
+
+    if (!poiBundle) {
+      // POIs em paralelo via Nearby Search OLD (type filter — muito mais preciso que text)
+      const [
+        restaurants,
+        cafes,
+        supermarkets,
+        gasStations,
+        shoppings,
+        hotels,
+        parkingLots,
+        airports,
+        busStations,
+        universities,
+        hospitals,
+      ] = await Promise.all([
+        searchNearbyOld(geo.lat, geo.lng, "restaurant", 500, "restaurante"),
+        searchNearbyOld(geo.lat, geo.lng, "cafe", 500, "cafe"),
+        searchNearbyOld(geo.lat, geo.lng, "supermarket", 500, "supermercado"),
+        searchNearbyOld(geo.lat, geo.lng, "gas_station", 500, "posto"),
+        searchNearbyOld(geo.lat, geo.lng, "shopping_mall", 1000, "shopping"),
+        searchNearbyOld(geo.lat, geo.lng, "lodging", 1000, "hotel"),
+        searchNearbyOld(geo.lat, geo.lng, "parking", 500, "estacionamento"),
+        searchNearbyOld(geo.lat, geo.lng, "airport", 5000, "aeroporto"),
+        searchNearbyOld(geo.lat, geo.lng, "bus_station", 3000, "rodoviaria"),
+        searchNearbyOld(geo.lat, geo.lng, "university", 2000, "universidade"),
+        searchNearbyOld(geo.lat, geo.lng, "hospital", 2000, "hospital"),
+      ]);
+      googleQueriesUsed += 11;
+
+      // Restaurantes + cafés são da mesma família (ambos contam para o score de
+      // alimentação), mas são tipos distintos no Google. Mescla dedup por coordenada.
+      const restaurantsMerged = deduplicateByLocation([...restaurants, ...cafes]);
+
+      poiBundle = {
+        restaurants: restaurantsMerged,
+        supermarkets: deduplicateByLocation(supermarkets),
+        gasStations: deduplicateByLocation(gasStations),
+        shoppings: deduplicateByLocation(shoppings),
+        hotels: deduplicateByLocation(hotels),
+        parkingLots: deduplicateByLocation(parkingLots),
+        airports: deduplicateByLocation(airports),
+        busStations: deduplicateByLocation(busStations),
+        universities: deduplicateByLocation(universities),
+        hospitals: deduplicateByLocation(hospitals),
+      };
+
+      try {
+        await supabase.from("point_pois_cache").insert({
+          lat: geo.lat,
+          lng: geo.lng,
+          city: geo.city,
+          state: geo.state,
+          pois_json: poiBundle,
+        });
+      } catch (e) {
+        console.warn("point_pois_cache write failed:", e);
+      }
+    }
+
+    const {
       restaurants,
       supermarkets,
       gasStations,
@@ -474,31 +585,19 @@ export async function POST(request: Request) {
       busStations,
       universities,
       hospitals,
-    ] = await Promise.all([
-      searchNearbyPlaces(geo.lat, geo.lng, "restaurante café lanchonete padaria", "restaurante", 500),
-      searchNearbyPlaces(geo.lat, geo.lng, "supermercado mercado mercearia", "supermercado", 500),
-      searchNearbyPlaces(geo.lat, geo.lng, "posto de gasolina posto combustível", "posto", 500),
-      searchNearbyPlaces(geo.lat, geo.lng, "shopping center centro comercial", "shopping", 1000),
-      searchNearbyPlaces(geo.lat, geo.lng, "hotel pousada", "hotel", 1000),
-      searchNearbyPlaces(geo.lat, geo.lng, "estacionamento parking", "estacionamento", 500),
-      searchNearbyPlaces(geo.lat, geo.lng, "aeroporto airport", "aeroporto", 5000),
-      searchNearbyPlaces(geo.lat, geo.lng, "rodoviária terminal rodoviário bus station", "rodoviaria", 3000),
-      searchNearbyPlaces(geo.lat, geo.lng, "universidade faculdade", "universidade", 2000),
-      searchNearbyPlaces(geo.lat, geo.lng, "hospital pronto socorro", "hospital", 2000),
-    ]);
-    googleQueriesUsed += 10;
+    } = poiBundle;
 
-    console.log("=== POIs ENCONTRADOS ===");
-    console.log("Restaurantes/cafés:", restaurants.length);
-    console.log("Supermercados:", supermarkets.length);
-    console.log("Postos:", gasStations.length);
-    console.log("Shoppings:", shoppings.length);
-    console.log("Hotéis:", hotels.length);
-    console.log("Estacionamentos:", parkingLots.length);
-    console.log("Aeroportos:", airports.length);
-    console.log("Rodoviárias:", busStations.length);
-    console.log("Universidades:", universities.length);
-    console.log("Hospitais:", hospitals.length);
+    console.log(`=== POIs ENCONTRADOS (Nearby Search API, fonte=${poiSource}) ===`);
+    console.log("Restaurantes/cafés 500m:", restaurants.length);
+    console.log("Supermercados 500m:", supermarkets.length);
+    console.log("Postos combustível 500m:", gasStations.length);
+    console.log("Shoppings 1km:", shoppings.length);
+    console.log("Hotéis 1km:", hotels.length);
+    console.log("Estacionamentos 500m:", parkingLots.length);
+    console.log("Aeroportos 5km:", airports.length);
+    console.log("Rodoviárias 3km:", busStations.length);
+    console.log("Universidades 2km:", universities.length);
+    console.log("Hospitais 2km:", hospitals.length);
 
     // 7. Buscar carregadores próximos do banco
     const chargersNear = await getChargersNearPoint(
@@ -526,6 +625,13 @@ export async function POST(request: Request) {
     const dcNamesIn2km = chargersNear.in2km
       .filter((c) => c.charger_type === "DC")
       .map(formatChargerLabel);
+
+    console.log("=== EV_CHARGERS DEBUG ===");
+    console.log(
+      `Total carregadores no banco para ${geo.city}:`,
+      chargersNear.totalInCity
+    );
+    console.log("DC no banco:", chargersNear.dcInCity);
 
     console.log("=== CONCORRENTES POR RAIO ===");
     console.log("DC 200m:", chargersNear.dcIn200m, dcNamesIn200m);

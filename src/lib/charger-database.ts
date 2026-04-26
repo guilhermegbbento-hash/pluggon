@@ -244,6 +244,63 @@ export async function populateChargersFromGoogle(
   return googleQueries;
 }
 
+// Busca local (2km) ao redor de um ponto específico. Roda em toda análise
+// porque o sweep amplo (50km do centro) às vezes não retorna carregadores
+// discretos próximos ao ponto sendo analisado.
+export async function populateChargersLocal(
+  city: string,
+  state: string,
+  pointLat: number,
+  pointLng: number,
+  supabase: SupabaseClient
+): Promise<number> {
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  if (!apiKey) return 0;
+
+  try {
+    const url =
+      `https://maps.googleapis.com/maps/api/place/nearbysearch/json` +
+      `?location=${pointLat},${pointLng}&radius=2000` +
+      `&keyword=${encodeURIComponent("eletroposto carregador ev charging")}` +
+      `&key=${apiKey}`;
+    const res = await fetch(url);
+    if (!res.ok) return 1;
+    const data = await res.json();
+    const seen = new Set<string>();
+    for (const place of (data.results || []) as Array<{
+      name?: string;
+      vicinity?: string;
+      formatted_address?: string;
+      geometry?: { location?: { lat?: number; lng?: number } };
+    }>) {
+      const plat = place.geometry?.location?.lat;
+      const plng = place.geometry?.location?.lng;
+      if (typeof plat !== "number" || typeof plng !== "number") continue;
+      const key = `${plat.toFixed(5)},${plng.toFixed(5)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const classification = classifyChargerType(place.name || "");
+      await upsertCharger(supabase, {
+        city,
+        state,
+        name: place.name || "",
+        address: place.vicinity || place.formatted_address || "",
+        lat: plat,
+        lng: plng,
+        power_kw: classification.estimatedPower,
+        charger_type: classification.type,
+        operator: "",
+        source: "google_places_local",
+        verified: classification.confidence === "high",
+      });
+    }
+    return 1;
+  } catch (e) {
+    console.error("populateChargersLocal error:", e);
+    return 1;
+  }
+}
+
 // ============================================================
 // FONTE 2: OpenChargeMap (grátis, com potência real)
 // ============================================================

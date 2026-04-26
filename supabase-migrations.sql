@@ -50,3 +50,18 @@ ALTER TABLE ev_chargers DISABLE ROW LEVEL SECURITY;
 CREATE INDEX IF NOT EXISTS idx_ev_chargers_city ON ev_chargers (city);
 CREATE INDEX IF NOT EXISTS idx_ev_chargers_location ON ev_chargers (lat, lng);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_ev_chargers_unique ON ev_chargers (lat, lng, name);
+
+-- 4. point_pois_cache — POIs por ponto (raio fixo 500m/1km/2km/3km/5km) para reuso
+CREATE TABLE IF NOT EXISTS point_pois_cache (
+  id          bigserial PRIMARY KEY,
+  lat         decimal NOT NULL,
+  lng         decimal NOT NULL,
+  city        text,
+  state       text,
+  pois_json   jsonb NOT NULL,
+  created_at  timestamptz DEFAULT now()
+);
+ALTER TABLE point_pois_cache DISABLE ROW LEVEL SECURITY;
+CREATE INDEX IF NOT EXISTS idx_point_pois_cache_loc ON point_pois_cache (lat, lng);
+CREATE INDEX IF NOT EXISTS idx_point_pois_cache_city ON point_pois_cache (city);
+CREATE INDEX IF NOT EXISTS idx_point_pois_cache_created ON point_pois_cache (created_at);
