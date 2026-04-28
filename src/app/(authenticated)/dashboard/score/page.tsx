@@ -9,8 +9,7 @@ import { calculateScore, type ScoreInput, type ScoreResult as EngineScoreResult 
 const COST_VIEWER_EMAIL = "guilhermegbbento@gmail.com";
 
 // Admins veem a tela de revisão de dados antes do cálculo final do score.
-// TROCAR "marco@email.com" pelo email real do Marco.
-const ADMIN_EMAILS = ["guilhermegbbento@gmail.com", "marco@email.com"];
+const ADMIN_EMAILS = ['guilhermegbbento@gmail.com', 'marco@bleveducacao.com.br'];
 
 // ---------- Types ----------
 
