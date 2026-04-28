@@ -4,8 +4,13 @@ import { useState, useEffect, useRef, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { buildScoreHtml } from "@/lib/score-html-export";
 import { createClient } from "@/lib/supabase/client";
+import { calculateScore, type ScoreInput, type ScoreResult as EngineScoreResult } from "@/lib/scoring-engine";
 
 const COST_VIEWER_EMAIL = "guilhermegbbento@gmail.com";
+
+// Admins veem a tela de revisão de dados antes do cálculo final do score.
+// TROCAR "marco@email.com" pelo email real do Marco.
+const ADMIN_EMAILS = ["guilhermegbbento@gmail.com", "marco@email.com"];
 
 // ---------- Types ----------
 
@@ -83,6 +88,57 @@ interface ScoreResult {
     best_total: { value: number; source: string };
     best_dc: { value: number; source: string };
   };
+  cost_breakdown?: CostBreakdown;
+}
+
+// Estrutura dos dados coletados (modo collect — admin)
+interface CollectedData {
+  population: number;
+  gdpPerCapita: number;
+  abveDC: number;
+  abveTotal: number;
+  abveEVs: number;
+  abveSource: "ABVE" | "Estimativa";
+  dcInCity: number;
+  totalInCity: number;
+  dcIn200m: number;
+  dcIn500m: number;
+  dcIn1km: number;
+  dcIn2km: number;
+  dcNamesIn200m: string[];
+  dcNamesIn500m: string[];
+  dcNamesIn1km: string[];
+  dcNamesIn2km: string[];
+  restaurants: number;
+  supermarkets: number;
+  gasStations: number;
+  shoppings: number;
+  hotels: number;
+  parkingLots: number;
+  airports: number;
+  busStations: number;
+  universities: number;
+  hospitals: number;
+  totalPOIs500m: number;
+  distanceToCenter: number;
+  hasAirportNearby: boolean;
+  hasRodoviariaNearby: boolean;
+}
+
+interface CollectResponse {
+  mode: "collect";
+  address: string;
+  lat: number;
+  lng: number;
+  city: string;
+  state: string;
+  establishment_type: string;
+  establishment_name: string;
+  ibge_data: ScoreResult["ibge_data"];
+  abve_data: ScoreResult["abve_data"];
+  nearby_pois: NearbyPlace[];
+  nearby_chargers: NearbyPlace[];
+  collected: CollectedData;
   cost_breakdown?: CostBreakdown;
 }
 
@@ -207,6 +263,44 @@ function recomputeObservationScore(text: string): {
     ? `Observações analisadas: ${posCount} fatores positivos, ${negCount} fatores de atenção`
     : "Sem observações adicionais";
   return { score, justification };
+}
+
+function buildScoreInput(
+  c: CollectedData,
+  establishmentType: string,
+  observations: string
+): ScoreInput {
+  return {
+    population: c.population || 0,
+    gdpPerCapita: c.gdpPerCapita || 0,
+    abveDC: c.abveDC || 0,
+    abveTotal: c.abveTotal || 0,
+    abveEVs: c.abveEVs || 0,
+    dcIn200m: c.dcIn200m || 0,
+    dcIn500m: c.dcIn500m || 0,
+    dcIn1km: c.dcIn1km || 0,
+    dcIn2km: c.dcIn2km || 0,
+    dcInCity: c.dcInCity || 0,
+    totalInCity: c.totalInCity || 0,
+    dcNamesIn200m: c.dcNamesIn200m || [],
+    dcNamesIn500m: c.dcNamesIn500m || [],
+    dcNamesIn1km: c.dcNamesIn1km || [],
+    dcNamesIn2km: c.dcNamesIn2km || [],
+    restaurants: c.restaurants || 0,
+    supermarkets: c.supermarkets || 0,
+    gasStations: c.gasStations || 0,
+    shoppings: c.shoppings || 0,
+    hotels: c.hotels || 0,
+    parkingLots: c.parkingLots || 0,
+    universities: c.universities || 0,
+    hospitals: c.hospitals || 0,
+    hasAirportNearby: !!c.hasAirportNearby,
+    hasRodoviariaNearby: !!c.hasRodoviariaNearby,
+    totalPOIs: c.totalPOIs500m || 0,
+    distanceToCenter: c.distanceToCenter || 0,
+    establishmentType: establishmentType || "outro",
+    observations: observations || "",
+  };
 }
 
 // Recompute final score from current variables (used after observation edit)
@@ -428,6 +522,483 @@ function SourceBadge({ source }: { source: ScoreSource }) {
   );
 }
 
+// ---------- Editable Number Input (com valor original em cinza) ----------
+
+function EditableNumber({
+  label,
+  value,
+  original,
+  onChange,
+  step = 1,
+  min = 0,
+  suffix,
+}: {
+  label: string;
+  value: number;
+  original: number;
+  onChange: (n: number) => void;
+  step?: number;
+  min?: number;
+  suffix?: string;
+}) {
+  const isEdited = Number(value) !== Number(original);
+  return (
+    <div>
+      <div className="mb-1 flex items-baseline justify-between gap-2">
+        <label className="text-xs text-[#C9D1D9]">{label}</label>
+        <span className="text-[10px] text-[#484F58]">
+          (original: {original.toLocaleString("pt-BR")}
+          {suffix ? ` ${suffix}` : ""})
+          {isEdited && (
+            <span className="ml-1 text-[#C9A84C]">(editado)</span>
+          )}
+        </span>
+      </div>
+      <input
+        type="number"
+        value={Number.isFinite(value) ? value : 0}
+        step={step}
+        min={min}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className={`w-full rounded-md border bg-[#0D1117] px-3 py-2 text-sm text-white outline-none transition-colors focus:border-[#C9A84C] ${
+          isEdited ? "border-[#C9A84C]" : "border-[#30363D]"
+        }`}
+      />
+    </div>
+  );
+}
+
+// ---------- Review Panel (admin) ----------
+
+interface ReviewPanelProps {
+  collectedRaw: CollectResponse;
+  editedData: CollectedData;
+  editedType: string;
+  editedObservations: string;
+  previewScore: EngineScoreResult | null;
+  generatingFinal: boolean;
+  onUpdateField: <K extends keyof CollectedData>(field: K, value: CollectedData[K]) => void;
+  onSetHubNearby: (checked: boolean) => void;
+  onChangeType: (t: string) => void;
+  onChangeObservations: (o: string) => void;
+  onCalculatePreview: () => void;
+  onGenerateFinal: () => void;
+  onCancel: () => void;
+}
+
+function ReviewPanel({
+  collectedRaw,
+  editedData,
+  editedType,
+  editedObservations,
+  previewScore,
+  generatingFinal,
+  onUpdateField,
+  onSetHubNearby,
+  onChangeType,
+  onChangeObservations,
+  onCalculatePreview,
+  onGenerateFinal,
+  onCancel,
+}: ReviewPanelProps) {
+  const original = collectedRaw.collected;
+  const hubChecked = !!editedData.hasAirportNearby || !!editedData.hasRodoviariaNearby;
+  const hubOriginal = !!original.hasAirportNearby || !!original.hasRodoviariaNearby;
+  const typeEdited = editedType !== (collectedRaw.establishment_type || "outro");
+  const obsEdited = editedObservations !== (collectedRaw.establishment_name || "");
+
+  const cardClass = (anyEdited: boolean) =>
+    `rounded-xl border bg-[#161B22] p-5 ${
+      anyEdited ? "border-[#C9A84C]" : "border-[#30363D]"
+    }`;
+
+  const anyEditedInCard = (...fields: Array<keyof CollectedData>) =>
+    fields.some((f) => Number(editedData[f]) !== Number(original[f]));
+
+  return (
+    <div className="mt-8 space-y-5">
+      {/* Header com prévia */}
+      <div className="rounded-xl border border-[#C9A84C]/40 bg-[#161B22] p-6 text-center">
+        <p className="text-xs uppercase tracking-wider text-[#C9A84C]">
+          Revisão de Dados Coletados (admin)
+        </p>
+        <p className="mt-1 text-sm text-[#8B949E]">
+          {collectedRaw.address || `${collectedRaw.lat.toFixed(5)}, ${collectedRaw.lng.toFixed(5)}`}
+          {" · "}
+          {collectedRaw.city}/{collectedRaw.state}
+        </p>
+
+        {previewScore ? (
+          <div className="mt-4 flex flex-col items-center gap-2">
+            <div className="text-6xl font-bold text-white">
+              {previewScore.overallScore}
+              <span className="ml-1 text-2xl text-[#8B949E]">/100</span>
+            </div>
+            <span
+              className="rounded-full px-3 py-1 text-xs font-semibold"
+              style={{
+                backgroundColor: getClassificationColor(previewScore.classification) + "22",
+                color: getClassificationColor(previewScore.classification),
+              }}
+            >
+              {getClassificationLabel(previewScore.classification)}
+            </span>
+            <p className="text-[10px] text-[#484F58]">
+              Prévia client-side · score bruto {previewScore.rawScore} · fator cidade{" "}
+              {previewScore.cityFactor.toFixed(2)}
+            </p>
+          </div>
+        ) : (
+          <p className="mt-4 text-sm text-[#8B949E]">
+            Edite os dados abaixo e clique em &quot;Calcular Prévia&quot; para ver o score atualizado.
+          </p>
+        )}
+      </div>
+
+      {/* Card: Cidade e Demografia */}
+      <div className={cardClass(anyEditedInCard("population", "gdpPerCapita"))}>
+        <h3 className="mb-3 text-sm font-semibold text-white">🏙️ Cidade e Demografia</h3>
+        <div className="grid gap-4 md:grid-cols-2">
+          <EditableNumber
+            label="População"
+            value={editedData.population}
+            original={original.population}
+            onChange={(n) => onUpdateField("population", n)}
+          />
+          <EditableNumber
+            label="PIB per capita (R$)"
+            value={editedData.gdpPerCapita}
+            original={original.gdpPerCapita}
+            onChange={(n) => onUpdateField("gdpPerCapita", n)}
+          />
+        </div>
+      </div>
+
+      {/* Card: Frota EV */}
+      <div className={cardClass(anyEditedInCard("abveEVs"))}>
+        <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-white">
+          ⚡ Frota EV
+          <span
+            className="rounded px-2 py-0.5 text-[10px] font-semibold"
+            style={{
+              backgroundColor:
+                original.abveSource === "ABVE" ? "#C9A84C22" : "#FFC10722",
+              color: original.abveSource === "ABVE" ? "#C9A84C" : "#FFC107",
+            }}
+          >
+            Fonte: {original.abveSource}
+          </span>
+        </h3>
+        <div className="grid gap-4 md:grid-cols-1">
+          <EditableNumber
+            label="EVs na cidade"
+            value={editedData.abveEVs}
+            original={original.abveEVs}
+            onChange={(n) => onUpdateField("abveEVs", n)}
+          />
+        </div>
+      </div>
+
+      {/* Card: Concorrentes */}
+      <div
+        className={cardClass(
+          anyEditedInCard("dcInCity", "dcIn200m", "dcIn500m", "dcIn1km", "dcIn2km")
+        )}
+      >
+        <h3 className="mb-3 text-sm font-semibold text-white">
+          🏁 Concorrentes (banco PLUGGON)
+        </h3>
+        <div className="grid gap-4 md:grid-cols-3">
+          <EditableNumber
+            label="DC na cidade (total)"
+            value={editedData.dcInCity}
+            original={original.dcInCity}
+            onChange={(n) => onUpdateField("dcInCity", n)}
+          />
+          <div>
+            <EditableNumber
+              label="DC em 200m"
+              value={editedData.dcIn200m}
+              original={original.dcIn200m}
+              onChange={(n) => onUpdateField("dcIn200m", n)}
+            />
+            {original.dcNamesIn200m.length > 0 && (
+              <p className="mt-1 text-[10px] text-[#8B949E]">
+                {original.dcNamesIn200m.join(" · ")}
+              </p>
+            )}
+          </div>
+          <div>
+            <EditableNumber
+              label="DC em 500m"
+              value={editedData.dcIn500m}
+              original={original.dcIn500m}
+              onChange={(n) => onUpdateField("dcIn500m", n)}
+            />
+            {original.dcNamesIn500m.length > 0 && (
+              <p className="mt-1 text-[10px] text-[#8B949E]">
+                {original.dcNamesIn500m.join(" · ")}
+              </p>
+            )}
+          </div>
+          <div>
+            <EditableNumber
+              label="DC em 1km"
+              value={editedData.dcIn1km}
+              original={original.dcIn1km}
+              onChange={(n) => onUpdateField("dcIn1km", n)}
+            />
+            {original.dcNamesIn1km.length > 0 && (
+              <p className="mt-1 text-[10px] text-[#8B949E]">
+                {original.dcNamesIn1km.length} concorrente(s) listado(s)
+              </p>
+            )}
+          </div>
+          <div>
+            <EditableNumber
+              label="DC em 2km"
+              value={editedData.dcIn2km}
+              original={original.dcIn2km}
+              onChange={(n) => onUpdateField("dcIn2km", n)}
+            />
+            {original.dcNamesIn2km.length > 0 && (
+              <p className="mt-1 text-[10px] text-[#8B949E]">
+                {original.dcNamesIn2km.length} concorrente(s) listado(s)
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Card: POIs */}
+      <div
+        className={cardClass(
+          anyEditedInCard(
+            "restaurants",
+            "supermarkets",
+            "gasStations",
+            "shoppings",
+            "hotels",
+            "parkingLots",
+            "airports",
+            "busStations",
+            "universities",
+            "hospitals"
+          )
+        )}
+      >
+        <h3 className="mb-3 text-sm font-semibold text-white">
+          🏪 POIs Google Places
+        </h3>
+        <div className="grid gap-4 md:grid-cols-3">
+          <EditableNumber
+            label="Restaurantes/cafés 500m"
+            value={editedData.restaurants}
+            original={original.restaurants}
+            onChange={(n) => onUpdateField("restaurants", n)}
+          />
+          <EditableNumber
+            label="Supermercados 500m"
+            value={editedData.supermarkets}
+            original={original.supermarkets}
+            onChange={(n) => onUpdateField("supermarkets", n)}
+          />
+          <EditableNumber
+            label="Postos combustível 500m"
+            value={editedData.gasStations}
+            original={original.gasStations}
+            onChange={(n) => onUpdateField("gasStations", n)}
+          />
+          <EditableNumber
+            label="Shoppings 1km"
+            value={editedData.shoppings}
+            original={original.shoppings}
+            onChange={(n) => onUpdateField("shoppings", n)}
+          />
+          <EditableNumber
+            label="Hotéis 1km"
+            value={editedData.hotels}
+            original={original.hotels}
+            onChange={(n) => onUpdateField("hotels", n)}
+          />
+          <EditableNumber
+            label="Estacionamentos 500m"
+            value={editedData.parkingLots}
+            original={original.parkingLots}
+            onChange={(n) => onUpdateField("parkingLots", n)}
+          />
+          <EditableNumber
+            label="Aeroportos 5km"
+            value={editedData.airports}
+            original={original.airports}
+            onChange={(n) => onUpdateField("airports", n)}
+          />
+          <EditableNumber
+            label="Rodoviárias 3km"
+            value={editedData.busStations}
+            original={original.busStations}
+            onChange={(n) => onUpdateField("busStations", n)}
+          />
+          <EditableNumber
+            label="Universidades 2km"
+            value={editedData.universities}
+            original={original.universities}
+            onChange={(n) => onUpdateField("universities", n)}
+          />
+          <EditableNumber
+            label="Hospitais 2km"
+            value={editedData.hospitals}
+            original={original.hospitals}
+            onChange={(n) => onUpdateField("hospitals", n)}
+          />
+          <div>
+            <div className="mb-1 flex items-baseline justify-between gap-2">
+              <label className="text-xs text-[#C9D1D9]">Total POIs 500m</label>
+              <span className="text-[10px] text-[#484F58]">(calculado)</span>
+            </div>
+            <div className="rounded-md border border-[#30363D] bg-[#0D1117] px-3 py-2 text-sm text-[#8B949E]">
+              {editedData.totalPOIs500m}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Card: Localização */}
+      <div className={cardClass(editedData.distanceToCenter !== original.distanceToCenter || hubChecked !== hubOriginal)}>
+        <h3 className="mb-3 text-sm font-semibold text-white">📍 Localização</h3>
+        <div className="grid gap-4 md:grid-cols-2">
+          <EditableNumber
+            label="Distância ao centro (km)"
+            value={editedData.distanceToCenter}
+            original={original.distanceToCenter}
+            onChange={(n) => onUpdateField("distanceToCenter", n)}
+            step={0.1}
+          />
+          <div>
+            <div className="mb-1 flex items-baseline justify-between gap-2">
+              <label className="text-xs text-[#C9D1D9]">Hub transporte próximo</label>
+              <span className="text-[10px] text-[#484F58]">
+                (original: {hubOriginal ? "sim" : "não"})
+                {hubChecked !== hubOriginal && (
+                  <span className="ml-1 text-[#C9A84C]">(editado)</span>
+                )}
+              </span>
+            </div>
+            <label
+              className={`flex cursor-pointer items-center gap-2 rounded-md border bg-[#0D1117] px-3 py-2 text-sm text-white ${
+                hubChecked !== hubOriginal ? "border-[#C9A84C]" : "border-[#30363D]"
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={hubChecked}
+                onChange={(e) => onSetHubNearby(e.target.checked)}
+                className="h-4 w-4 accent-[#C9A84C]"
+              />
+              <span>{hubChecked ? "Sim — aeroporto/rodoviária próximos" : "Não"}</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      {/* Card: Tipo e Observações */}
+      <div
+        className={`rounded-xl border bg-[#161B22] p-5 ${
+          typeEdited || obsEdited ? "border-[#C9A84C]" : "border-[#30363D]"
+        }`}
+      >
+        <h3 className="mb-3 text-sm font-semibold text-white">📝 Tipo e Observações</h3>
+        <div className="grid gap-4">
+          <div>
+            <div className="mb-1 flex items-baseline justify-between gap-2">
+              <label className="text-xs text-[#C9D1D9]">Tipo de estabelecimento</label>
+              <span className="text-[10px] text-[#484F58]">
+                (original:{" "}
+                {ESTABLISHMENT_TYPES[collectedRaw.establishment_type] ||
+                  collectedRaw.establishment_type}
+                )
+                {typeEdited && <span className="ml-1 text-[#C9A84C]">(editado)</span>}
+              </span>
+            </div>
+            <select
+              value={editedType}
+              onChange={(e) => onChangeType(e.target.value)}
+              className={`w-full rounded-md border bg-[#0D1117] px-3 py-2 text-sm text-white outline-none ${
+                typeEdited ? "border-[#C9A84C]" : "border-[#30363D]"
+              }`}
+            >
+              {Object.entries(ESTABLISHMENT_TYPES).map(([k, label]) => (
+                <option key={k} value={k}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <div className="mb-1 flex items-baseline justify-between gap-2">
+              <label className="text-xs text-[#C9D1D9]">Observações</label>
+              <span className="text-[10px] text-[#484F58]">
+                {obsEdited && <span className="text-[#C9A84C]">(editado)</span>}
+              </span>
+            </div>
+            <textarea
+              value={editedObservations}
+              onChange={(e) => onChangeObservations(e.target.value)}
+              rows={3}
+              className={`w-full rounded-md border bg-[#0D1117] px-3 py-2 text-sm text-white outline-none ${
+                obsEdited ? "border-[#C9A84C]" : "border-[#30363D]"
+              }`}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Botões de ação */}
+      <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+        <button
+          type="button"
+          onClick={onCalculatePreview}
+          disabled={generatingFinal}
+          className="rounded-lg border border-[#C9A84C] bg-transparent px-6 py-3 font-semibold text-[#C9A84C] transition-colors hover:bg-[#C9A84C]/10 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Calcular Prévia do Score
+        </button>
+        <button
+          type="button"
+          onClick={onGenerateFinal}
+          disabled={generatingFinal}
+          className="flex items-center gap-2 rounded-lg bg-[#C9A84C] px-6 py-3 font-semibold text-[#0D1117] transition-colors hover:bg-[#B89443] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {generatingFinal ? (
+            <>
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-[#0D1117] border-t-transparent" />
+              Gerando...
+            </>
+          ) : (
+            "Gerar Score Final"
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={generatingFinal}
+          className="rounded-lg border border-[#30363D] bg-transparent px-6 py-3 text-sm text-[#8B949E] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Cancelar
+        </button>
+      </div>
+
+      {collectedRaw.cost_breakdown && (
+        <p className="text-center text-[11px] text-[#484F58]">
+          Custo da coleta: US$ {collectedRaw.cost_breakdown.totalCostUsd.toFixed(4)} (
+          {collectedRaw.cost_breakdown.googleQueries} queries Google) · Prévia roda
+          client-side (zero custo) · &quot;Gerar Final&quot; chama Claude 1×.
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ---------- Main Page ----------
 
 export default function ScorePage() {
@@ -459,12 +1030,22 @@ function ScorePageInner() {
   const [obsDraftOpen, setObsDraftOpen] = useState(false);
   const [canSeeCost, setCanSeeCost] = useState(false);
 
+  // Admin: fluxo coleta → revisão → final
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [collectedRaw, setCollectedRaw] = useState<CollectResponse | null>(null);
+  const [editedData, setEditedData] = useState<CollectedData | null>(null);
+  const [editedType, setEditedType] = useState("");
+  const [editedObservations, setEditedObservations] = useState("");
+  const [previewScore, setPreviewScore] = useState<EngineScoreResult | null>(null);
+  const [generatingFinal, setGeneratingFinal] = useState(false);
+
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     const supabase = createClient();
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user?.email === COST_VIEWER_EMAIL) setCanSeeCost(true);
+      if (user?.email && ADMIN_EMAILS.includes(user.email)) setIsAdmin(true);
     });
   }, []);
 
@@ -552,6 +1133,9 @@ function ScorePageInner() {
     setError("");
     setResult(null);
     setExtraObservation("");
+    setCollectedRaw(null);
+    setEditedData(null);
+    setPreviewScore(null);
 
     try {
       const payload: Record<string, unknown> = {
@@ -563,6 +1147,8 @@ function ScorePageInner() {
         payload.lat = parsedCoords.lat;
         payload.lng = parsedCoords.lng;
       }
+      if (isAdmin) payload.mode = "collect";
+
       const res = await fetch("/api/score-point", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -575,12 +1161,108 @@ function ScorePageInner() {
         return;
       }
 
+      if (isAdmin && data?.mode === "collect") {
+        const collected = data as CollectResponse;
+        setCollectedRaw(collected);
+        setEditedData({ ...collected.collected });
+        setEditedType(collected.establishment_type || "outro");
+        setEditedObservations(collected.establishment_name || "");
+        // useEffect calcula a prévia automaticamente assim que editedData é setado
+        return;
+      }
+
       setResult(data);
       setScoreId((data?.score_id as number) ?? null);
     } catch {
       setError("Erro de conexão. Tente novamente.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  function updateCollectedField<K extends keyof CollectedData>(
+    field: K,
+    value: CollectedData[K]
+  ) {
+    if (!editedData) return;
+    const next = { ...editedData, [field]: value } as CollectedData;
+    // totalPOIs500m é derivado dos POIs em raio de 500m
+    next.totalPOIs500m =
+      (next.restaurants || 0) +
+      (next.supermarkets || 0) +
+      (next.gasStations || 0) +
+      (next.parkingLots || 0);
+    // Counts de aeroporto/rodoviária mantêm sincronizados com os booleans
+    if (field === "airports") next.hasAirportNearby = (value as number) > 0;
+    if (field === "busStations") next.hasRodoviariaNearby = (value as number) > 0;
+    setEditedData(next);
+  }
+
+  function setHubNearby(checked: boolean) {
+    if (!editedData) return;
+    setEditedData({
+      ...editedData,
+      hasAirportNearby: checked,
+      hasRodoviariaNearby: checked,
+    });
+  }
+
+  function calculatePreview() {
+    if (!editedData) return;
+    const result = calculateScore(
+      buildScoreInput(editedData, editedType, editedObservations)
+    );
+    setPreviewScore(result);
+  }
+
+  // Prévia em tempo real (zero custo — roda no browser)
+  useEffect(() => {
+    if (!editedData) return;
+    const result = calculateScore(
+      buildScoreInput(editedData, editedType, editedObservations)
+    );
+    setPreviewScore(result);
+  }, [editedData, editedType, editedObservations]);
+
+  async function generateFinalScore() {
+    if (!collectedRaw || !editedData) return;
+    setGeneratingFinal(true);
+    setError("");
+    try {
+      const payload = {
+        mode: "final",
+        address: collectedRaw.address,
+        lat: collectedRaw.lat,
+        lng: collectedRaw.lng,
+        city: collectedRaw.city,
+        state: collectedRaw.state,
+        establishment_type: editedType,
+        establishment_name: editedObservations,
+        collected: editedData,
+        ibge_data: collectedRaw.ibge_data,
+        abve_data: collectedRaw.abve_data,
+        nearby_pois: collectedRaw.nearby_pois,
+        nearby_chargers: collectedRaw.nearby_chargers,
+      };
+      const res = await fetch("/api/score-point", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Erro ao gerar score final.");
+        return;
+      }
+      setResult(data);
+      setScoreId((data?.score_id as number) ?? null);
+      setCollectedRaw(null);
+      setEditedData(null);
+      setPreviewScore(null);
+    } catch {
+      setError("Erro de conexão ao gerar score final.");
+    } finally {
+      setGeneratingFinal(false);
     }
   }
 
@@ -774,6 +1456,29 @@ function ScorePageInner() {
           </div>
         )}
       </form>
+
+      {/* Tela de Revisão (admin) — antes de calcular score final */}
+      {isAdmin && collectedRaw && editedData && !result && (
+        <ReviewPanel
+          collectedRaw={collectedRaw}
+          editedData={editedData}
+          editedType={editedType}
+          editedObservations={editedObservations}
+          previewScore={previewScore}
+          generatingFinal={generatingFinal}
+          onUpdateField={updateCollectedField}
+          onSetHubNearby={setHubNearby}
+          onChangeType={(t) => setEditedType(t)}
+          onChangeObservations={(o) => setEditedObservations(o)}
+          onCalculatePreview={calculatePreview}
+          onGenerateFinal={generateFinalScore}
+          onCancel={() => {
+            setCollectedRaw(null);
+            setEditedData(null);
+            setPreviewScore(null);
+          }}
+        />
+      )}
 
       {/* Results */}
       {result && (

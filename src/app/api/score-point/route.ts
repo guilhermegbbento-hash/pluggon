@@ -343,11 +343,238 @@ Retorne SOMENTE o JSON:
   }
 }
 
+// ---------- Final-mode handler (admin: dados já editados) ----------
+
+interface CollectedData {
+  population: number;
+  gdpPerCapita: number;
+  abveDC: number;
+  abveTotal: number;
+  abveEVs: number;
+  dcInCity: number;
+  totalInCity: number;
+  dcIn200m: number;
+  dcIn500m: number;
+  dcIn1km: number;
+  dcIn2km: number;
+  dcNamesIn200m: string[];
+  dcNamesIn500m: string[];
+  dcNamesIn1km: string[];
+  dcNamesIn2km: string[];
+  restaurants: number;
+  supermarkets: number;
+  gasStations: number;
+  shoppings: number;
+  hotels: number;
+  parkingLots: number;
+  airports: number;
+  busStations: number;
+  universities: number;
+  hospitals: number;
+  totalPOIs500m: number;
+  distanceToCenter: number;
+  hasAirportNearby: boolean;
+  hasRodoviariaNearby: boolean;
+}
+
+async function handleFinalMode(body: Record<string, unknown>) {
+  const supabase = await createClient();
+  const collected = body.collected as CollectedData | undefined;
+  if (!collected) {
+    return Response.json(
+      { error: "Modo 'final' exige campo 'collected' com dados revisados." },
+      { status: 400 }
+    );
+  }
+
+  const address = String(body.address || "");
+  const lat = Number(body.lat);
+  const lng = Number(body.lng);
+  const city = String(body.city || "");
+  const state = String(body.state || "");
+  const establishment_type = String(body.establishment_type || "outro");
+  const establishment_name = String(body.establishment_name || "");
+
+  const scoreInput: ScoreInput = {
+    population: collected.population || 0,
+    gdpPerCapita: collected.gdpPerCapita || 0,
+    abveDC: collected.abveDC || 0,
+    abveTotal: collected.abveTotal || 0,
+    abveEVs: collected.abveEVs || 0,
+    dcIn200m: collected.dcIn200m || 0,
+    dcIn500m: collected.dcIn500m || 0,
+    dcIn1km: collected.dcIn1km || 0,
+    dcIn2km: collected.dcIn2km || 0,
+    dcInCity: collected.dcInCity || 0,
+    totalInCity: collected.totalInCity || 0,
+    dcNamesIn200m: collected.dcNamesIn200m || [],
+    dcNamesIn500m: collected.dcNamesIn500m || [],
+    dcNamesIn1km: collected.dcNamesIn1km || [],
+    dcNamesIn2km: collected.dcNamesIn2km || [],
+    restaurants: collected.restaurants || 0,
+    supermarkets: collected.supermarkets || 0,
+    gasStations: collected.gasStations || 0,
+    shoppings: collected.shoppings || 0,
+    hotels: collected.hotels || 0,
+    parkingLots: collected.parkingLots || 0,
+    universities: collected.universities || 0,
+    hospitals: collected.hospitals || 0,
+    hasAirportNearby: !!collected.hasAirportNearby,
+    hasRodoviariaNearby: !!collected.hasRodoviariaNearby,
+    totalPOIs: collected.totalPOIs500m || 0,
+    distanceToCenter: collected.distanceToCenter || 0,
+    establishmentType: establishment_type,
+    observations: establishment_name,
+  };
+
+  const scoreResult = calculateScore(scoreInput);
+
+  const dcCityForPrompt = Math.max(collected.abveDC || 0, collected.dcInCity || 0);
+  const evsCityForPrompt =
+    collected.abveEVs ||
+    Math.round(
+      (collected.population || 0) *
+        (collected.gdpPerCapita > 50_000
+          ? 0.006
+          : collected.gdpPerCapita > 30_000
+          ? 0.004
+          : 0.002)
+    );
+
+  const claudeResult = await generateAnalysisText({
+    overallScore: scoreResult.overallScore,
+    classification: scoreResult.classification,
+    city,
+    state,
+    population: collected.population || 0,
+    gdpPerCapita: collected.gdpPerCapita || 0,
+    dcInCity: dcCityForPrompt,
+    evsCity: evsCityForPrompt,
+    establishmentType: establishment_type,
+    distanceKm: collected.distanceToCenter || 0,
+    dcIn200m: collected.dcIn200m || 0,
+    dcIn500m: collected.dcIn500m || 0,
+    dcIn1km: collected.dcIn1km || 0,
+    dcIn2km: collected.dcIn2km || 0,
+    restaurants: collected.restaurants || 0,
+    supermarkets: collected.supermarkets || 0,
+    gasStations: collected.gasStations || 0,
+    shoppings: collected.shoppings || 0,
+    hotels: collected.hotels || 0,
+    hasHubNearby: !!collected.hasAirportNearby || !!collected.hasRodoviariaNearby,
+    observations: establishment_name,
+  });
+
+  const claudeCost =
+    claudeResult.tokensIn * CLAUDE_INPUT_COST_PER_TOKEN +
+    claudeResult.tokensOut * CLAUDE_OUTPUT_COST_PER_TOKEN;
+
+  const costBreakdown = {
+    googleQueries: 0,
+    googleCostUsd: 0,
+    claudeTokensIn: claudeResult.tokensIn,
+    claudeTokensOut: claudeResult.tokensOut,
+    claudeCostUsd: Math.round(claudeCost * 10000) / 10000,
+    totalCostUsd: Math.round(claudeCost * 10000) / 10000,
+  };
+
+  await logUsage({
+    module: "score",
+    city: `${city}/${state}`,
+    claudeTokensIn: claudeResult.tokensIn,
+    claudeTokensOut: claudeResult.tokensOut,
+    googlePlacesQueries: 0,
+  });
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const isAdmin = user?.email === ADMIN_EMAIL;
+
+  const responseData: Record<string, unknown> = {
+    address,
+    lat,
+    lng,
+    city,
+    state,
+    establishment_type,
+    establishment_name,
+    overall_score: scoreResult.overallScore,
+    raw_score: scoreResult.rawScore,
+    city_factor: scoreResult.cityFactor,
+    classification: scoreResult.classification,
+    category_scores: scoreResult.categoryScores,
+    scoring_variables: scoreResult.variables,
+    strengths: claudeResult.strengths,
+    nearby_pois: (body.nearby_pois as unknown[]) || [],
+    nearby_chargers: (body.nearby_chargers as unknown[]) || [],
+    ibge_data:
+      (body.ibge_data as Record<string, unknown>) || {
+        population: collected.population,
+        gdp_per_capita: collected.gdpPerCapita,
+        gdp_total: null,
+        idhm: null,
+      },
+    abve_data: (body.abve_data as Record<string, unknown>) || null,
+    charger_summary: {
+      total_in_city: collected.totalInCity || 0,
+      dc_in_city: collected.dcInCity || 0,
+      in_200m: 0,
+      in_500m: 0,
+      in_1km: 0,
+      in_2km: 0,
+      dc_in_200m: collected.dcIn200m || 0,
+      dc_in_500m: collected.dcIn500m || 0,
+      dc_in_1km: collected.dcIn1km || 0,
+      dc_in_2km: collected.dcIn2km || 0,
+    },
+  };
+
+  if (isAdmin) {
+    responseData.cost_breakdown = costBreakdown;
+  }
+
+  let score_id: number | null = null;
+  if (user) {
+    const { data: inserted } = await supabase
+      .from("point_scores")
+      .insert({
+        user_id: user.id,
+        address,
+        lat,
+        lng,
+        city,
+        state,
+        establishment_type,
+        establishment_name,
+        overall_score: scoreResult.overallScore,
+        classification: scoreResult.classification,
+        variables_json: scoreResult.variables,
+        strengths: claudeResult.strengths,
+        weaknesses: [],
+        recommendation: "",
+        full_json: responseData,
+        status: "done",
+      })
+      .select("id")
+      .single();
+    score_id = (inserted?.id as number) ?? null;
+  }
+
+  return Response.json({ ...responseData, score_id });
+}
+
 // ---------- Main handler ----------
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
+
+    const mode = (body as { mode?: string }).mode;
+    if (mode === "final") {
+      return await handleFinalMode(body);
+    }
+
     const {
       address,
       establishment_type,
@@ -662,6 +889,113 @@ export async function POST(request: Request) {
     const distanceKm =
       haversineDistance(geo.lat, geo.lng, cityLat, cityLng) / 1000;
 
+    // Carregadores próximos para o mapa (5km) — usado tanto no modo collect
+    // quanto no fluxo final, então calcula uma vez aqui.
+    const nearbyChargersForMap = chargersNear.in5km.map((c) => ({
+      name: c.name || "",
+      lat: Number(c.lat),
+      lng: Number(c.lng),
+      address: c.address || "",
+      operator: c.operator || "",
+      powerKW: Number(c.power_kw) || 0,
+      type: c.charger_type,
+      isFastCharge: c.charger_type === "DC",
+      isOperational: true,
+      rating: 0,
+      reviews: 0,
+      distance_m: Math.round(
+        haversineDistance(geo.lat, geo.lng, Number(c.lat), Number(c.lng))
+      ),
+    }));
+
+    // === MODO COLLECT — admin: retorna dados sem calcular score nem chamar Claude ===
+    if (mode === "collect") {
+      const evsCityEstimate =
+        abve?.evsSold ??
+        Math.round(
+          population *
+            (gdpPerCapita > 50_000
+              ? 0.006
+              : gdpPerCapita > 30_000
+              ? 0.004
+              : 0.002)
+        );
+      const abveSource = abve?.evsSold ? "ABVE" : "Estimativa";
+
+      // Logar uso parcial (Google Places usado mesmo sem score final)
+      await logUsage({
+        module: "score",
+        city: `${geo.city}/${geo.state}`,
+        claudeTokensIn: 0,
+        claudeTokensOut: 0,
+        googlePlacesQueries: googleQueriesUsed,
+      });
+
+      const googleCost = googleQueriesUsed * GOOGLE_PLACES_COST_PER_QUERY;
+      const collectResponse: Record<string, unknown> = {
+        mode: "collect",
+        address: address || "",
+        lat: geo.lat,
+        lng: geo.lng,
+        city: geo.city,
+        state: geo.state,
+        establishment_type: establishment_type || "outro",
+        establishment_name: establishment_name || "",
+        ibge_data: ibgeData,
+        abve_data: abve,
+        nearby_pois: allPOIs,
+        nearby_chargers: nearbyChargersForMap,
+        collected: {
+          population,
+          gdpPerCapita,
+          abveDC: abve?.dc ?? 0,
+          abveTotal: abve?.total ?? 0,
+          abveEVs: evsCityEstimate,
+          abveSource,
+          dcInCity: chargersNear.dcInCity,
+          totalInCity: chargersNear.totalInCity,
+          dcIn200m: chargersNear.dcIn200m,
+          dcIn500m: chargersNear.dcIn500m,
+          dcIn1km: chargersNear.dcIn1km,
+          dcIn2km: chargersNear.dcIn2km,
+          dcNamesIn200m,
+          dcNamesIn500m,
+          dcNamesIn1km,
+          dcNamesIn2km,
+          restaurants: restaurants.length,
+          supermarkets: supermarkets.length,
+          gasStations: gasStations.length,
+          shoppings: shoppings.length,
+          hotels: hotels.length,
+          parkingLots: parkingLots.length,
+          airports: airports.length,
+          busStations: busStations.length,
+          universities: universities.length,
+          hospitals: hospitals.length,
+          totalPOIs500m: totalPoisIn500m,
+          distanceToCenter: distanceKm,
+          hasAirportNearby: airports.length > 0,
+          hasRodoviariaNearby: busStations.length > 0,
+        },
+      };
+
+      const {
+        data: { user: collectUser },
+      } = await supabase.auth.getUser();
+      if (collectUser?.email === ADMIN_EMAIL) {
+        collectResponse.cost_breakdown = {
+          googleQueries: googleQueriesUsed,
+          googleCostUsd: Math.round(googleCost * 10000) / 10000,
+          claudeTokensIn: 0,
+          claudeTokensOut: 0,
+          claudeCostUsd: 0,
+          totalCostUsd: Math.round(googleCost * 10000) / 10000,
+        };
+      }
+
+      return Response.json(collectResponse);
+    }
+
     // 8. Calcular score
     const scoreInput: ScoreInput = {
       population,
@@ -762,23 +1096,8 @@ export async function POST(request: Request) {
       googlePlacesQueries: googleQueriesUsed,
     });
 
-    // 12. Carregadores próximos para o mapa (5km)
-    const nearbyChargers = chargersNear.in5km.map((c) => ({
-      name: c.name || "",
-      lat: Number(c.lat),
-      lng: Number(c.lng),
-      address: c.address || "",
-      operator: c.operator || "",
-      powerKW: Number(c.power_kw) || 0,
-      type: c.charger_type,
-      isFastCharge: c.charger_type === "DC",
-      isOperational: true,
-      rating: 0,
-      reviews: 0,
-      distance_m: Math.round(
-        haversineDistance(geo.lat, geo.lng, Number(c.lat), Number(c.lng))
-      ),
-    }));
+    // 12. Carregadores próximos para o mapa (5km) — já calculado acima
+    const nearbyChargers = nearbyChargersForMap;
 
     // 13. Identificar usuário (custo é admin-only)
     const {
