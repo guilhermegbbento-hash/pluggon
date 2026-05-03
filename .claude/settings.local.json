@@ -12,7 +12,8 @@
       "Bash(grep -E \"\\\\.ts$\")",
       "Bash(npx eslint:*)",
       "Bash(node *)",
-      "Bash(echo \"EXIT=$?\")"
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(echo \"exit=$?\")"
     ]
   }
 }
