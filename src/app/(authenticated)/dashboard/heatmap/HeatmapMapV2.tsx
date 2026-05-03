@@ -194,14 +194,10 @@ export default function HeatmapMapV2({
       });
       const marker = L.marker([a.lat, a.lng], { icon, zIndexOffset: 1000 });
       marker.bindPopup(
-        `<div style="font-family:system-ui;min-width:240px;">
+        `<div style="font-family:system-ui;min-width:220px;">
           <div style="font-weight:700;font-size:14px;margin-bottom:4px;">${emoji} ${escapeHtml(a.name)}</div>
           <div style="color:#666;font-size:12px;margin-bottom:6px;">${escapeHtml(a.address)}</div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
-            <span style="background:#C9A84C20;color:#C9A84C;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;">ÂNCORA</span>
-            <span style="background:#21262D;color:#8B949E;padding:2px 8px;border-radius:4px;font-size:11px;">${escapeHtml(a.typeLabel)}</span>
-            <span style="background:#FF880020;color:#FF8800;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;">Score região: ${a.cellScore}</span>
-          </div>
+          <span style="background:#C9A84C20;color:#C9A84C;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;">${escapeHtml(a.typeLabel)}</span>
         </div>`,
         { maxWidth: 300 }
       );
@@ -331,18 +327,21 @@ export default function HeatmapMapV2({
       {/* Legend */}
       <div className="absolute bottom-3 right-3 z-[400] rounded-lg border border-[#30363D] bg-[#161B22]/95 p-3 text-xs text-[#C9D1D9] shadow-xl backdrop-blur">
         <div className="mb-2 font-semibold text-white">Legenda</div>
-        <div className="mb-1.5 flex items-center gap-2">
-          <span className="inline-block h-3 w-6 rounded-sm" style={{ background: "linear-gradient(90deg,#0000ff,#00ff00,#ffff00,#ff8800,#ff0000)" }} />
-          <span className="text-[10px] text-[#8B949E]">azul → vermelho (potencial)</span>
+        <div className="mb-1.5">
+          <div className="h-2 w-40 rounded-sm" style={{ background: "linear-gradient(90deg,#0000ff,#00ff00,#ffff00,#ff8800,#ff0000)" }} />
+          <div className="mt-1 flex justify-between text-[9px] text-[#8B949E]">
+            <span>Menor</span>
+            <span>Maior concentração</span>
+          </div>
         </div>
         <div className="space-y-1 text-[11px]">
           <div className="flex items-center gap-2">
             <span className="inline-block h-3 w-3 rounded-full" style={{ background: "#C9A84C", border: "2px solid #0D1117", boxShadow: "0 0 4px #C9A84C" }} />
-            Âncora (posto, shopping, rodoviária)
+            Ponto potencial
           </div>
           <div className="flex items-center gap-2">
             <span className="inline-block h-2 w-2 rounded-full" style={{ background: "#fff", border: "1px solid #0D1117" }} />
-            Complementar
+            Estabelecimento complementar
           </div>
           <div className="flex items-center gap-2">
             <span className="inline-block h-3 w-3 rounded-full" style={{ background: "#F44336", border: "2px solid #0D1117" }} />
