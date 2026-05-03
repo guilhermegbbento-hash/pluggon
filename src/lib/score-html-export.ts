@@ -24,6 +24,16 @@ interface NearbyPlace {
   distance_m: number;
 }
 
+interface CriticalFactorData {
+  name: string;
+  category: string;
+  score: number;
+  weight: number;
+  impact: number;
+  justification: string;
+  suggestion: string | null;
+}
+
 export interface ScoreExportData {
   address: string;
   lat: number;
@@ -36,6 +46,7 @@ export interface ScoreExportData {
   classification: string;
   scoring_variables?: VariableData[];
   variables?: VariableData[];
+  critical_factors?: CriticalFactorData[];
   strengths: string[];
   nearby_pois: NearbyPlace[];
   nearby_chargers: NearbyPlace[];
@@ -249,6 +260,55 @@ export function buildScoreHtml(r: ScoreExportData): string {
     .map((s) => `<li>${esc(s)}</li>`)
     .join("");
 
+  const criticalHtml = (r.critical_factors || [])
+    .map((f) => {
+      const isCritical = f.score <= 4;
+      const accent = isCritical ? "#F44336" : "#FF9800";
+      const suggestionHtml = f.suggestion
+        ? `<p class="cf-sug">💡 ${esc(f.suggestion)}</p>`
+        : "";
+      return `
+        <div class="cf-card" style="border-color:${accent}55;background:${accent}10">
+          <div class="cf-head">
+            <div>
+              <span class="cf-icon" style="color:${accent}">⚠</span>
+              <span class="cf-name">${esc(f.name)}</span>
+              <div class="cf-cat">Categoria: ${esc(f.category)}</div>
+            </div>
+            <div class="cf-score" style="color:${accent}">${f.score.toFixed(1)}<small>/10</small></div>
+          </div>
+          <p class="cf-impact">Esta variável está reduzindo seu score em aproximadamente <strong style="color:${accent}">${f.impact.toFixed(1)} pontos</strong>.</p>
+          ${suggestionHtml}
+        </div>`;
+    })
+    .join("");
+
+  const s = r.overall_score;
+  let valeTitle = "NÃO RECOMENDADO";
+  let valeBody =
+    "Este ponto não atende os requisitos mínimos para uma operação rentável.";
+  let valeColor = "#F44336";
+  if (s >= 85) {
+    valeTitle = "PREMIUM";
+    valeBody = "Este ponto tem fundamentos sólidos. Risco baixo.";
+    valeColor = "#C9A84C";
+  } else if (s >= 70) {
+    valeTitle = "ESTRATÉGICO";
+    valeBody =
+      "Bom ponto com ressalvas. Os fatores acima merecem atenção mas não impedem a operação.";
+    valeColor = "#2196F3";
+  } else if (s >= 55) {
+    valeTitle = "VIÁVEL";
+    valeBody =
+      "Ponto com potencial mas riscos significativos. Avalie se os fatores negativos podem ser mitigados antes de investir.";
+    valeColor = "#FFC107";
+  } else if (s >= 40) {
+    valeTitle = "MARGINAL";
+    valeBody =
+      "Risco alto. Os fatores negativos são difíceis de contornar. Recomendamos buscar alternativas.";
+    valeColor = "#FF9800";
+  }
+
   const pois = (r.nearby_pois || []).map((p) => ({
     lat: p.lat,
     lng: p.lng,
@@ -390,6 +450,35 @@ export function buildScoreHtml(r: ScoreExportData): string {
   .strengths li { color: #c7f0d4; }
   ul { padding-left: 20px; margin: 8px 0; }
   li { margin-bottom: 6px; font-size: 13px; line-height: 1.6; }
+  .critical {
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 16px;
+    border: 1px solid #FF980055;
+    background: #FF980010;
+  }
+  .critical h3 { color: #FFB454; margin: 0 0 4px; font-size: 16px; }
+  .critical .cf-sub { color: #8B949E; font-size: 11px; margin: 0 0 14px; }
+  .cf-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 768px) { .cf-grid { grid-template-columns: 1fr; } }
+  .cf-card { border: 1px solid; border-radius: 8px; padding: 14px; }
+  .cf-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  .cf-icon { font-size: 18px; margin-right: 6px; }
+  .cf-name { color: #fff; font-weight: 600; font-size: 13px; }
+  .cf-cat { color: #8B949E; font-size: 11px; margin-top: 2px; }
+  .cf-score { font-size: 22px; font-weight: 700; line-height: 1; white-space: nowrap; }
+  .cf-score small { font-size: 12px; color: #8B949E; font-weight: 400; }
+  .cf-impact { font-size: 12px; color: #C9D1D9; margin: 12px 0 0; }
+  .cf-sug { font-size: 11px; color: #8B949E; margin: 8px 0 0; font-style: italic; }
+  .vale {
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 16px;
+    border: 1px solid;
+  }
+  .vale-label { font-size: 11px; color: #8B949E; letter-spacing: 2px; text-transform: uppercase; font-weight: 600; }
+  .vale-title { font-size: 26px; font-weight: 800; margin: 6px 0 10px; }
+  .vale-body { font-size: 13px; color: #C9D1D9; margin: 0; }
   .footer {
     text-align: center;
     font-size: 11px;
@@ -436,6 +525,24 @@ export function buildScoreHtml(r: ScoreExportData): string {
     <div class="strengths">
       <h3>✓ Pontos Fortes</h3>
       <ul>${strengthsHtml}</ul>
+    </div>
+
+    ${
+      criticalHtml
+        ? `<!-- CRITICAL FACTORS -->
+    <div class="critical">
+      <h3>⚠ Fatores que mais impactam esta nota</h3>
+      <p class="cf-sub">As 5 variáveis com pior impacto real (nota × peso) no score final.</p>
+      <div class="cf-grid">${criticalHtml}</div>
+    </div>`
+        : ""
+    }
+
+    <!-- VALE O RISCO? -->
+    <div class="vale" style="border-color:${valeColor}55;background:${valeColor}10">
+      <div class="vale-label">Vale o risco?</div>
+      <div class="vale-title" style="color:${valeColor}">${esc(valeTitle)}</div>
+      <p class="vale-body">${esc(valeBody)}</p>
     </div>
 
     <div class="footer">PLUGGON by BLEV Educação | Gerado em ${esc(date)}</div>

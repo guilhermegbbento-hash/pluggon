@@ -29,6 +29,16 @@ interface NearbyPlace {
   distance_m: number;
 }
 
+interface CriticalFactorData {
+  name: string;
+  category: string;
+  score: number;
+  weight: number;
+  impact: number;
+  justification: string;
+  suggestion: string | null;
+}
+
 interface ScoreData {
   address: string;
   lat: number;
@@ -41,6 +51,7 @@ interface ScoreData {
   classification: string;
   variables?: VariableData[];
   scoring_variables?: VariableData[];
+  critical_factors?: CriticalFactorData[];
   strengths: string[];
   nearby_pois: NearbyPlace[];
   nearby_chargers: NearbyPlace[];
@@ -555,12 +566,45 @@ export default function ScorePrintPage() {
 
         /* Highlights */
         .highlights { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
-        .box-strength, .box-weakness, .box-reco {
+        .box-strength, .box-weakness, .box-reco, .box-critical, .box-vale {
           border-radius: 8px;
           padding: 14px 18px;
           -webkit-print-color-adjust: exact !important;
           print-color-adjust: exact !important;
         }
+        .box-critical {
+          background: #fff3e0 !important;
+          border: 1px solid #FF9800;
+          margin-top: 16px;
+        }
+        .box-critical h3 { color: #b25600; margin: 0 0 4px; font-size: 14px; }
+        .box-critical .cf-sub { color: #888; font-size: 10px; margin: 0 0 12px; }
+        .cf-grid-print { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .cf-card-print {
+          border: 1px solid #FF980055;
+          background: #fff8ef;
+          border-radius: 6px;
+          padding: 10px;
+          page-break-inside: avoid;
+        }
+        .cf-card-print.severe {
+          border-color: #F4433655;
+          background: #ffeeee;
+        }
+        .cf-head-print { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+        .cf-name-print { font-weight: 700; font-size: 11px; color: #1a1a1a; }
+        .cf-cat-print { font-size: 9px; color: #888; margin-top: 2px; }
+        .cf-score-print { font-size: 18px; font-weight: 800; line-height: 1; white-space: nowrap; }
+        .cf-impact-print { font-size: 10px; color: #444; margin: 8px 0 0; }
+        .cf-sug-print { font-size: 10px; color: #666; margin: 6px 0 0; font-style: italic; }
+        .box-vale {
+          margin-top: 16px;
+          border-width: 1px;
+          border-style: solid;
+        }
+        .vale-label-print { font-size: 10px; color: #888; letter-spacing: 2px; text-transform: uppercase; font-weight: 600; }
+        .vale-title-print { font-size: 22px; font-weight: 800; margin: 4px 0 8px; }
+        .vale-body-print { font-size: 12px; margin: 0; line-height: 1.6; }
         .box-strength {
           background: #e8f5e9 !important;
           border: 1px solid #2ea043;
@@ -824,6 +868,95 @@ export default function ScorePrintPage() {
               ))}
             </ul>
           </div>
+
+          {data.critical_factors && data.critical_factors.length > 0 && (
+            <div className="box-critical">
+              <h3>⚠ Fatores que mais impactam esta nota</h3>
+              <p className="cf-sub">
+                As 5 variáveis com pior impacto real (nota × peso) no score final.
+              </p>
+              <div className="cf-grid-print">
+                {data.critical_factors.map((f, i) => {
+                  const isSevere = f.score <= 4;
+                  const accent = isSevere ? "#F44336" : "#FF9800";
+                  return (
+                    <div
+                      key={i}
+                      className={`cf-card-print${isSevere ? " severe" : ""}`}
+                    >
+                      <div className="cf-head-print">
+                        <div>
+                          <div className="cf-name-print">⚠ {f.name}</div>
+                          <div className="cf-cat-print">Categoria: {f.category}</div>
+                        </div>
+                        <div className="cf-score-print" style={{ color: accent }}>
+                          {f.score.toFixed(1)}
+                        </div>
+                      </div>
+                      <p className="cf-impact-print">
+                        Reduz o score em aproximadamente{" "}
+                        <strong style={{ color: accent }}>
+                          {f.impact.toFixed(1)} pontos
+                        </strong>
+                        .
+                      </p>
+                      {f.suggestion && (
+                        <p className="cf-sug-print">💡 {f.suggestion}</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {(() => {
+            const s = data.overall_score;
+            let title = "NÃO RECOMENDADO";
+            let body =
+              "Este ponto não atende os requisitos mínimos para uma operação rentável.";
+            let valeColor = "#F44336";
+            if (s >= 85) {
+              title = "PREMIUM";
+              body = "Este ponto tem fundamentos sólidos. Risco baixo.";
+              valeColor = "#C9A84C";
+            } else if (s >= 70) {
+              title = "ESTRATÉGICO";
+              body =
+                "Bom ponto com ressalvas. Os fatores acima merecem atenção mas não impedem a operação.";
+              valeColor = "#2196F3";
+            } else if (s >= 55) {
+              title = "VIÁVEL";
+              body =
+                "Ponto com potencial mas riscos significativos. Avalie se os fatores negativos podem ser mitigados antes de investir.";
+              valeColor = "#FFC107";
+            } else if (s >= 40) {
+              title = "MARGINAL";
+              body =
+                "Risco alto. Os fatores negativos são difíceis de contornar. Recomendamos buscar alternativas.";
+              valeColor = "#FF9800";
+            }
+            return (
+              <div
+                className="box-vale"
+                style={{
+                  borderColor: valeColor,
+                  background: `${valeColor}14`,
+                }}
+              >
+                <div className="vale-label-print">Vale o risco?</div>
+                <div
+                  className="vale-title-print"
+                  style={{ color: valeColor }}
+                >
+                  {title}
+                </div>
+                <p className="vale-body-print" style={{ color: "#1a1a1a" }}>
+                  {body}
+                </p>
+              </div>
+            );
+          })()}
 
           <div className="bp-footer">
             <span>PLUGGON by BLEV Educação</span>

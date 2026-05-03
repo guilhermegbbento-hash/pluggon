@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { buildScoreHtml } from "@/lib/score-html-export";
 import { createClient } from "@/lib/supabase/client";
-import { calculateScore, type ScoreInput, type ScoreResult as EngineScoreResult } from "@/lib/scoring-engine";
+import { calculateScore, type ScoreInput, type ScoreResult as EngineScoreResult, type CriticalFactor } from "@/lib/scoring-engine";
 
 const COST_VIEWER_EMAIL = "guilhermegbbento@gmail.com";
 
@@ -59,6 +59,7 @@ interface ScoreResult {
   classification: string;
   category_scores: Record<string, number>;
   scoring_variables: ScoringVariable[];
+  critical_factors?: CriticalFactor[];
   strengths: string[];
   nearby_pois: NearbyPlace[];
   nearby_chargers: NearbyPlace[];
@@ -1787,6 +1788,115 @@ function ScorePageInner() {
               ))}
             </ul>
           </div>
+
+          {/* Fatores Críticos */}
+          {result.critical_factors && result.critical_factors.length > 0 && (
+            <div className="rounded-xl border border-[#FF9800]/30 bg-[#FF9800]/5 p-5">
+              <h3 className="mb-1 text-base font-semibold text-[#FF9800]">
+                ⚠ Fatores que mais impactam esta nota
+              </h3>
+              <p className="mb-4 text-xs text-[#8B949E]">
+                As 5 variáveis com pior impacto real (nota × peso) no score final.
+              </p>
+              <div className="grid gap-3 md:grid-cols-2">
+                {result.critical_factors.map((f, i) => {
+                  const isCritical = f.score <= 4;
+                  const borderColor = isCritical ? "#F44336" : "#FF9800";
+                  const bgColor = isCritical ? "#F4433610" : "#FF980010";
+                  const fgColor = isCritical ? "#F44336" : "#FF9800";
+                  return (
+                    <div
+                      key={i}
+                      className="rounded-lg border p-4"
+                      style={{ borderColor: borderColor + "55", background: bgColor }}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-2">
+                          <span className="mt-0.5 text-lg" style={{ color: fgColor }}>
+                            ⚠
+                          </span>
+                          <div>
+                            <p className="text-sm font-semibold text-white">{f.name}</p>
+                            <p className="text-xs text-[#8B949E]">
+                              Categoria: {f.category}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xl font-bold" style={{ color: fgColor }}>
+                            {f.score.toFixed(1)}
+                            <span className="text-sm text-[#8B949E]">/10</span>
+                          </p>
+                        </div>
+                      </div>
+                      <p className="mt-3 text-xs text-[#C9D1D9]">
+                        Esta variável está reduzindo seu score em aproximadamente{" "}
+                        <strong style={{ color: fgColor }}>
+                          {f.impact.toFixed(1)} pontos
+                        </strong>
+                        .
+                      </p>
+                      {f.suggestion && (
+                        <p className="mt-2 text-xs italic text-[#8B949E]">
+                          💡 {f.suggestion}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Vale o Risco? */}
+          {(() => {
+            const s = result.overall_score;
+            let title = "";
+            let body = "";
+            let color = "#8B949E";
+            if (s >= 85) {
+              title = "PREMIUM";
+              body = "Este ponto tem fundamentos sólidos. Risco baixo.";
+              color = "#C9A84C";
+            } else if (s >= 70) {
+              title = "ESTRATÉGICO";
+              body =
+                "Bom ponto com ressalvas. Os fatores acima merecem atenção mas não impedem a operação.";
+              color = "#2196F3";
+            } else if (s >= 55) {
+              title = "VIÁVEL";
+              body =
+                "Ponto com potencial mas riscos significativos. Avalie se os fatores negativos podem ser mitigados antes de investir.";
+              color = "#FFC107";
+            } else if (s >= 40) {
+              title = "MARGINAL";
+              body =
+                "Risco alto. Os fatores negativos são difíceis de contornar. Recomendamos buscar alternativas.";
+              color = "#FF9800";
+            } else {
+              title = "NÃO RECOMENDADO";
+              body =
+                "Este ponto não atende os requisitos mínimos para uma operação rentável.";
+              color = "#F44336";
+            }
+            return (
+              <div
+                className="rounded-xl border p-5"
+                style={{ borderColor: color + "55", background: color + "10" }}
+              >
+                <p className="text-xs font-semibold uppercase tracking-wider text-[#8B949E]">
+                  Vale o risco?
+                </p>
+                <h3
+                  className="mt-1 text-2xl font-bold"
+                  style={{ color }}
+                >
+                  {title}
+                </h3>
+                <p className="mt-2 text-sm text-[#C9D1D9]">{body}</p>
+              </div>
+            );
+          })()}
 
           {/* Cost Card — admin only */}
           {canSeeCost && result.cost_breakdown && (

@@ -72,6 +72,16 @@ export interface ScoreVariable {
   source: ScoreSource;
 }
 
+export interface CriticalFactor {
+  name: string;
+  category: string;
+  score: number;
+  weight: number;
+  impact: number; // pontos perdidos no score final (0-100) vs nota máxima
+  justification: string;
+  suggestion: string | null;
+}
+
 export interface ScoreResult {
   overallScore: number;
   rawScore: number;
@@ -80,6 +90,7 @@ export interface ScoreResult {
   variables: ScoreVariable[];
   categoryScores: Record<string, number>;
   observationsBonus: number;
+  criticalFactors: CriticalFactor[];
 }
 
 // Pesos por categoria (somam 100%)
@@ -1014,6 +1025,36 @@ export function calculateScore(input: ScoreInput): ScoreResult {
     overallScore >= 55 ? "VIÁVEL" :
     overallScore >= 40 ? "MARGINAL" : "NÃO RECOMENDADO";
 
+  // ============================================================
+  // FATORES CRÍTICOS — top 5 variáveis com pior impacto real
+  // ============================================================
+  const categorySumWeights: Record<string, number> = {};
+  for (const cat of Object.keys(CATEGORY_WEIGHTS)) {
+    categorySumWeights[cat] = vars
+      .filter((v) => v.category === cat)
+      .reduce((s, v) => s + v.weight, 0);
+  }
+
+  const criticalFactors: CriticalFactor[] = [...vars]
+    .sort((a, b) => a.score * a.weight - b.score * b.weight)
+    .slice(0, 5)
+    .map((v) => {
+      const catSumW = categorySumWeights[v.category] || 1;
+      const catW = CATEGORY_WEIGHTS[v.category] || 0;
+      // Pontos perdidos no score final (0-100) vs nota máxima (10)
+      const impact =
+        ((10 - v.score) * v.weight * catW) / catSumW / 10 * finalMultiplier;
+      return {
+        name: v.name,
+        category: v.category,
+        score: v.score,
+        weight: v.weight,
+        impact: Math.round(impact * 10) / 10,
+        justification: v.justification,
+        suggestion: getCriticalSuggestion(v),
+      };
+    });
+
   return {
     overallScore,
     rawScore: Math.round(rawScore * 10) / 10,
@@ -1022,5 +1063,28 @@ export function calculateScore(input: ScoreInput): ScoreResult {
     variables: vars,
     categoryScores,
     observationsBonus,
+    criticalFactors,
   };
+}
+
+function getCriticalSuggestion(v: ScoreVariable): string | null {
+  if (v.score > 5 || v.weight < 2) return null;
+  const n = v.name;
+  if (n === "População do município")
+    return "Cidade menor tem demanda limitada. Considere focar em pontos de passagem (rodovias) em vez de pontos urbanos.";
+  if (n === "EVs registrados na cidade")
+    return "Frota EV ainda pequena. O ponto precisa de outras fontes de demanda (motoristas de app, frotas corporativas).";
+  if (n.includes("(200m)"))
+    return "Concorrência direta em 200m. Verifique se a demanda do local comporta mais um carregador.";
+  if (n === "Distância ao centro")
+    return "Distante do centro. Precisa de compensadores: rodovia, alto fluxo próprio, ou operação 24h.";
+  if (n === "Adequação do tipo de ponto")
+    return "Tipo de estabelecimento não gera fluxo próprio. Depende 100% da localização e entorno.";
+  if (n === "Amenidades no entorno 500m")
+    return "Poucas opções de permanência no entorno. Motorista pode preferir carregar onde tem o que fazer enquanto espera.";
+  if (n === "Proximidade a hub de transporte")
+    return "Longe de aeroporto e rodoviária. Menor chance de captar viajantes.";
+  if (n === "Postos de combustível em 500m")
+    return "Poucos postos de combustível indicam via de baixo tráfego veicular.";
+  return null;
 }
