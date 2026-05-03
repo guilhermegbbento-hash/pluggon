@@ -149,6 +149,43 @@ function deduplicatePOIs(pois: POI[]): POI[] {
   return unique;
 }
 
+// Remove points that are just addresses, not real commercial establishments
+function isValidCommercialPoint(poi: POI): boolean {
+  const name = (poi.name || "").toLowerCase().trim();
+
+  if (!name || name.length < 3) return false;
+
+  if (
+    /^(r\.|rua|av\.|avenida|al\.|alameda|tv\.|travessa|rod\.|rodovia)\s/i.test(
+      name
+    )
+  )
+    return false;
+
+  if (/^\d+$/.test(name)) return false;
+
+  if (/^[-\d.,\s]+$/.test(name)) return false;
+
+  const genericNames = [
+    "lote",
+    "terreno",
+    "loja",
+    "sala",
+    "ponto",
+    "local",
+    "espaço",
+    "galpão",
+    "barracão",
+    "casa",
+    "residência",
+    "residencia",
+    "apartamento",
+  ];
+  if (genericNames.some((g) => name === g)) return false;
+
+  return true;
+}
+
 async function geocodeCity(
   city: string,
   state: string,
@@ -361,7 +398,7 @@ export async function POST(req: Request) {
   googleQueries += COMPLEMENTARY_TYPES.length;
   compResults.forEach((arr) => allComplementary.push(...arr));
 
-  // 3. Deduplicação POR TIPO
+  // 3. Deduplicação POR TIPO + filtro de pontos comerciais válidos
   const dedupedAnchorsByType: Record<AnchorType, POI[]> = {
     gas_station: [],
     bus_station: [],
@@ -371,9 +408,26 @@ export async function POST(req: Request) {
   for (const t of ANCHOR_TYPES) {
     dedupedAnchorsByType[t] = deduplicatePOIs(
       allAnchors.filter((p) => p.placeType === t)
-    );
+    ).filter(isValidCommercialPoint);
   }
-  const dedupedAnchors = ANCHOR_TYPES.flatMap((t) => dedupedAnchorsByType[t]);
+  let dedupedAnchors = ANCHOR_TYPES.flatMap((t) => dedupedAnchorsByType[t]);
+
+  // 3b. Se sobraram poucas âncoras válidas, ampliar raio de busca pra 20km
+  if (dedupedAnchors.length < 5) {
+    const expandedRadius = 20000;
+    const expandedAnchorResults = await Promise.all(
+      ANCHOR_TYPES.map((t) =>
+        searchNearbyOld(center.lat, center.lng, t, expandedRadius, apiKey)
+      )
+    );
+    googleQueries += ANCHOR_TYPES.length;
+    ANCHOR_TYPES.forEach((t, i) => {
+      dedupedAnchorsByType[t] = deduplicatePOIs(
+        expandedAnchorResults[i]
+      ).filter(isValidCommercialPoint);
+    });
+    dedupedAnchors = ANCHOR_TYPES.flatMap((t) => dedupedAnchorsByType[t]);
+  }
 
   const dedupedCompByType: Record<ComplementaryType, POI[]> = {
     pharmacy: [],
@@ -387,7 +441,7 @@ export async function POST(req: Request) {
   for (const t of COMPLEMENTARY_TYPES) {
     dedupedCompByType[t] = deduplicatePOIs(
       allComplementary.filter((p) => p.placeType === t)
-    );
+    ).filter(isValidCommercialPoint);
   }
   const dedupedComplementary = COMPLEMENTARY_TYPES.flatMap(
     (t) => dedupedCompByType[t]
