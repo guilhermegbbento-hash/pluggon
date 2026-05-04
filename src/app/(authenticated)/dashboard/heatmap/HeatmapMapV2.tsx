@@ -44,6 +44,7 @@ interface HeatmapMapV2Props {
   center: { lat: number; lng: number };
   grid: GridCell[];
   gridStep?: { lat: number; lng: number };
+  gridConfig?: { latStep: number; lngStep: number };
   anchors: Anchor[];
   complementary: Complementary[];
   competitors: Competitor[];
@@ -105,6 +106,7 @@ export default function HeatmapMapV2({
   center,
   grid,
   gridStep,
+  gridConfig,
   anchors,
   complementary,
   competitors,
@@ -167,9 +169,12 @@ export default function HeatmapMapV2({
     }
     if (grid.length === 0 || maxScore <= 0) return;
 
-    const latStep = gridStep?.lat ?? 0.0045;
+    const latStep =
+      gridConfig?.latStep ?? gridStep?.lat ?? 0.0045;
     const lngStep =
-      gridStep?.lng ?? 0.0045 / Math.cos((center.lat * Math.PI) / 180);
+      gridConfig?.lngStep ??
+      gridStep?.lng ??
+      0.0045 / Math.cos((center.lat * Math.PI) / 180);
 
     const group = L.layerGroup();
 
@@ -205,7 +210,7 @@ export default function HeatmapMapV2({
 
     group.addTo(mapRef.current);
     gridLayerRef.current = group;
-  }, [grid, gridStep, maxScore, mapReady, center.lat]);
+  }, [grid, gridStep, gridConfig, maxScore, mapReady, center.lat]);
 
   // Anchor markers (gold) → ÂNCORA
   useEffect(() => {

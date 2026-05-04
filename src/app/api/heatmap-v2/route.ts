@@ -642,44 +642,72 @@ export async function POST(req: Request) {
   const rows = Math.max(1, Math.ceil((maxLat - minLat) / latStep));
   const cols = Math.max(1, Math.ceil((maxLng - minLng) / lngStep));
 
-  const grid: Cell[][] = [];
-  for (let r = 0; r < rows; r++) {
-    const row: Cell[] = [];
-    for (let c = 0; c < cols; c++) {
-      row.push({
-        row: r,
-        col: c,
-        centerLat: minLat + (r + 0.5) * latStep,
-        centerLng: minLng + (c + 0.5) * lngStep,
+  console.log("=== GRID DEBUG ===");
+  console.log("Grid:", rows, "rows x", cols, "cols =", rows * cols, "células");
+  console.log("Bounds: lat", minLat, "-", maxLat, "| lng", minLng, "-", maxLng);
+  console.log("Steps: latStep", latStep, "| lngStep", lngStep);
+  console.log("Total âncoras:", dedupedAnchors.length);
+  console.log("Total complementares:", dedupedComplementary.length);
+
+  // Grid como Map "row,col" — evita problemas de índice 1D/2D
+  const gridMap = new Map<string, Cell>();
+
+  const cellIndices = (lat: number, lng: number): { row: number; col: number } => ({
+    row: Math.floor((lat - minLat) / latStep),
+    col: Math.floor((lng - minLng) / lngStep),
+  });
+
+  const getOrCreateCell = (lat: number, lng: number): Cell => {
+    const { row, col } = cellIndices(lat, lng);
+    const key = `${row},${col}`;
+    let cell = gridMap.get(key);
+    if (!cell) {
+      cell = {
+        row,
+        col,
+        centerLat: minLat + (row + 0.5) * latStep,
+        centerLng: minLng + (col + 0.5) * lngStep,
         score: 0,
         anchors: [],
         complementary: [],
         competitors: [],
-      });
+      };
+      gridMap.set(key, cell);
     }
-    grid.push(row);
-  }
-
-  // 8. Popular células
-  const placeCell = (lat: number, lng: number): { r: number; c: number } | null => {
-    const r = Math.floor((lat - minLat) / latStep);
-    const c = Math.floor((lng - minLng) / lngStep);
-    if (r < 0 || r >= rows || c < 0 || c >= cols) return null;
-    return { r, c };
+    return cell;
   };
 
+  // 8. Popular células
+  let anchorsNotInGrid = 0;
   for (const a of dedupedAnchors) {
-    const idx = placeCell(a.lat, a.lng);
-    if (idx) grid[idx.r][idx.c].anchors.push(a);
+    const { row, col } = cellIndices(a.lat, a.lng);
+    if (row < 0 || row >= rows || col < 0 || col >= cols) {
+      anchorsNotInGrid++;
+      console.log(
+        "ÂNCORA FORA DO GRID:",
+        a.name,
+        "lat:",
+        a.lat,
+        "lng:",
+        a.lng,
+        "row:",
+        row,
+        "col:",
+        col
+      );
+      continue;
+    }
+    getOrCreateCell(a.lat, a.lng).anchors.push(a);
   }
   for (const cp of dedupedComplementary) {
-    const idx = placeCell(cp.lat, cp.lng);
-    if (idx) grid[idx.r][idx.c].complementary.push(cp);
+    getOrCreateCell(cp.lat, cp.lng).complementary.push(cp);
   }
   for (const cm of competitors) {
-    const idx = placeCell(cm.lat, cm.lng);
-    if (idx) grid[idx.r][idx.c].competitors.push(cm);
+    getOrCreateCell(cm.lat, cm.lng).competitors.push(cm);
   }
+
+  console.log("Âncoras fora do grid:", anchorsNotInGrid);
+  console.log("Células populadas:", gridMap.size);
 
   // 9. Score por célula
   const ANCHOR_WEIGHTS: Record<AnchorType, number> = {
@@ -707,67 +735,92 @@ export async function POST(req: Request) {
     [1, -1], [1, 0], [1, 1],
   ];
 
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const cell = grid[r][c];
-      let score = 0;
+  for (const cell of gridMap.values()) {
+    let score = 0;
 
-      for (const t of ANCHOR_TYPES) {
-        score += cell.anchors.filter((a) => a.placeType === t).length * ANCHOR_WEIGHTS[t];
+    for (const t of ANCHOR_TYPES) {
+      score += cell.anchors.filter((a) => a.placeType === t).length * ANCHOR_WEIGHTS[t];
+    }
+    for (const t of COMPLEMENTARY_TYPES) {
+      score += cell.complementary.filter((a) => a.placeType === t).length * COMP_WEIGHTS[t];
+    }
+
+    const totalAnchors = cell.anchors.length;
+    const totalComp = cell.complementary.length;
+    const totalPOIs = totalAnchors + totalComp;
+
+    if (totalAnchors >= 1 && totalComp >= 3) score *= 1.2;
+    if (totalAnchors >= 2) score *= 1.3;
+
+    if (totalAnchors === 0 && totalComp >= 5) score = Math.max(score, 15);
+    if (totalAnchors === 0 && totalComp >= 8) score = Math.max(score, 25);
+    if (totalAnchors === 0 && totalComp >= 12) score = Math.max(score, 35);
+
+    const dcInCell = cell.competitors.filter((cp) => cp.charger_type === "DC").length;
+    if (dcInCell > 4) score *= 0.5;
+
+    // Cancela só células sem âncora E com poucos POIs — âncoras sozinhas continuam pintando.
+    if (totalAnchors === 0 && totalPOIs < 2) score = 0;
+
+    cell.score = Math.round(score);
+  }
+
+  // 9b. Bônus de vizinhança: aplicado depois pra usar scores já calculados
+  for (const cell of gridMap.values()) {
+    for (const [dr, dc] of NEIGHBORS) {
+      const neighborKey = `${cell.row + dr},${cell.col + dc}`;
+      const neighbor = gridMap.get(neighborKey);
+      if (neighbor && neighbor.anchors.length > 0) {
+        cell.score = Math.round(cell.score * 1.1);
+        break;
       }
-      for (const t of COMPLEMENTARY_TYPES) {
-        score += cell.complementary.filter((a) => a.placeType === t).length * COMP_WEIGHTS[t];
-      }
-
-      const totalAnchors = cell.anchors.length;
-      const totalComp = cell.complementary.length;
-      const totalPOIs = totalAnchors + totalComp;
-
-      if (totalAnchors >= 1 && totalComp >= 3) score *= 1.2;
-      if (totalAnchors >= 2) score *= 1.3;
-
-      let hasNeighborAnchor = false;
-      for (const [dr, dc] of NEIGHBORS) {
-        const nr = r + dr;
-        const nc = c + dc;
-        if (nr >= 0 && nr < rows && nc >= 0 && nc < cols) {
-          if (grid[nr][nc].anchors.length > 0) {
-            hasNeighborAnchor = true;
-            break;
-          }
-        }
-      }
-      if (hasNeighborAnchor) score *= 1.1;
-
-      if (totalAnchors === 0 && totalComp >= 5) score = Math.max(score, 15);
-      if (totalAnchors === 0 && totalComp >= 8) score = Math.max(score, 25);
-      if (totalAnchors === 0 && totalComp >= 12) score = Math.max(score, 35);
-
-      const dcInCell = cell.competitors.filter((cp) => cp.charger_type === "DC").length;
-      if (dcInCell > 4) score *= 0.5;
-
-      if (totalPOIs < 2) score = 0;
-
-      cell.score = Math.round(score);
     }
   }
+
+  // 9c. Garantir que TODA célula com pelo menos 1 âncora tem score > 0
+  for (const cell of gridMap.values()) {
+    if (cell.anchors.length > 0 && cell.score === 0) {
+      cell.score = cell.anchors.length * 10;
+      console.log(
+        "CORRIGIDO: célula com âncora e score 0 → score:",
+        cell.score,
+        "row:",
+        cell.row,
+        "col:",
+        cell.col
+      );
+    }
+  }
+
+  let cellsWithAnchors = 0;
+  let cellsWithScore = 0;
+  let cellsWithZero = 0;
+  for (const cell of gridMap.values()) {
+    if (cell.anchors.length > 0) cellsWithAnchors++;
+    if (cell.score > 0) cellsWithScore++;
+    else cellsWithZero++;
+  }
+  console.log("Células com âncoras:", cellsWithAnchors);
+  console.log("Células com score > 0:", cellsWithScore);
+  console.log("Células com score = 0:", cellsWithZero);
+
+  const cellScoreFor = (lat: number, lng: number): number => {
+    const { row, col } = cellIndices(lat, lng);
+    return gridMap.get(`${row},${col}`)?.score ?? 0;
+  };
 
   // 10. Selecionar marcadores
 
   // Anchors: todos deduplicados (já temos `dedupedAnchors`). Score região = score da célula que cai.
-  const anchorsOut = dedupedAnchors.map((a) => {
-    const idx = placeCell(a.lat, a.lng);
-    const cellScore = idx ? grid[idx.r][idx.c].score : 0;
-    return {
-      name: a.name,
-      lat: a.lat,
-      lng: a.lng,
-      type: a.placeType,
-      typeLabel: ANCHOR_LABELS[a.placeType as AnchorType],
-      address: a.address,
-      cellScore,
-    };
-  });
+  const anchorsOut = dedupedAnchors.map((a) => ({
+    name: a.name,
+    lat: a.lat,
+    lng: a.lng,
+    type: a.placeType,
+    typeLabel: ANCHOR_LABELS[a.placeType as AnchorType],
+    address: a.address,
+    cellScore: cellScoreFor(a.lat, a.lng),
+  }));
 
   // Complementares: top 5 mais próximos (< 500m) de cada âncora, sem repetição.
   // Garantir mínimo de 50 marcadores (âncoras + complementares); se faltar, completar.
@@ -832,7 +885,7 @@ export async function POST(req: Request) {
   }));
 
   // 11. Top 10 regiões
-  const flatCells: Cell[] = grid.flat();
+  const flatCells: Cell[] = Array.from(gridMap.values());
   const topRegions = flatCells
     .filter((c) => c.score > 0)
     .sort((a, b) => b.score - a.score)
@@ -876,11 +929,16 @@ export async function POST(req: Request) {
 
   const maxScore = gridOut.reduce((m, c) => Math.max(m, c.score), 0);
 
+  console.log("=== GRID RESULTADO ===");
+  console.log("Células com score > 0 (output):", gridOut.length);
+  console.log("Max score:", maxScore);
+
   const payload = {
     city,
     state,
     center,
     gridStep: { lat: latStep, lng: lngStep },
+    gridConfig: { latStep, lngStep },
     grid: gridOut,
     anchors: anchorsOut,
     complementary: complementaryOut,

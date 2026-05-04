@@ -88,6 +88,7 @@ interface HeatmapV2Result {
   state: string;
   center: { lat: number; lng: number };
   gridStep?: { lat: number; lng: number };
+  gridConfig?: { latStep: number; lngStep: number };
   grid: GridCell[];
   anchors: Anchor[];
   complementary: Complementary[];
@@ -792,6 +793,7 @@ if (allCoords.length) map.fitBounds(allCoords, { padding: [40,40] });
             center={result.center}
             grid={result.grid}
             gridStep={result.gridStep}
+            gridConfig={result.gridConfig}
             anchors={result.anchors}
             complementary={result.complementary}
             competitors={result.competitors}
