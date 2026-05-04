@@ -32,6 +32,13 @@ interface Panel1Data {
   };
   chargersExisting: number;
   totalCarregadosComBr: number | null;
+  abveCity?: {
+    dc: number;
+    ac: number;
+    total: number;
+    evsSold: number;
+    source: string;
+  };
   ratio: string; marketPhase: string;
   cityScore: number | null;
 }
@@ -813,23 +820,35 @@ function PanelOverview({ data }: { data: Panel1Data }) {
     : data.cityScore >= 40 ? "#FFC107"
     : "#F44336";
 
-  const cards: { label: string; value: string }[] = [
-    { label: "População", value: data.population.toLocaleString("pt-BR") },
-    { label: "PIB per Capita", value: `R$ ${data.gdpPerCapita.toLocaleString("pt-BR")}` },
-    { label: "Frota Total", value: data.totalVehicles.toLocaleString("pt-BR") },
+  const cards: { label: string; value: string; available: boolean }[] = [
+    { label: "População", value: data.population.toLocaleString("pt-BR"), available: data.population > 0 },
+    { label: "PIB per Capita", value: `R$ ${data.gdpPerCapita.toLocaleString("pt-BR")}`, available: data.gdpPerCapita > 0 },
+    { label: "Frota Total", value: data.totalVehicles.toLocaleString("pt-BR"), available: data.totalVehicles > 0 },
     {
       label: data.isEstimateEVs ? "EVs Acumulados na Cidade (estimativa)" : "EVs Acumulados na Cidade",
       value: data.evs.toLocaleString("pt-BR"),
+      available: data.evs > 0,
     },
-    { label: "Carregadores Encontrados (Google)", value: String(data.chargersExisting) },
+    {
+      label: "Carregadores DC (ABVE)",
+      value: String(data.abveCity?.dc ?? 0),
+      available: !!data.abveCity && data.abveCity.dc > 0,
+    },
+    {
+      label: "Carregadores Total (ABVE)",
+      value: String(data.abveCity?.total ?? 0),
+      available: !!data.abveCity && data.abveCity.total > 0,
+    },
+    { label: "Carregadores Encontrados (Google)", value: String(data.chargersExisting), available: data.chargersExisting > 0 },
   ];
   if (data.totalCarregadosComBr != null) {
     cards.push({
       label: "Total Registrado (carregados.com.br)",
       value: String(data.totalCarregadosComBr),
+      available: data.totalCarregadosComBr > 0,
     });
   }
-  cards.push({ label: "EVs/Carregador", value: data.ratio });
+  cards.push({ label: "EVs/Carregador", value: data.ratio, available: data.ratio !== "Calculando..." && !data.ratio.startsWith("∞") });
 
   return (
     <div className="space-y-6">
@@ -839,11 +858,20 @@ function PanelOverview({ data }: { data: Panel1Data }) {
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         {cards.map((card) => (
           <div key={card.label} className="rounded-xl border border-[#30363D] bg-[#161B22] p-4 text-center">
-            <div className="text-2xl font-bold text-[#C9A84C]">{card.value}</div>
+            {card.available ? (
+              <div className="text-2xl font-bold text-[#C9A84C]">{card.value}</div>
+            ) : (
+              <div className="text-xs italic text-[#8B949E] py-2">Dados não disponíveis</div>
+            )}
             <div className="text-xs text-[#8B949E] mt-1">{card.label}</div>
           </div>
         ))}
       </div>
+      {data.abveCity && data.abveCity.total > 0 && (
+        <p className="text-right text-[10px] italic text-[#8B949E]">
+          Fonte carregadores: {data.abveCity.source}
+        </p>
+      )}
 
       {/* Contexto ABVE */}
       {data.abveNacional && (

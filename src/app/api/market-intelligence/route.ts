@@ -8,6 +8,7 @@ import type { CompetitorStation } from "@/lib/competitors";
 import { searchPlaces, deduplicatePlaces } from "@/lib/google-places";
 import type { PlaceResult } from "@/lib/google-places";
 import { ABVE_DATA, estimateEVs } from "@/lib/abve-data";
+import { getABVEData } from "@/lib/abve-real-data";
 import { logUsage } from "@/lib/usage-logger";
 
 const STATE_NAMES: Record<string, string> = {
@@ -521,6 +522,15 @@ export async function POST(request: Request) {
         const vendasEstado2025 =
           ABVE_DATA.topEstados[stateAbbrForAbve as keyof typeof ABVE_DATA.topEstados] || null;
 
+        // ABVE — carregadores reais por cidade (fev/2026)
+        const abveCity = getABVEData(city, state);
+        const abveDc = abveCity?.dc ?? 0;
+        const abveAc = abveCity?.ac ?? 0;
+        const abveTotalChargers = abveCity?.total ?? 0;
+        const abveSource = abveCity ? "ABVE fev/2026" : "Estimativa";
+        console.log("=== ABVE DATA ===", city, state, abveCity);
+        console.log("EVs:", fleet.evs, "DC:", abveDc, "Fonte:", abveSource);
+
         // Scrape carregados.com.br para obter número total registrado
         let totalCarregadosComBr: number | null = null;
         try {
@@ -579,6 +589,13 @@ export async function POST(request: Request) {
             },
             chargersExisting: 0, // updated after step 2
             totalCarregadosComBr,
+            abveCity: {
+              dc: abveDc,
+              ac: abveAc,
+              total: abveTotalChargers,
+              evsSold: abveCity?.evsSold ?? 0,
+              source: abveSource,
+            },
             ratio: "Calculando...",
             marketPhase: "Calculando...",
             cityScore: null,
@@ -641,6 +658,13 @@ export async function POST(request: Request) {
             },
             chargersExisting: chargerInfo.total,
             totalCarregadosComBr,
+            abveCity: {
+              dc: abveDc,
+              ac: abveAc,
+              total: abveTotalChargers,
+              evsSold: abveCity?.evsSold ?? 0,
+              source: abveSource,
+            },
             ratio: evChargerRatio,
             marketPhase,
             cityScore: null,
@@ -805,6 +829,13 @@ export async function POST(request: Request) {
             },
             chargersExisting: chargerInfo.total,
             totalCarregadosComBr,
+            abveCity: {
+              dc: abveDc,
+              ac: abveAc,
+              total: abveTotalChargers,
+              evsSold: abveCity?.evsSold ?? 0,
+              source: abveSource,
+            },
             ratio: evChargerRatio,
             marketPhase,
             cityScore,

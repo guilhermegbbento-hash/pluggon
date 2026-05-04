@@ -563,12 +563,25 @@ export async function POST(req: Request) {
   // 5. IBGE
   const ibge = await fetchIBGECityData(city, state);
 
-  // 6. ABVE
-  const abve = getABVEData(city, state);
-  const totalChargers = abve?.total ?? 0;
-  const dcChargers = abve?.dc ?? 0;
-  const evs = abve?.evsSold ?? 0;
-  const ratioEVperDC = dcChargers > 0 ? Math.round(evs / dcChargers) : 0;
+  // 6. ABVE (com fallback de estimativa por população × PIB quando cidade não está na base)
+  const abveData = getABVEData(city, state);
+  const evsCity = abveData?.evsSold ?? 0;
+  const dcCity = abveData?.dc ?? 0;
+  const totalChargers = abveData?.total ?? 0;
+
+  const population = ibge.population ?? 0;
+  const gdpPerCapita = ibge.gdpPerCapita ?? 0;
+  const evsEstimate =
+    evsCity ||
+    Math.round(
+      population *
+        (gdpPerCapita > 50000 ? 0.006 : gdpPerCapita > 30000 ? 0.004 : 0.002)
+    );
+  const ratioEVperDC = dcCity > 0 ? Math.round(evsEstimate / dcCity) : 0;
+  const source = abveData ? "ABVE fev/2026" : "Estimativa";
+
+  console.log("=== ABVE DATA ===", city, state, abveData);
+  console.log("EVs:", evsEstimate, "DC:", dcCity, "Fonte:", source);
 
   // 7. Grid 300x300m
   const allPOIs = [...dedupedAnchors, ...dedupedComplementary];
@@ -825,10 +838,11 @@ export async function POST(req: Request) {
     cityData: {
       population: ibge.population,
       gdpPerCapita: ibge.gdpPerCapita,
-      evs,
-      dcChargers,
+      evs: evsEstimate,
+      dcChargers: dcCity,
       totalChargers,
       ratioEVperDC,
+      source,
     },
     stats: {
       totalAnchors: dedupedAnchors.length,
@@ -854,8 +868,8 @@ export async function POST(req: Request) {
         population: ibge.population,
         gdp_per_capita: ibge.gdpPerCapita,
         charger_count: totalChargers,
-        dc_charger_count: dcChargers,
-        ev_count: evs,
+        dc_charger_count: dcCity,
+        ev_count: evsEstimate,
         points_json: payload,
         status: "heatmap_v2",
       });

@@ -51,6 +51,7 @@ interface CityData {
   dcChargers: number;
   totalChargers: number;
   ratioEVperDC: number;
+  source?: string;
 }
 
 interface TopRegion {
@@ -603,21 +604,30 @@ if (allCoords.length) map.fitBounds(allCoords, { padding: [40,40] });
       {/* City data cards */}
       <div className="mt-4 grid grid-cols-5 gap-2">
         {[
-          { label: "População", value: formatNumber(cityData.population), color: "text-white" },
-          { label: "PIB per capita", value: formatCurrency(cityData.gdpPerCapita), color: "text-white" },
-          { label: "EVs na cidade", value: formatNumber(cityData.evs), color: "text-[#66BB6A]" },
-          { label: "Carregadores DC", value: formatNumber(cityData.dcChargers), color: "text-[#FF8800]" },
-          { label: "EVs / DC", value: cityData.ratioEVperDC > 0 ? formatNumber(cityData.ratioEVperDC) : "—", color: "text-[#C9A84C]" },
+          { label: "População", value: formatNumber(cityData.population), color: "text-white", available: cityData.population !== null },
+          { label: "PIB per capita", value: formatCurrency(cityData.gdpPerCapita), color: "text-white", available: cityData.gdpPerCapita !== null },
+          { label: "EVs na cidade", value: formatNumber(cityData.evs), color: "text-[#66BB6A]", available: cityData.evs > 0 },
+          { label: "Carregadores DC", value: formatNumber(cityData.dcChargers), color: "text-[#FF8800]", available: cityData.dcChargers > 0 },
+          { label: "EVs / DC", value: formatNumber(cityData.ratioEVperDC), color: "text-[#C9A84C]", available: cityData.ratioEVperDC > 0 },
         ].map((s) => (
           <div
             key={s.label}
             className="rounded-lg border border-[#30363D] bg-[#161B22] px-2 py-3 text-center"
           >
             <p className="text-[10px] text-[#8B949E]">{s.label}</p>
-            <p className={`mt-1 text-lg font-bold ${s.color}`}>{s.value}</p>
+            {s.available ? (
+              <p className={`mt-1 text-lg font-bold ${s.color}`}>{s.value}</p>
+            ) : (
+              <p className="mt-1 text-xs text-[#8B949E]">Dados não disponíveis</p>
+            )}
           </div>
         ))}
       </div>
+      {cityData.source && (cityData.evs > 0 || cityData.dcChargers > 0) && (
+        <p className="mt-1 text-right text-[10px] italic text-[#8B949E]">
+          Fonte: {cityData.source}
+        </p>
+      )}
 
       {/* Admin cost card */}
       {isAdmin && (
