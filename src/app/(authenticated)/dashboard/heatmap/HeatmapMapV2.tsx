@@ -6,9 +6,10 @@ interface GridCell {
   lat: number;
   lng: number;
   score: number;
-  anchorCount?: number;
+  anchorsCount?: number;
   compCount?: number;
-  competitorCount?: number;
+  competitorsCount?: number;
+  anchorNames?: string[];
 }
 
 interface Anchor {
@@ -195,9 +196,9 @@ export default function HeatmapMapV2({
         fillOpacity: 0.35,
         weight: 0,
       });
-      const aCount = cell.anchorCount ?? 0;
+      const aCount = cell.anchorsCount ?? 0;
       const cCount = cell.compCount ?? 0;
-      const xCount = cell.competitorCount ?? 0;
+      const xCount = cell.competitorsCount ?? 0;
       rect.bindPopup(
         `<div style="font-family:system-ui;min-width:200px;">
           <div style="font-weight:700;font-size:13px;margin-bottom:4px;">Região: ${cell.score} pontos</div>

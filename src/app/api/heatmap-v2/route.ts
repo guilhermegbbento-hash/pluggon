@@ -792,6 +792,49 @@ export async function POST(req: Request) {
     }
   }
 
+  // 9d. Score mínimo OBRIGATÓRIO por presença de POIs
+  for (const cell of gridMap.values()) {
+    if (cell.anchors.length >= 1 && cell.score < 15) {
+      cell.score = 15; // mínimo verde
+    }
+    if (cell.anchors.length >= 2 && cell.score < 30) {
+      cell.score = 30; // mínimo amarelo
+    }
+    if (cell.complementary.length >= 1 && cell.score < 5) {
+      cell.score = 5; // mínimo azul
+    }
+    if (cell.complementary.length >= 3 && cell.score < 10) {
+      cell.score = 10; // mínimo azul-verde
+    }
+  }
+
+  // 9e. Pintar as 8 células vizinhas de cada célula com âncora
+  const anchorCells = Array.from(gridMap.entries()).filter(
+    ([, c]) => c.anchors.length > 0
+  );
+  for (const [, cell] of anchorCells) {
+    for (const [dr, dc] of NEIGHBORS) {
+      const nRow = cell.row + dr;
+      const nCol = cell.col + dc;
+      const neighborKey = `${nRow},${nCol}`;
+      const existing = gridMap.get(neighborKey);
+      if (!existing) {
+        gridMap.set(neighborKey, {
+          row: nRow,
+          col: nCol,
+          centerLat: minLat + (nRow + 0.5) * latStep,
+          centerLng: minLng + (nCol + 0.5) * lngStep,
+          score: 8, // azul claro - proximidade de âncora
+          anchors: [],
+          complementary: [],
+          competitors: [],
+        });
+      } else if (existing.score < 8) {
+        existing.score = 8;
+      }
+    }
+  }
+
   let cellsWithAnchors = 0;
   let cellsWithScore = 0;
   let cellsWithZero = 0;
@@ -917,20 +960,29 @@ export async function POST(req: Request) {
 
   // 12. Grid output (com contagens pra popup do quadrado)
   const gridOut = flatCells
-    .filter((c) => c.score > 0)
+    .filter((c) => c.score >= 3)
     .map((c) => ({
       lat: c.centerLat,
       lng: c.centerLng,
       score: c.score,
-      anchorCount: c.anchors.length,
+      anchorsCount: c.anchors.length,
       compCount: c.complementary.length,
-      competitorCount: c.competitors.length,
+      competitorsCount: c.competitors.length,
+      anchorNames: c.anchors.map((a) => a.name).slice(0, 3),
     }));
 
   const maxScore = gridOut.reduce((m, c) => Math.max(m, c.score), 0);
 
-  console.log("=== GRID RESULTADO ===");
-  console.log("Células com score > 0 (output):", gridOut.length);
+  console.log("=== GRID FINAL ===");
+  console.log("Células pintadas:", gridOut.length);
+  console.log(
+    "Células com âncora:",
+    Array.from(gridMap.values()).filter((c) => c.anchors.length > 0).length
+  );
+  console.log(
+    "Células vizinhas de âncora criadas:",
+    gridOut.filter((c) => c.anchorsCount === 0 && c.score > 0).length
+  );
   console.log("Max score:", maxScore);
 
   const payload = {

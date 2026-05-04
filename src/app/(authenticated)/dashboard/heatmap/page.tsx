@@ -13,9 +13,10 @@ interface GridCell {
   lat: number;
   lng: number;
   score: number;
-  anchorCount?: number;
+  anchorsCount?: number;
   compCount?: number;
-  competitorCount?: number;
+  competitorsCount?: number;
+  anchorNames?: string[];
 }
 
 interface Anchor {
@@ -384,9 +385,9 @@ if (grid.length && maxScore > 0) {
   grid.forEach(cell => {
     const sw = [cell.lat - latStep/2, cell.lng - lngStep/2];
     const ne = [cell.lat + latStep/2, cell.lng + lngStep/2];
-    const aCount = cell.anchorCount || 0;
+    const aCount = cell.anchorsCount || 0;
     const cCount = cell.compCount || 0;
-    const xCount = cell.competitorCount || 0;
+    const xCount = cell.competitorsCount || 0;
     L.rectangle([sw, ne], {
       color: 'transparent',
       fillColor: getGridColor(cell.score / maxScore),
