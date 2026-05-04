@@ -16,7 +16,10 @@ type ComplementaryType =
   | "supermarket"
   | "restaurant"
   | "lodging"
-  | "university";
+  | "university"
+  | "hospital"
+  | "convenience"
+  | "gym";
 type PlaceType = AnchorType | ComplementaryType;
 
 const ANCHOR_TYPES: AnchorType[] = [
@@ -33,6 +36,9 @@ const COMPLEMENTARY_TYPES: ComplementaryType[] = [
   "restaurant",
   "lodging",
   "university",
+  "hospital",
+  "convenience",
+  "gym",
 ];
 
 const ANCHOR_LABELS: Record<AnchorType, string> = {
@@ -50,6 +56,9 @@ const COMPLEMENTARY_LABELS: Record<ComplementaryType, string> = {
   restaurant: "Restaurante",
   lodging: "Hotel",
   university: "Universidade",
+  hospital: "Hospital",
+  convenience: "Loja de conveniência",
+  gym: "Academia",
 };
 
 interface POI {
@@ -101,14 +110,18 @@ function haversineMeters(
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-async function searchNearbyOld(
+type RawPlace = Omit<POI, "placeType">;
+
+async function searchTextPlaces(
+  query: string,
   lat: number,
   lng: number,
-  type: PlaceType,
-  radius: number,
-  apiKey: string
-): Promise<POI[]> {
-  const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${lat},${lng}&radius=${radius}&type=${type}&key=${apiKey}`;
+  apiKey: string,
+  radius: number = 15000
+): Promise<RawPlace[]> {
+  const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(
+    query
+  )}&location=${lat},${lng}&radius=${radius}&language=pt-BR&region=br&key=${apiKey}`;
   try {
     const res = await fetch(url);
     if (!res.ok) return [];
@@ -124,19 +137,18 @@ async function searchNearbyOld(
           geometry: { location: { lat: number; lng: number } };
           rating?: number;
           user_ratings_total?: number;
-          vicinity?: string;
+          formatted_address?: string;
         }) => ({
-          name: p.name || "Sem nome",
+          name: p.name || "",
           lat: p.geometry.location.lat,
           lng: p.geometry.location.lng,
           rating: p.rating || 0,
           reviews: p.user_ratings_total || 0,
-          address: p.vicinity || "",
-          placeType: type,
+          address: p.formatted_address || "",
         })
       );
   } catch (err) {
-    console.error("searchNearbyOld erro:", type, err);
+    console.error("searchTextPlaces erro:", query, err);
     return [];
   }
 }
@@ -152,8 +164,7 @@ function deduplicatePOIs(pois: POI[]): POI[] {
   return unique;
 }
 
-// Remove points that are just addresses, not real commercial establishments
-function isValidCommercialPoint(poi: POI): boolean {
+function isQualityPoint(poi: POI): boolean {
   const name = (poi.name || "").trim();
 
   if (!name || name.length < 4) return false;
@@ -165,16 +176,13 @@ function isValidCommercialPoint(poi: POI): boolean {
   )
     return false;
 
-  if (/^(n\.?|nº|numero|número)\s*\d/i.test(name)) return false;
-
   if (/^[\d\s.,\-/]+$/.test(name)) return false;
 
   const lower = name.toLowerCase();
-  const generic = [
+  const reject = [
     "lote",
     "terreno",
     "sala",
-    "espaço",
     "galpão",
     "barracão",
     "casa",
@@ -186,114 +194,78 @@ function isValidCommercialPoint(poi: POI): boolean {
     "sobrado",
     "kitnet",
   ];
-  if (generic.some((g) => lower === g)) return false;
-
-  if (/^\d/.test(name) && name.length < 10) return false;
+  if (reject.some((r) => lower === r || lower.startsWith(r + " "))) return false;
 
   if (!/[a-zA-ZÀ-ÿ]/.test(name)) return false;
 
   return true;
 }
 
-// Aceita só rodoviárias intermunicipais/interestaduais, rejeita terminais urbanos
-function isRealBusStation(poi: POI): boolean {
+function isQualityAnchor(poi: POI): boolean {
+  if (!isQualityPoint(poi)) return false;
   const name = (poi.name || "").toLowerCase();
-  const accept = [
-    "rodoviária",
-    "rodoviaria",
-    "terminal rodoviário",
-    "terminal rodoviario",
-    "rodoferroviária",
-    "rodoferroviaria",
-  ];
-  if (accept.some((a) => name.includes(a))) return true;
 
-  const reject = [
-    "terminal urbano",
-    "terminal de ônibus",
-    "terminal de onibus",
-    "estação tubo",
-    "estacao tubo",
-    "ponto de ônibus",
-    "ponto de onibus",
-    "parada",
-    "terminal metropolitano",
-    "terminal de integração",
-    "terminal de integracao",
-    "tube",
-    "brt",
-    "ligeirinho",
-    "biarticulado",
-  ];
-  if (reject.some((r) => name.includes(r))) return false;
+  if (poi.placeType === "airport") {
+    const rejectAirport = [
+      "heliponto",
+      "heliporto",
+      "helipad",
+      "helicóptero",
+      "helicoptero",
+      "aeroclube",
+      "aero clube",
+      "pista particular",
+      "táxi aéreo",
+      "taxi aereo",
+    ];
+    if (rejectAirport.some((r) => name.includes(r))) return false;
+    if (
+      !name.includes("aeroporto") &&
+      !name.includes("airport") &&
+      !name.includes("internacional")
+    )
+      return false;
+  }
 
-  if (name.includes("terminal") && !name.includes("rodoviári")) return false;
+  if (poi.placeType === "bus_station") {
+    const rejectBus = [
+      "terminal urbano",
+      "terminal de ônibus",
+      "terminal de onibus",
+      "estação tubo",
+      "estacao tubo",
+      "ponto de ônibus",
+      "ponto de onibus",
+      "parada",
+      "terminal metropolitano",
+      "brt",
+      "ligeirinho",
+      "biarticulado",
+      "tube",
+      "estação de transferência",
+    ];
+    if (rejectBus.some((r) => name.includes(r))) return false;
+    if (
+      name.includes("terminal") &&
+      !name.includes("rodoviári") &&
+      !name.includes("rodoviario") &&
+      !name.includes("rodoferroviári")
+    )
+      return false;
+  }
 
-  return false;
-}
+  if (poi.placeType === "shopping_mall") {
+    const rejectShop = [
+      "galeria",
+      "mini shopping",
+      "camelódromo",
+      "box",
+      "centro comercial pequeno",
+    ];
+    if (rejectShop.some((r) => name.includes(r))) return false;
+  }
 
-// Aceita só aeroportos comerciais, rejeita helipontos/aeroclubes
-function isRealAirport(poi: POI): boolean {
-  const name = (poi.name || "").toLowerCase();
-  const reject = [
-    "heliponto",
-    "heliporto",
-    "helipad",
-    "helicóptero",
-    "helicoptero",
-    "aeroclube",
-    "aero clube",
-    "pista particular",
-    "campo de aviação",
-  ];
-  if (reject.some((r) => name.includes(r))) return false;
-
-  const accept = [
-    "aeroporto",
-    "airport",
-    "internacional",
-    "regional",
-    "santos dumont",
-    "congonhas",
-    "galeão",
-    "guarulhos",
-    "afonso pena",
-    "salgado filho",
-  ];
-  if (accept.some((a) => name.includes(a))) return true;
-
-  return false;
-}
-
-// Aceita só shoppings de médio/grande porte, rejeita galerias pequenas
-function isRealShopping(poi: POI): boolean {
-  const name = (poi.name || "").toLowerCase();
-  const reject = [
-    "galeria",
-    "mini shopping",
-    "mini mall",
-    "camelódromo",
-    "box",
-    "loja de",
-  ];
-  if (reject.some((r) => name.includes(r))) return false;
-
-  const accept = [
-    "shopping",
-    "mall",
-    "shopping center",
-    "centro comercial",
-    "outlet",
-    "plaza",
-    "park shopping",
-    "pátio",
-    "patio",
-  ];
-  if (accept.some((a) => name.includes(a))) return true;
-
-  if ((poi.reviews || 0) > 500) return true;
-
-  return false;
+  return true;
 }
 
 async function geocodeCity(
@@ -486,83 +458,65 @@ export async function POST(req: Request) {
     );
   }
 
-  // 2. Busca POIs (11 queries)
-  const radius = 15000;
+  // 2. Busca POIs via Text Search (22 queries paralelas)
   let googleQueries = 0;
-  const allAnchors: POI[] = [];
-  const allComplementary: POI[] = [];
+  const cityQuery = `${city} ${state}`;
 
-  const anchorResults = await Promise.all(
-    ANCHOR_TYPES.map((t) =>
-      searchNearbyOld(center.lat, center.lng, t, radius, apiKey)
-    )
-  );
-  googleQueries += ANCHOR_TYPES.length;
-  anchorResults.forEach((arr) => allAnchors.push(...arr));
+  const anchorQueries: { q: string; type: AnchorType }[] = [
+    { q: `posto de combustível ${cityQuery}`, type: "gas_station" },
+    { q: `posto de gasolina ${cityQuery}`, type: "gas_station" },
+    { q: `posto 24 horas ${cityQuery}`, type: "gas_station" },
+    { q: `rede de postos ${cityQuery}`, type: "gas_station" },
+    { q: `shopping center ${cityQuery}`, type: "shopping_mall" },
+    { q: `shopping mall ${cityQuery}`, type: "shopping_mall" },
+    { q: `rodoviária interestadual ${cityQuery}`, type: "bus_station" },
+    { q: `aeroporto ${cityQuery}`, type: "airport" },
+  ];
 
-  const compResults = await Promise.all(
-    COMPLEMENTARY_TYPES.map((t) =>
-      searchNearbyOld(center.lat, center.lng, t, radius, apiKey)
-    )
-  );
-  googleQueries += COMPLEMENTARY_TYPES.length;
-  compResults.forEach((arr) => allComplementary.push(...arr));
+  const compQueries: { q: string; type: ComplementaryType }[] = [
+    { q: `farmácia ${cityQuery}`, type: "pharmacy" },
+    { q: `drogaria ${cityQuery}`, type: "pharmacy" },
+    { q: `padaria ${cityQuery}`, type: "bakery" },
+    { q: `supermercado ${cityQuery}`, type: "supermarket" },
+    { q: `hipermercado ${cityQuery}`, type: "supermarket" },
+    { q: `estacionamento ${cityQuery}`, type: "parking" },
+    { q: `restaurante ${cityQuery}`, type: "restaurant" },
+    { q: `lanchonete ${cityQuery}`, type: "restaurant" },
+    { q: `hotel ${cityQuery}`, type: "lodging" },
+    { q: `pousada ${cityQuery}`, type: "lodging" },
+    { q: `universidade ${cityQuery}`, type: "university" },
+    { q: `hospital ${cityQuery}`, type: "hospital" },
+    { q: `loja de conveniência ${cityQuery}`, type: "convenience" },
+    { q: `academia ${cityQuery}`, type: "gym" },
+  ];
 
-  // 3. Deduplicação POR TIPO + filtro de pontos comerciais válidos
-  const dedupedAnchorsByType: Record<AnchorType, POI[]> = {
-    gas_station: [],
-    bus_station: [],
-    airport: [],
-    shopping_mall: [],
-  };
-  for (const t of ANCHOR_TYPES) {
-    let arr = deduplicatePOIs(allAnchors.filter((p) => p.placeType === t))
-      .filter(isValidCommercialPoint);
-    if (t === "bus_station") arr = arr.filter(isRealBusStation);
-    else if (t === "airport") arr = arr.filter(isRealAirport);
-    else if (t === "shopping_mall") arr = arr.filter(isRealShopping);
-    dedupedAnchorsByType[t] = arr;
-  }
-  let dedupedAnchors = ANCHOR_TYPES.flatMap((t) => dedupedAnchorsByType[t]);
-
-  // 3b. Se sobraram poucas âncoras válidas, ampliar raio de busca pra 20km
-  if (dedupedAnchors.length < 5) {
-    const expandedRadius = 20000;
-    const expandedAnchorResults = await Promise.all(
-      ANCHOR_TYPES.map((t) =>
-        searchNearbyOld(center.lat, center.lng, t, expandedRadius, apiKey)
+  const [anchorRaws, compRaws] = await Promise.all([
+    Promise.all(
+      anchorQueries.map((aq) =>
+        searchTextPlaces(aq.q, center.lat, center.lng, apiKey)
       )
-    );
-    googleQueries += ANCHOR_TYPES.length;
-    ANCHOR_TYPES.forEach((t, i) => {
-      let arr = deduplicatePOIs(expandedAnchorResults[i]).filter(
-        isValidCommercialPoint
-      );
-      if (t === "bus_station") arr = arr.filter(isRealBusStation);
-      else if (t === "airport") arr = arr.filter(isRealAirport);
-      else if (t === "shopping_mall") arr = arr.filter(isRealShopping);
-      dedupedAnchorsByType[t] = arr;
-    });
-    dedupedAnchors = ANCHOR_TYPES.flatMap((t) => dedupedAnchorsByType[t]);
-  }
+    ),
+    Promise.all(
+      compQueries.map((cq) =>
+        searchTextPlaces(cq.q, center.lat, center.lng, apiKey)
+      )
+    ),
+  ]);
+  googleQueries += anchorQueries.length + compQueries.length; // 22
 
-  const dedupedCompByType: Record<ComplementaryType, POI[]> = {
-    pharmacy: [],
-    bakery: [],
-    parking: [],
-    supermarket: [],
-    restaurant: [],
-    lodging: [],
-    university: [],
-  };
-  for (const t of COMPLEMENTARY_TYPES) {
-    dedupedCompByType[t] = deduplicatePOIs(
-      allComplementary.filter((p) => p.placeType === t)
-    ).filter(isValidCommercialPoint);
-  }
-  const dedupedComplementary = COMPLEMENTARY_TYPES.flatMap(
-    (t) => dedupedCompByType[t]
+  let allAnchors: POI[] = anchorQueries.flatMap((aq, i) =>
+    anchorRaws[i].map((p) => ({ ...p, placeType: aq.type }))
   );
+  let allComplementary: POI[] = compQueries.flatMap((cq, i) =>
+    compRaws[i].map((p) => ({ ...p, placeType: cq.type }))
+  );
+
+  // 3. Deduplicação geral + filtros de qualidade
+  allAnchors = deduplicatePOIs(allAnchors).filter(isQualityAnchor);
+  allComplementary = deduplicatePOIs(allComplementary).filter(isQualityPoint);
+
+  const dedupedAnchors = allAnchors;
+  const dedupedComplementary = allComplementary;
 
   if (dedupedAnchors.length === 0 && dedupedComplementary.length === 0) {
     return Response.json(
@@ -687,6 +641,9 @@ export async function POST(req: Request) {
     restaurant: 2,
     lodging: 2,
     university: 2,
+    hospital: 4,
+    convenience: 3,
+    gym: 2,
   };
 
   const NEIGHBORS: [number, number][] = [
@@ -757,12 +714,13 @@ export async function POST(req: Request) {
     };
   });
 
-  // Complementares: para cada âncora, top 3 mais próximos (< 500m), max 30 total, sem repetição.
-  const selectedComp: POI[] = [];
-  const selectedKeys = new Set<string>();
+  // Complementares: top 5 mais próximos (< 500m) de cada âncora, sem repetição.
+  // Garantir mínimo de 50 marcadores (âncoras + complementares); se faltar, completar.
   const keyOf = (p: POI) => `${p.lat.toFixed(6)}|${p.lng.toFixed(6)}|${p.name}`;
+  const selectedKeys = new Set<string>();
+  const selectedComp: { cp: POI; nearAnchor: string; nearAnchorDist: number }[] = [];
+
   for (const a of dedupedAnchors) {
-    if (selectedComp.length >= 30) break;
     const candidates = dedupedComplementary
       .filter((cp) => !selectedKeys.has(keyOf(cp)))
       .map((cp) => ({
@@ -770,36 +728,53 @@ export async function POST(req: Request) {
         dist: haversineMeters(a.lat, a.lng, cp.lat, cp.lng),
       }))
       .filter((x) => x.dist < 500)
-      .sort((a2, b2) => a2.dist - b2.dist)
-      .slice(0, 3);
+      .sort((x1, x2) => x1.dist - x2.dist)
+      .slice(0, 5);
 
     for (const x of candidates) {
-      if (selectedComp.length >= 30) break;
-      selectedComp.push(x.cp);
       selectedKeys.add(keyOf(x.cp));
+      selectedComp.push({
+        cp: x.cp,
+        nearAnchor: a.name,
+        nearAnchorDist: Math.round(x.dist),
+      });
     }
   }
 
-  const complementaryOut = selectedComp.map((cp) => {
-    // Encontra âncora mais próxima para popup
-    let nearest: { name: string; dist: number } | null = null;
-    for (const a of dedupedAnchors) {
-      const d = haversineMeters(a.lat, a.lng, cp.lat, cp.lng);
-      if (nearest === null || d < nearest.dist) {
-        nearest = { name: a.name, dist: d };
+  const MIN_MARKERS = 50;
+  if (dedupedAnchors.length + selectedComp.length < MIN_MARKERS) {
+    const remaining = MIN_MARKERS - dedupedAnchors.length - selectedComp.length;
+    const extras = dedupedComplementary
+      .filter((cp) => !selectedKeys.has(keyOf(cp)))
+      .slice(0, remaining);
+
+    for (const cp of extras) {
+      selectedKeys.add(keyOf(cp));
+      let nearest: { name: string; dist: number } | null = null;
+      for (const a of dedupedAnchors) {
+        const d = haversineMeters(a.lat, a.lng, cp.lat, cp.lng);
+        if (nearest === null || d < nearest.dist) {
+          nearest = { name: a.name, dist: d };
+        }
       }
+      selectedComp.push({
+        cp,
+        nearAnchor: nearest ? nearest.name : "",
+        nearAnchorDist: nearest ? Math.round(nearest.dist) : 0,
+      });
     }
-    return {
-      name: cp.name,
-      lat: cp.lat,
-      lng: cp.lng,
-      type: cp.placeType,
-      typeLabel: COMPLEMENTARY_LABELS[cp.placeType as ComplementaryType],
-      address: cp.address,
-      nearAnchor: nearest ? nearest.name : "",
-      nearAnchorDist: nearest ? Math.round(nearest.dist) : 0,
-    };
-  });
+  }
+
+  const complementaryOut = selectedComp.map(({ cp, nearAnchor, nearAnchorDist }) => ({
+    name: cp.name,
+    lat: cp.lat,
+    lng: cp.lng,
+    type: cp.placeType,
+    typeLabel: COMPLEMENTARY_LABELS[cp.placeType as ComplementaryType],
+    address: cp.address,
+    nearAnchor,
+    nearAnchorDist,
+  }));
 
   // 11. Top 10 regiões
   const flatCells: Cell[] = grid.flat();
