@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { createClient } from "@/lib/supabase/client";
+import CityStateSelect from "@/components/CityStateSelect";
 
 const ADMIN_EMAIL = "guilherme@bfranca.com";
 
@@ -495,33 +496,14 @@ if (allCoords.length) map.fitBounds(allCoords, { padding: [40,40] });
             <h2 className="mb-6 text-lg font-semibold text-white">Gerar Mapa</h2>
 
             <div className="space-y-4">
-              <div>
-                <label className="mb-2 block text-sm font-medium text-[#8B949E]">
-                  Cidade
-                </label>
-                <input
-                  type="text"
-                  value={city}
-                  onChange={(e) => setCity(e.target.value)}
-                  placeholder="Ex: São Paulo"
-                  required
-                  className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-3 text-white placeholder-[#484F58] outline-none transition-colors focus:border-[#C9A84C]"
-                />
-              </div>
-              <div>
-                <label className="mb-2 block text-sm font-medium text-[#8B949E]">
-                  Estado (sigla)
-                </label>
-                <input
-                  type="text"
-                  value={state}
-                  onChange={(e) => setState(e.target.value.toUpperCase())}
-                  placeholder="Ex: SP"
-                  maxLength={2}
-                  required
-                  className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-3 text-white placeholder-[#484F58] outline-none transition-colors focus:border-[#C9A84C]"
-                />
-              </div>
+              <CityStateSelect
+                initialCity={city}
+                initialState={state}
+                onSelect={(c, s) => {
+                  setCity(c);
+                  setState(s);
+                }}
+              />
             </div>
 
             {error && <p className="mt-4 text-sm text-red-400">{error}</p>}

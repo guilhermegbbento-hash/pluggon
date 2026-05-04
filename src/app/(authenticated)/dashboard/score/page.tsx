@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { buildScoreHtml } from "@/lib/score-html-export";
 import { createClient } from "@/lib/supabase/client";
 import { calculateScore, type ScoreInput, type ScoreResult as EngineScoreResult, type CriticalFactor } from "@/lib/scoring-engine";
+import CityStateSelect from "@/components/CityStateSelect";
 
 const COST_VIEWER_EMAIL = "guilhermegbbento@gmail.com";
 
@@ -1014,7 +1015,7 @@ function ScorePageInner() {
   const [address, setAddress] = useState(searchParams.get("address") || "");
   const [establishmentType, setEstablishmentType] = useState(searchParams.get("type") || "");
   const [establishmentName, setEstablishmentName] = useState(searchParams.get("name") || "");
-  const [addressTab, setAddressTab] = useState<"address" | "gmaps">("address");
+  const [addressTab, setAddressTab] = useState<"address" | "gmaps" | "city">("address");
   const [gmapsLink, setGmapsLink] = useState("");
   const [gmapsError, setGmapsError] = useState("");
   const [parsedCoords, setParsedCoords] = useState<{ lat: number; lng: number } | null>(null);
@@ -1357,6 +1358,17 @@ function ScorePageInner() {
               >
                 Link do Google Maps
               </button>
+              <button
+                type="button"
+                onClick={() => setAddressTab("city")}
+                className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                  addressTab === "city"
+                    ? "bg-[#C9A84C] text-[#0D1117]"
+                    : "text-[#8B949E] hover:text-white"
+                }`}
+              >
+                Selecionar Cidade
+              </button>
             </div>
 
             {addressTab === "address" ? (
@@ -1372,7 +1384,7 @@ function ScorePageInner() {
                 disabled={loading}
                 required={addressTab === "address"}
               />
-            ) : (
+            ) : addressTab === "gmaps" ? (
               <div>
                 <input
                   type="text"
@@ -1387,6 +1399,20 @@ function ScorePageInner() {
                   <p className="mt-1.5 text-sm text-green-400">
                     Coordenadas extraídas: {parsedCoords.lat.toFixed(6)}, {parsedCoords.lng.toFixed(6)}
                     {address && ` — ${address}`}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div>
+                <CityStateSelect
+                  onSelect={(c, s) => {
+                    setParsedCoords(null);
+                    setAddress(c && s ? `${c}, ${s}` : "");
+                  }}
+                />
+                {address && (
+                  <p className="mt-2 text-sm text-green-400">
+                    Localização selecionada: {address}
                   </p>
                 )}
               </div>

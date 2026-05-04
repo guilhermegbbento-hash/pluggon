@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line,
 } from "recharts";
+import CityStateSelect from "@/components/CityStateSelect";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -219,10 +220,6 @@ function renderMarkdown(text: string) {
   flushList();
   return elements;
 }
-
-const STATES = [
-  "AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"
-];
 
 // ===================== MAIN PAGE =====================
 
@@ -710,27 +707,15 @@ ${p8 ? `<!-- PAINEL 8: RELATÓRIO EXECUTIVO -->
       {/* Form */}
       <div className="rounded-xl border border-[#30363D] bg-[#161B22] p-6 mb-8">
         <div className="flex flex-wrap gap-4 items-end">
-          <div className="flex-1 min-w-[200px]">
-            <label className="block text-sm text-[#8B949E] mb-1">Cidade</label>
-            <input
-              type="text"
-              value={city}
-              onChange={(e) => setCity(e.target.value)}
-              placeholder="Ex: Campinas"
-              className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-2.5 text-white focus:border-[#C9A84C] focus:outline-none"
-              disabled={loading}
+          <div className="flex-1 min-w-[320px]">
+            <CityStateSelect
+              initialCity={city}
+              initialState={state}
+              onSelect={(c, s) => {
+                setCity(c);
+                setState(s);
+              }}
             />
-          </div>
-          <div className="w-32">
-            <label className="block text-sm text-[#8B949E] mb-1">Estado</label>
-            <select
-              value={state}
-              onChange={(e) => setState(e.target.value)}
-              className="w-full rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-2.5 text-white focus:border-[#C9A84C] focus:outline-none"
-              disabled={loading}
-            >
-              {STATES.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
           </div>
           <button
             onClick={handleGenerate}
