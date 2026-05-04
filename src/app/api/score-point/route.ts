@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { calculateScore } from "@/lib/scoring-engine";
 import type { ScoreInput } from "@/lib/scoring-engine";
 import { logUsage } from "@/lib/usage-logger";
-import { getABVEData } from "@/lib/abve-real-data";
+import { getABVEData, getCityEVData } from "@/lib/abve-real-data";
 import {
   populateChargersFromGoogle,
   populateChargersLocal,
@@ -255,6 +255,9 @@ async function generateAnalysisText(args: {
   gdpPerCapita: number;
   dcInCity: number;
   evsCity: number;
+  bevCity: number;
+  phevCity: number;
+  evsSource: string;
   establishmentType: string;
   distanceKm: number;
   dcIn200m: number;
@@ -280,7 +283,7 @@ async function generateAnalysisText(args: {
   const userPrompt = `Score: ${args.overallScore}/100 (${args.classification}).
 Dados verificados:
 - Cidade: ${args.city}/${args.state}, ${args.population.toLocaleString("pt-BR")} habitantes, PIB R$${Math.round(args.gdpPerCapita).toLocaleString("pt-BR")}
-- EVs na cidade: ${args.evsCity.toLocaleString("pt-BR")}
+- EVs BEV+PHEV: ${args.evsCity.toLocaleString("pt-BR")} (${args.evsSource}). BEV: ${args.bevCity.toLocaleString("pt-BR")}, PHEV: ${args.phevCity.toLocaleString("pt-BR")}.
 - Carregadores DC cidade: ${args.dcInCity} (ABVE)
 - Ponto: ${args.establishmentType} a ${args.distanceKm.toFixed(1)}km do centro
 - Concorrentes DC: ${args.dcIn200m} em 200m, ${args.dcIn500m} em 500m, ${args.dcIn1km} em 1km, ${args.dcIn2km} em 2km
@@ -395,12 +398,28 @@ async function handleFinalMode(body: Record<string, unknown>) {
   const establishment_type = String(body.establishment_type || "outro");
   const establishment_name = String(body.establishment_name || "");
 
+  const evDataFinal = getCityEVData(
+    city,
+    state,
+    collected.population || 0,
+    collected.gdpPerCapita || 0
+  );
+
+  console.log("=== EV DATA ===", city, state);
+  console.log("Total EVs:", evDataFinal.totalEVs, "| BEV:", evDataFinal.bev, "| PHEV:", evDataFinal.phev);
+  console.log("BEV+PHEV (carregam):", evDataFinal.bevPlusPHEV, "| DC:", evDataFinal.dcChargers, "| Ratio:", evDataFinal.ratioEVperDC);
+  console.log("Fonte:", evDataFinal.source);
+
   const scoreInput: ScoreInput = {
     population: collected.population || 0,
     gdpPerCapita: collected.gdpPerCapita || 0,
     abveDC: collected.abveDC || 0,
     abveTotal: collected.abveTotal || 0,
     abveEVs: collected.abveEVs || 0,
+    bev: evDataFinal.bev,
+    phev: evDataFinal.phev,
+    bevPlusPHEV: evDataFinal.bevPlusPHEV,
+    evsSource: evDataFinal.source,
     dcIn200m: collected.dcIn200m || 0,
     dcIn500m: collected.dcIn500m || 0,
     dcIn1km: collected.dcIn1km || 0,
@@ -433,16 +452,6 @@ async function handleFinalMode(body: Record<string, unknown>) {
     (collected.abveDC || 0) > 0
       ? collected.abveDC
       : collected.dcInCity || 0;
-  const evsCityForPrompt =
-    collected.abveEVs ||
-    Math.round(
-      (collected.population || 0) *
-        (collected.gdpPerCapita > 50_000
-          ? 0.006
-          : collected.gdpPerCapita > 30_000
-          ? 0.004
-          : 0.002)
-    );
 
   const claudeResult = await generateAnalysisText({
     overallScore: scoreResult.overallScore,
@@ -452,7 +461,10 @@ async function handleFinalMode(body: Record<string, unknown>) {
     population: collected.population || 0,
     gdpPerCapita: collected.gdpPerCapita || 0,
     dcInCity: dcCityForPrompt,
-    evsCity: evsCityForPrompt,
+    evsCity: evDataFinal.bevPlusPHEV,
+    bevCity: evDataFinal.bev,
+    phevCity: evDataFinal.phev,
+    evsSource: evDataFinal.source,
     establishmentType: establishment_type,
     distanceKm: collected.distanceToCenter || 0,
     dcIn200m: collected.dcIn200m || 0,
@@ -1018,12 +1030,23 @@ export async function POST(request: Request) {
     }
 
     // 8. Calcular score
+    const evData = getCityEVData(geo.city, geo.state, population, gdpPerCapita);
+
+    console.log("=== EV DATA ===", geo.city, geo.state);
+    console.log("Total EVs:", evData.totalEVs, "| BEV:", evData.bev, "| PHEV:", evData.phev);
+    console.log("BEV+PHEV (carregam):", evData.bevPlusPHEV, "| DC:", evData.dcChargers, "| Ratio:", evData.ratioEVperDC);
+    console.log("Fonte:", evData.source);
+
     const scoreInput: ScoreInput = {
       population,
       gdpPerCapita,
       abveDC: abve?.dc ?? 0,
       abveTotal: abve?.total ?? 0,
       abveEVs: abve?.evsSold ?? 0,
+      bev: evData.bev,
+      phev: evData.phev,
+      bevPlusPHEV: evData.bevPlusPHEV,
+      evsSource: evData.source,
       dcIn200m: chargersNear.dcIn200m,
       dcIn500m: chargersNear.dcIn500m,
       dcIn1km: chargersNear.dcIn1km,
@@ -1056,16 +1079,6 @@ export async function POST(request: Request) {
     // ABVE manda; Google só preenche cidades fora da base ABVE.
     const dcCityForPrompt =
       (abve?.dc ?? 0) > 0 ? abve!.dc : chargersNear.dcInCity || 0;
-    const evsCityForPrompt =
-      abve?.evsSold ??
-      Math.round(
-        population *
-          (gdpPerCapita > 50_000
-            ? 0.006
-            : gdpPerCapita > 30_000
-            ? 0.004
-            : 0.002)
-      );
 
     const claudeResult = await generateAnalysisText({
       overallScore: scoreResult.overallScore,
@@ -1075,7 +1088,10 @@ export async function POST(request: Request) {
       population,
       gdpPerCapita,
       dcInCity: dcCityForPrompt,
-      evsCity: evsCityForPrompt,
+      evsCity: evData.bevPlusPHEV,
+      bevCity: evData.bev,
+      phevCity: evData.phev,
+      evsSource: evData.source,
       establishmentType: establishment_type || "outro",
       distanceKm,
       dcIn200m: chargersNear.dcIn200m,

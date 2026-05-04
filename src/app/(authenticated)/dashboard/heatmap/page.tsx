@@ -48,10 +48,16 @@ interface CityData {
   population: number | null;
   gdpPerCapita: number | null;
   evs: number;
+  totalEVs?: number;
+  bev?: number;
+  phev?: number;
+  bevPlusPHEV?: number;
   dcChargers: number;
+  acChargers?: number;
   totalChargers: number;
   ratioEVperDC: number;
   source?: string;
+  evsSource?: string;
   abveDC?: number;
   abveAC?: number;
   abveTotal?: number;
@@ -296,9 +302,9 @@ export default function HeatmapPage() {
     <div class="stats-grid">
       <div class="stat-card"><div class="label">Pop.</div><div class="value">${result.cityData.population ? result.cityData.population.toLocaleString("pt-BR") : "—"}</div></div>
       <div class="stat-card"><div class="label">PIB/cap</div><div class="value">${result.cityData.gdpPerCapita ? "R$ " + Math.round(result.cityData.gdpPerCapita / 1000) + "k" : "—"}</div></div>
-      <div class="stat-card"><div class="label">EVs</div><div class="value">${result.cityData.evs.toLocaleString("pt-BR")}</div></div>
+      <div class="stat-card"><div class="label">EVs (BEV+PHEV)</div><div class="value">${(result.cityData.bevPlusPHEV ?? result.cityData.evs).toLocaleString("pt-BR")}</div></div>
       <div class="stat-card"><div class="label">DC</div><div class="value">${result.cityData.dcChargers}</div></div>
-      <div class="stat-card"><div class="label">EVs/DC</div><div class="value">${result.cityData.ratioEVperDC || "—"}</div></div>
+      <div class="stat-card"><div class="label">BEV+PHEV/DC</div><div class="value">${result.cityData.ratioEVperDC || "—"}</div></div>
     </div>
     <div class="section-head gold">Pontos Potenciais (${result.anchors.length})</div>
     <div class="anchors-list scroll-list" id="anchorsList"></div>
@@ -630,40 +636,78 @@ if (allCoords.length) map.fitBounds(allCoords, { padding: [40,40] });
       </div>
 
       {/* City data cards — ABVE como fonte de quantidade, Google como fallback */}
-      <div
-        className={`mt-4 grid gap-2 ${
-          (cityData.abveAC ?? 0) > 0 ? "grid-cols-7" : "grid-cols-6"
-        }`}
-      >
-        {[
+      {(() => {
+        const bevPlusPHEV = cityData.bevPlusPHEV ?? 0;
+        const bev = cityData.bev ?? 0;
+        const phev = cityData.phev ?? 0;
+        const totalEVs = cityData.totalEVs ?? cityData.evs ?? 0;
+        const acChargers = cityData.acChargers ?? cityData.abveAC ?? 0;
+        const isAbveSource = (cityData.evsSource ?? cityData.source ?? "").startsWith("ABVE");
+        const sourceTag = isAbveSource ? "ABVE" : "Estimativa";
+        const evTooltip = `BEV: ${formatNumber(bev)} | PHEV: ${formatNumber(phev)} | Total eletrificados: ${formatNumber(totalEVs)}`;
+        const cards: Array<{
+          label: string;
+          value: string;
+          color: string;
+          available: boolean;
+          title?: string;
+          subtitle?: string;
+        }> = [
           { label: "População", value: formatNumber(cityData.population), color: "text-white", available: cityData.population !== null },
           { label: "PIB per capita", value: formatCurrency(cityData.gdpPerCapita), color: "text-white", available: cityData.gdpPerCapita !== null },
-          { label: "EVs na cidade", value: formatNumber(cityData.evs), color: "text-[#66BB6A]", available: cityData.evs > 0 },
+          {
+            label: "EVs (BEV+PHEV)",
+            value: formatNumber(bevPlusPHEV),
+            color: "text-[#66BB6A]",
+            available: bevPlusPHEV > 0,
+            title: evTooltip,
+            subtitle: `(${sourceTag})`,
+          },
           { label: "Carregadores DC", value: formatNumber(cityData.dcChargers), color: "text-[#FF8800]", available: cityData.dcChargers > 0 },
-          ...(((cityData.abveAC ?? 0) > 0)
-            ? [{ label: "Carregadores AC", value: formatNumber(cityData.abveAC ?? 0), color: "text-[#42A5F5]", available: true }]
+          ...(acChargers > 0
+            ? [{ label: "Carregadores AC", value: formatNumber(acChargers), color: "text-[#42A5F5]", available: true }]
             : []),
           { label: "Total Carregadores", value: formatNumber(cityData.totalChargers), color: "text-white", available: cityData.totalChargers > 0 },
-          { label: "EVs / DC", value: formatNumber(cityData.ratioEVperDC), color: "text-[#C9A84C]", available: cityData.ratioEVperDC > 0 },
-        ].map((s) => (
-          <div
-            key={s.label}
-            className="rounded-lg border border-[#30363D] bg-[#161B22] px-2 py-3 text-center"
-          >
-            <p className="text-[10px] text-[#8B949E]">{s.label}</p>
-            {s.available ? (
-              <p className={`mt-1 text-lg font-bold ${s.color}`}>{s.value}</p>
-            ) : (
-              <p className="mt-1 text-xs text-[#8B949E]">Dados não disponíveis</p>
+          {
+            label: "Ratio BEV+PHEV/DC",
+            value: formatNumber(cityData.ratioEVperDC),
+            color: "text-[#C9A84C]",
+            available: cityData.ratioEVperDC > 0,
+            subtitle: "ideal: 10",
+          },
+        ];
+        const cols = cards.length === 7 ? "grid-cols-7" : "grid-cols-6";
+        return (
+          <>
+            <div className={`mt-4 grid gap-2 ${cols}`}>
+              {cards.map((s) => (
+                <div
+                  key={s.label}
+                  title={s.title}
+                  className="rounded-lg border border-[#30363D] bg-[#161B22] px-2 py-3 text-center"
+                >
+                  <p className="text-[10px] text-[#8B949E]">{s.label}</p>
+                  {s.available ? (
+                    <>
+                      <p className={`mt-1 text-lg font-bold ${s.color}`}>{s.value}</p>
+                      {s.subtitle && (
+                        <p className="mt-0.5 text-[9px] italic text-[#8B949E]">{s.subtitle}</p>
+                      )}
+                    </>
+                  ) : (
+                    <p className="mt-1 text-xs text-[#8B949E]">Dados não disponíveis</p>
+                  )}
+                </div>
+              ))}
+            </div>
+            {(cityData.evsSource || cityData.source) && (bevPlusPHEV > 0 || cityData.dcChargers > 0) && (
+              <p className="mt-1 text-right text-[10px] italic text-[#8B949E]">
+                Fonte: {cityData.evsSource ?? cityData.source}
+              </p>
             )}
-          </div>
-        ))}
-      </div>
-      {cityData.source && (cityData.evs > 0 || cityData.dcChargers > 0) && (
-        <p className="mt-1 text-right text-[10px] italic text-[#8B949E]">
-          Fonte: {cityData.source}
-        </p>
-      )}
+          </>
+        );
+      })()}
 
       {/* Admin cost card */}
       {isAdmin && (

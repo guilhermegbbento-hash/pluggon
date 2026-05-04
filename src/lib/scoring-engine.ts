@@ -19,7 +19,11 @@ export interface ScoreInput {
   // ABVE (cidade)
   abveDC: number;
   abveTotal: number;
-  abveEVs: number;
+  abveEVs: number;          // Total acumulado (BEV+PHEV+HEV) — opcional
+  bev?: number;             // 100% elétricos (ABVE ou estimativa)
+  phev?: number;            // Híbridos plug-in
+  bevPlusPHEV?: number;     // Mercado real de eletropostos (BEV + PHEV)
+  evsSource?: string;       // 'ABVE fev/2026' ou 'Estimativa baseada em ...'
 
   // Banco interno de carregadores
   dcIn200m: number;
@@ -159,7 +163,10 @@ export function calculateScore(input: ScoreInput): ScoreResult {
   // cai pro Google/banco como fallback.
   const dcCity = input.abveDC > 0 ? input.abveDC : input.dcInCity || 0;
   const evsCityFromAbve = (input.abveEVs ?? 0) > 0;
-  const evsCity =
+
+  // Mercado real de eletropostos = BEV + PHEV (HEV não carrega na tomada).
+  // Usa breakdown ABVE quando disponível; senão estima por proporção nacional.
+  const evsTotal =
     input.abveEVs ||
     Math.round(
       input.population *
@@ -169,6 +176,11 @@ export function calculateScore(input: ScoreInput): ScoreResult {
           ? 0.004
           : 0.002)
     );
+  const bevCount = input.bev ?? Math.round(evsTotal * 0.29);
+  const phevCount = input.phev ?? Math.round(evsTotal * 0.34);
+  const evsCity = input.bevPlusPHEV ?? bevCount + phevCount;
+  const evsSourceLabel =
+    input.evsSource ?? (evsCityFromAbve ? "ABVE fev/2026" : "Estimativa baseada em população e PIB");
   const ratioEVperCharger = dcCity > 0 ? Math.round(evsCity / dcCity) : 999;
   const cityShare =
     input.population > 0
@@ -321,9 +333,7 @@ export function calculateScore(input: ScoreInput): ScoreResult {
     "Frota EV e Adoção",
     v8,
     3,
-    evsCityFromAbve
-      ? `${fmtInt(evsCity)} veículos eletrificados (ABVE)`
-      : `${fmtInt(evsCity)} veículos estimados a partir de vendas estaduais`,
+    `${fmtInt(evsCity)} veículos que carregam na tomada (BEV: ${fmtInt(bevCount)}, PHEV: ${fmtInt(phevCount)}) — ${evsSourceLabel}`,
     evsCityFromAbve ? "ABVE" : "Cálculo"
   );
 
@@ -689,7 +699,7 @@ export function calculateScore(input: ScoreInput): ScoreResult {
     "Concorrência",
     v27,
     3,
-    `${ratioEVperCharger} veículos elétricos por carregador DC na cidade — ${v27Label}`
+    `${ratioEVperCharger} veículos plug-in por carregador DC na cidade — ${v27Label}`
   );
 
   // V27 — Gap de cobertura (peso 2)

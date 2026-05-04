@@ -16,6 +16,11 @@ interface Panel1Data {
   bounds: { ne: { lat: number; lng: number }; sw: { lat: number; lng: number } } | null;
   population: number; gdpPerCapita: number;
   totalVehicles: number; evs: number;
+  totalEVs?: number;
+  bev?: number;
+  phev?: number;
+  bevPlusPHEV?: number;
+  evsSource?: string;
   vendasAno?: number;
   fonteEVs?: string;
   isEstimateEVs?: boolean;
@@ -29,6 +34,7 @@ interface Panel1Data {
     projecaoMercado2026: number;
     lastUpdate: string;
     fonte: string;
+    totalBEVPHEV?: number;
   };
   chargersExisting: number;
   totalCarregadosComBr: number | null;
@@ -102,7 +108,13 @@ interface ProjectionYear {
   year: number; evs: number; chargersNeeded: number; chargersExisting: number; gap: number;
 }
 
-interface Panel7Data { projections: ProjectionYear[]; currentEVs: number; currentChargers: number; }
+interface Panel7Data {
+  projections: ProjectionYear[];
+  currentEVs: number;
+  currentChargers: number;
+  evsSource?: string;
+  note?: string;
+}
 
 interface Panel8Data { report: string; cityScore: number; marketPhase: string; }
 
@@ -820,14 +832,36 @@ function PanelOverview({ data }: { data: Panel1Data }) {
     : data.cityScore >= 40 ? "#FFC107"
     : "#F44336";
 
+  const isAbveSource = (data.evsSource ?? "").startsWith("ABVE");
+  const sourceTag = isAbveSource ? "(ABVE)" : "(Estimativa)";
+  const bevPlusPHEV = data.bevPlusPHEV ?? 0;
+  const bev = data.bev ?? 0;
+  const phev = data.phev ?? 0;
+  const totalEVs = data.totalEVs ?? data.evs ?? 0;
+
   const cards: { label: string; value: string; available: boolean }[] = [
     { label: "População", value: data.population.toLocaleString("pt-BR"), available: data.population > 0 },
     { label: "PIB per Capita", value: `R$ ${data.gdpPerCapita.toLocaleString("pt-BR")}`, available: data.gdpPerCapita > 0 },
     { label: "Frota Total", value: data.totalVehicles.toLocaleString("pt-BR"), available: data.totalVehicles > 0 },
     {
-      label: data.isEstimateEVs ? "EVs Acumulados na Cidade (estimativa)" : "EVs Acumulados na Cidade",
-      value: data.evs.toLocaleString("pt-BR"),
-      available: data.evs > 0,
+      label: `Veículos Plug-in (BEV+PHEV) ${sourceTag}`,
+      value: bevPlusPHEV.toLocaleString("pt-BR"),
+      available: bevPlusPHEV > 0,
+    },
+    {
+      label: `100% Elétricos (BEV) ${sourceTag}`,
+      value: bev.toLocaleString("pt-BR"),
+      available: bev > 0,
+    },
+    {
+      label: `Híbridos Plug-in (PHEV) ${sourceTag}`,
+      value: phev.toLocaleString("pt-BR"),
+      available: phev > 0,
+    },
+    {
+      label: `Total Eletrificados ${sourceTag}`,
+      value: totalEVs.toLocaleString("pt-BR"),
+      available: totalEVs > 0,
     },
     {
       label: "Carregadores DC (ABVE)",
@@ -857,7 +891,7 @@ function PanelOverview({ data }: { data: Panel1Data }) {
       available: data.totalCarregadosComBr > 0,
     });
   }
-  cards.push({ label: "EVs/Carregador", value: data.ratio, available: data.ratio !== "Calculando..." && !data.ratio.startsWith("∞") });
+  cards.push({ label: "Plug-in/Carregador", value: data.ratio, available: data.ratio !== "Calculando..." && !data.ratio.startsWith("∞") });
 
   return (
     <div className="space-y-6">
@@ -1568,12 +1602,21 @@ function PanelProjections({ data, city }: { data: Panel7Data; city: string }) {
     <div className="space-y-6">
       <h2 className="text-xl font-bold text-[#C9A84C]">7. Projeção de Demanda</h2>
 
+      {data.note && (
+        <div className="rounded-xl border border-[#30363D] bg-[#161B22] p-3 text-xs italic text-[#8B949E]">
+          {data.note}
+          {data.evsSource && (
+            <span className="ml-2 text-[#C9A84C]">Fonte base: {data.evsSource}</span>
+          )}
+        </div>
+      )}
+
       {highlight && (
         <div className="rounded-xl border border-[#C9A84C] bg-[#C9A84C10] p-6 text-center">
           <div className="text-sm text-[#8B949E] mb-2">Projeção para {highlight.year}</div>
           <div className="text-lg text-white">
             Em {highlight.year}, <span className="text-[#C9A84C] font-bold">{city}</span> terá{" "}
-            <span className="text-[#C9A84C] font-bold">{highlight.evs.toLocaleString("pt-BR")}</span> EVs
+            <span className="text-[#C9A84C] font-bold">{highlight.evs.toLocaleString("pt-BR")}</span> veículos plug-in
             e precisará de <span className="text-[#66BB6A] font-bold">{highlight.chargersNeeded}</span> carregadores.
             Hoje tem <span className="text-[#F44336] font-bold">{data.currentChargers}</span>.
             Gap de <span className="text-[#F44336] font-bold">{highlight.gap}</span> carregadores.
@@ -1583,7 +1626,7 @@ function PanelProjections({ data, city }: { data: Panel7Data; city: string }) {
 
       {/* EV Growth Chart */}
       <div className="rounded-xl border border-[#30363D] bg-[#161B22] p-6">
-        <h3 className="text-sm font-semibold text-[#8B949E] mb-4">EVs Estimados por Ano (crescimento 26% a.a. — ABVE 2025)</h3>
+        <h3 className="text-sm font-semibold text-[#8B949E] mb-4">Veículos Plug-in (BEV+PHEV) por Ano — crescimento 26% a.a. (ABVE)</h3>
         <ResponsiveContainer width="100%" height={300}>
           <BarChart data={data.projections}>
             <CartesianGrid strokeDasharray="3 3" stroke="#30363D" />

@@ -8,7 +8,7 @@ import type { CompetitorStation } from "@/lib/competitors";
 import { searchPlaces, deduplicatePlaces } from "@/lib/google-places";
 import type { PlaceResult } from "@/lib/google-places";
 import { ABVE_DATA, estimateEVs } from "@/lib/abve-data";
-import { getABVEData } from "@/lib/abve-real-data";
+import { getABVEData, getCityEVData, ABVE_NATIONAL } from "@/lib/abve-real-data";
 import { logUsage } from "@/lib/usage-logger";
 
 const STATE_NAMES: Record<string, string> = {
@@ -447,9 +447,9 @@ async function generateExecutiveReport(
 DADOS REAIS:
 - População: ${data.population.toLocaleString("pt-BR")}
 - PIB per capita: R$ ${(data.gdpPerCapita || 30000).toLocaleString("pt-BR")}
-- EVs estimados: ${data.evs.toLocaleString("pt-BR")}
+- Veículos plug-in (BEV+PHEV — os que CARREGAM): ${data.evs.toLocaleString("pt-BR")}
 - Carregadores existentes: ${data.totalChargers}
-- Ratio EVs/carregador: ${data.ratio}
+- Ratio plug-in/carregador: ${data.ratio}
 - Fase do mercado: ${data.marketPhase}
 - Células sem cobertura: ${data.opportunityCells} de ${data.totalCells} (${data.totalCells > 0 ? Math.round(data.opportunityCells / data.totalCells * 100) : 0}%)
 - Bairros premium sem carregador: ${data.premiumZonesWithoutCharger}
@@ -518,9 +518,16 @@ export async function POST(request: Request) {
         const population = ibgeData.population || 200000;
         const gdpPerCapita = ibgeData.gdpPerCapita;
         const fleet = estimateFleet(city, state, population, gdpPerCapita || 30000);
+        const evData = getCityEVData(city, state, population, gdpPerCapita || 30000);
         const stateAbbrForAbve = state.replace(/\s*\(.*\)/, '').trim().substring(0, 2).toUpperCase();
         const vendasEstado2025 =
           ABVE_DATA.topEstados[stateAbbrForAbve as keyof typeof ABVE_DATA.topEstados] || null;
+
+        console.log("=== EV DATA ===", city, state);
+        console.log("Total EVs:", evData.totalEVs, "| BEV:", evData.bev, "| PHEV:", evData.phev);
+        console.log("BEV+PHEV (carregam):", evData.bevPlusPHEV, "| DC:", evData.dcChargers, "| Ratio:", evData.ratioEVperDC);
+        console.log("Fonte:", evData.source);
+        console.log("ABVE Nacional:", ABVE_NATIONAL.totalBEVPHEV, "veículos plug-in (BEV+PHEV)");
 
         // ABVE — carregadores reais por cidade (fev/2026)
         const abveCity = getABVEData(city, state);
@@ -573,6 +580,11 @@ export async function POST(request: Request) {
             gdpPerCapita: gdpPerCapita || 30000,
             totalVehicles: fleet.totalVehicles,
             evs: fleet.evs,
+            totalEVs: evData.totalEVs,
+            bev: evData.bev,
+            phev: evData.phev,
+            bevPlusPHEV: evData.bevPlusPHEV,
+            evsSource: evData.source,
             vendasAno: fleet.vendasAno,
             fonteEVs: fleet.fonteEVs,
             isEstimateEVs: fleet.isEstimate,
@@ -586,6 +598,7 @@ export async function POST(request: Request) {
               projecaoMercado2026: ABVE_DATA.projecaoMercado2026,
               lastUpdate: ABVE_DATA.lastUpdate,
               fonte: ABVE_DATA.fonte,
+              totalBEVPHEV: ABVE_NATIONAL.totalBEVPHEV,
             },
             chargersExisting: 0, // updated after step 2
             totalCarregadosComBr,
@@ -619,14 +632,16 @@ export async function POST(request: Request) {
         // Quantidade oficial = ABVE; Google só preenche cidades fora da base.
         const dcForMath = abveDc > 0 ? abveDc : chargerInfo.realCompetition;
         const totalForMath = abveTotalChargers > 0 ? abveTotalChargers : chargerInfo.total;
+        // Ratio e fase do mercado baseados em BEV+PHEV (HEV não carrega na tomada).
+        const plugInForMath = evData.bevPlusPHEV;
         const evChargerRatio = dcForMath > 0
-          ? (fleet.evs / dcForMath).toFixed(1)
+          ? (plugInForMath / dcForMath).toFixed(1)
           : "∞ (sem DC)";
         const marketPhase = dcForMath === 0
           ? "Início"
-          : fleet.evs / dcForMath > 70
+          : plugInForMath / dcForMath > 70
             ? "Início"
-            : fleet.evs / dcForMath > 30
+            : plugInForMath / dcForMath > 30
               ? "Crescimento"
               : "Maduro";
 
@@ -667,6 +682,11 @@ export async function POST(request: Request) {
             gdpPerCapita: gdpPerCapita || 30000,
             totalVehicles: fleet.totalVehicles,
             evs: fleet.evs,
+            totalEVs: evData.totalEVs,
+            bev: evData.bev,
+            phev: evData.phev,
+            bevPlusPHEV: evData.bevPlusPHEV,
+            evsSource: evData.source,
             vendasAno: fleet.vendasAno,
             fonteEVs: fleet.fonteEVs,
             isEstimateEVs: fleet.isEstimate,
@@ -680,6 +700,7 @@ export async function POST(request: Request) {
               projecaoMercado2026: ABVE_DATA.projecaoMercado2026,
               lastUpdate: ABVE_DATA.lastUpdate,
               fonte: ABVE_DATA.fonte,
+              totalBEVPHEV: ABVE_NATIONAL.totalBEVPHEV,
             },
             chargersExisting: chargerInfo.total,
             totalCarregadosComBr,
@@ -794,9 +815,10 @@ export async function POST(request: Request) {
           },
         });
 
-        // Step 7: Projections — base oficial = ABVE total da cidade
+        // Step 7: Projections — base oficial = ABVE total da cidade.
+        // Projeção sobre BEV+PHEV (mercado real de eletropostos), 26% a.a.
         send({ type: "progress", step: 7, total: 8, label: "Calculando projeções..." });
-        const projections = calculateProjections(fleet.evs, totalForMath);
+        const projections = calculateProjections(plugInForMath, totalForMath);
 
         send({
           type: "panel",
@@ -804,8 +826,10 @@ export async function POST(request: Request) {
           label: "Projeção de Demanda",
           data: {
             projections,
-            currentEVs: fleet.evs,
+            currentEVs: plugInForMath,
             currentChargers: totalForMath,
+            evsSource: evData.source,
+            note: "Projeção sobre BEV+PHEV — veículos que CARREGAM, mercado real de eletropostos.",
           },
         });
 
@@ -818,7 +842,7 @@ export async function POST(request: Request) {
         const cityScore = calculateCityScore(
           population,
           gdpPerCapita,
-          fleet.evs,
+          plugInForMath,
           dcForMath,
           opportunityCells,
           coverageGrid.length,
@@ -838,6 +862,11 @@ export async function POST(request: Request) {
             gdpPerCapita: gdpPerCapita || 30000,
             totalVehicles: fleet.totalVehicles,
             evs: fleet.evs,
+            totalEVs: evData.totalEVs,
+            bev: evData.bev,
+            phev: evData.phev,
+            bevPlusPHEV: evData.bevPlusPHEV,
+            evsSource: evData.source,
             vendasAno: fleet.vendasAno,
             fonteEVs: fleet.fonteEVs,
             isEstimateEVs: fleet.isEstimate,
@@ -851,6 +880,7 @@ export async function POST(request: Request) {
               projecaoMercado2026: ABVE_DATA.projecaoMercado2026,
               lastUpdate: ABVE_DATA.lastUpdate,
               fonte: ABVE_DATA.fonte,
+              totalBEVPHEV: ABVE_NATIONAL.totalBEVPHEV,
             },
             chargersExisting: chargerInfo.total,
             totalCarregadosComBr,
@@ -870,7 +900,7 @@ export async function POST(request: Request) {
         const reportResult = await generateExecutiveReport(city, state, {
           population,
           gdpPerCapita,
-          evs: fleet.evs,
+          evs: plugInForMath,
           totalChargers: totalForMath,
           ratio: evChargerRatio,
           marketPhase,

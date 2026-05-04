@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCachedOrFetch } from "@/lib/competitors";
 import type { CompetitorStation } from "@/lib/competitors";
-import { getABVEData } from "@/lib/abve-real-data";
+import { getABVEData, getCityEVData, ABVE_NATIONAL } from "@/lib/abve-real-data";
 import { logUsage } from "@/lib/usage-logger";
 
 export const maxDuration = 300;
@@ -589,7 +589,6 @@ export async function POST(req: Request) {
   const abveDC = abveData?.dc ?? 0;
   const abveAC = abveData?.ac ?? 0;
   const abveTotal = abveData?.total ?? 0;
-  const evsFromAbve = abveData?.evsSold ?? 0;
 
   // Quantidade do Google (localização confirmada no banco)
   const googleDC = competitors.filter((c) => c.charger_type === "DC").length;
@@ -602,15 +601,15 @@ export async function POST(req: Request) {
 
   const population = ibge.population ?? 0;
   const gdpPerCapita = ibge.gdpPerCapita ?? 0;
-  const evsEstimate =
-    evsFromAbve ||
-    Math.round(
-      population *
-        (gdpPerCapita > 50000 ? 0.006 : gdpPerCapita > 30000 ? 0.004 : 0.002)
-    );
-  // Ratio sempre baseado em abveDC (não Google)
-  const ratioEVperDC = abveDC > 0 ? Math.round(evsEstimate / abveDC) : 0;
-  const source = abveData ? "ABVE fev/2026" : "Estimativa";
+
+  // Dados de EVs: total + breakdown BEV/PHEV (mercado real de eletropostos)
+  const evData = getCityEVData(city, state, population, gdpPerCapita);
+
+  console.log("=== EV DATA ===", city, state);
+  console.log("Total EVs:", evData.totalEVs, "| BEV:", evData.bev, "| PHEV:", evData.phev);
+  console.log("BEV+PHEV (carregam):", evData.bevPlusPHEV, "| DC:", evData.dcChargers, "| Ratio:", evData.ratioEVperDC);
+  console.log("Fonte:", evData.source);
+  console.log("ABVE Nacional:", ABVE_NATIONAL.totalBEVPHEV, "veículos plug-in (BEV+PHEV)");
 
   console.log("=== CARREGADORES ===");
   console.log("ABVE:", abveDC, "DC,", abveAC, "AC,", abveTotal, "total");
@@ -881,11 +880,19 @@ export async function POST(req: Request) {
     cityData: {
       population: ibge.population,
       gdpPerCapita: ibge.gdpPerCapita,
-      evs: evsEstimate,
+      // Total inclui HEV/MHEV — mantido pra compatibilidade
+      evs: evData.totalEVs,
+      // Mercado real de eletropostos = BEV + PHEV
+      totalEVs: evData.totalEVs,
+      bev: evData.bev,
+      phev: evData.phev,
+      bevPlusPHEV: evData.bevPlusPHEV,
       dcChargers: dcCity,
+      acChargers: abveAC,
       totalChargers,
-      ratioEVperDC,
-      source,
+      ratioEVperDC: evData.ratioEVperDC,
+      evsSource: evData.source,
+      source: evData.source,
       abveDC,
       abveAC,
       abveTotal,
@@ -926,7 +933,7 @@ export async function POST(req: Request) {
         gdp_per_capita: ibge.gdpPerCapita,
         charger_count: totalChargers,
         dc_charger_count: dcCity,
-        ev_count: evsEstimate,
+        ev_count: evData.totalEVs,
         points_json: payload,
         status: "heatmap_v2",
       });

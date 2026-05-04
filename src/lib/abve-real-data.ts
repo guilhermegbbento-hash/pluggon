@@ -1,35 +1,38 @@
 export interface CityABVEData {
   city: string;
   state: string;
-  ac: number;
-  dc: number;
-  total: number;
-  evsSold?: number; // vendas 2022-2026
+  ac: number;          // carregadores AC
+  dc: number;          // carregadores DC
+  total: number;       // carregadores total
+  evsSold?: number;    // total EVs vendidos (BEV + PHEV + HEV/MHEV) 2022-2026
+  bev?: number;        // 100% elétricos
+  phev?: number;       // híbridos plug-in
+  evsSource?: string;  // 'ABVE' ou 'Estimativa'
 }
 
 export const ABVE_CHARGERS_DATA: CityABVEData[] = [
-  // TOP CIDADES BRASIL - Eletropostos
-  { city: 'São Paulo', state: 'SP', ac: 2011, dc: 402, total: 2413, evsSold: 92065 },
-  { city: 'Rio de Janeiro', state: 'RJ', ac: 802, dc: 131, total: 933, evsSold: 29691 },
-  { city: 'Brasília', state: 'DF', ac: 460, dc: 361, total: 821, evsSold: 57447 },
-  { city: 'Curitiba', state: 'PR', ac: 305, dc: 199, total: 504, evsSold: 21921 },
-  { city: 'Goiânia', state: 'GO', ac: 242, dc: 150, total: 392, evsSold: 12336 },
-  { city: 'Fortaleza', state: 'CE', ac: 230, dc: 146, total: 376, evsSold: 11070 },
-  { city: 'Porto Alegre', state: 'RS', ac: 232, dc: 103, total: 335, evsSold: 12539 },
-  { city: 'Belo Horizonte', state: 'MG', ac: 206, dc: 105, total: 311, evsSold: 37879 },
-  { city: 'Recife', state: 'PE', ac: 188, dc: 107, total: 295, evsSold: 11119 },
+  // TOP CIDADES BRASIL - Eletropostos com dados ABVE de EVs (BEV/PHEV)
+  { city: 'São Paulo', state: 'SP', ac: 2011, dc: 402, total: 2413, evsSold: 92065, bev: 26699, phev: 31302, evsSource: 'ABVE' },
+  { city: 'Rio de Janeiro', state: 'RJ', ac: 802, dc: 131, total: 933, evsSold: 29691, bev: 8610, phev: 10095, evsSource: 'ABVE' },
+  { city: 'Brasília', state: 'DF', ac: 460, dc: 361, total: 821, evsSold: 57447, bev: 16660, phev: 19532, evsSource: 'ABVE' },
+  { city: 'Curitiba', state: 'PR', ac: 305, dc: 199, total: 504, evsSold: 21921, bev: 6357, phev: 7453, evsSource: 'ABVE' },
+  { city: 'Goiânia', state: 'GO', ac: 242, dc: 150, total: 392, evsSold: 12336, bev: 3577, phev: 4194, evsSource: 'ABVE' },
+  { city: 'Fortaleza', state: 'CE', ac: 230, dc: 146, total: 376, evsSold: 11070, bev: 3210, phev: 3764, evsSource: 'ABVE' },
+  { city: 'Porto Alegre', state: 'RS', ac: 232, dc: 103, total: 335, evsSold: 12539, bev: 3636, phev: 4263, evsSource: 'ABVE' },
+  { city: 'Belo Horizonte', state: 'MG', ac: 206, dc: 105, total: 311, evsSold: 37879, bev: 10985, phev: 12879, evsSource: 'ABVE' },
+  { city: 'Recife', state: 'PE', ac: 188, dc: 107, total: 295, evsSold: 11119, bev: 3225, phev: 3780, evsSource: 'ABVE' },
   { city: 'Campinas', state: 'SP', ac: 213, dc: 81, total: 294 },
-  { city: 'Salvador', state: 'BA', ac: 200, dc: 77, total: 277, evsSold: 13082 },
-  { city: 'Florianópolis', state: 'SC', ac: 220, dc: 53, total: 273, evsSold: 8355 },
-  { city: 'Ribeirão Preto', state: 'SP', ac: 123, dc: 45, total: 168, evsSold: 6054 },
+  { city: 'Salvador', state: 'BA', ac: 200, dc: 77, total: 277, evsSold: 13082, bev: 3794, phev: 4448, evsSource: 'ABVE' },
+  { city: 'Florianópolis', state: 'SC', ac: 220, dc: 53, total: 273, evsSold: 8355, bev: 2423, phev: 2841, evsSource: 'ABVE' },
+  { city: 'Ribeirão Preto', state: 'SP', ac: 123, dc: 45, total: 168, evsSold: 6054, bev: 1756, phev: 2058, evsSource: 'ABVE' },
   { city: 'Natal', state: 'RN', ac: 103, dc: 56, total: 159 },
-  { city: 'Maceió', state: 'AL', ac: 99, dc: 54, total: 153, evsSold: 6804 },
+  { city: 'Maceió', state: 'AL', ac: 99, dc: 54, total: 153, evsSold: 6804, bev: 1973, phev: 2313, evsSource: 'ABVE' },
   { city: 'João Pessoa', state: 'PB', ac: 69, dc: 80, total: 149 },
   { city: 'Barueri', state: 'SP', ac: 112, dc: 26, total: 138 },
   { city: 'Maringá', state: 'PR', ac: 91, dc: 45, total: 136 },
-  { city: 'Manaus', state: 'AM', ac: 67, dc: 63, total: 130, evsSold: 7735 },
+  { city: 'Manaus', state: 'AM', ac: 67, dc: 63, total: 130, evsSold: 7735, bev: 2243, phev: 2630, evsSource: 'ABVE' },
   { city: 'Aracaju', state: 'SE', ac: 77, dc: 44, total: 121 },
-  { city: 'Cuiabá', state: 'MT', ac: 81, dc: 37, total: 118, evsSold: 5844 },
+  { city: 'Cuiabá', state: 'MT', ac: 81, dc: 37, total: 118, evsSold: 5844, bev: 1695, phev: 1987, evsSource: 'ABVE' },
   { city: 'São José dos Campos', state: 'SP', ac: 70, dc: 46, total: 116 },
   { city: 'Gramado', state: 'RS', ac: 95, dc: 15, total: 110 },
   { city: 'Joinville', state: 'SC', ac: 78, dc: 32, total: 110 },
@@ -92,22 +95,35 @@ export const ABVE_CHARGERS_DATA: CityABVEData[] = [
   { city: 'Arcoverde', state: 'PE', ac: 8, dc: 2, total: 10 },
 ];
 
-// Dados nacionais
+// Dados nacionais ABVE (acumulado 2022 — março/2026)
 export const ABVE_NATIONAL = {
-  lastUpdate: '2026-02',
+  lastUpdate: '2026-03',
+  totalVehicles: 778502,
+  totalBEV: 200592,
+  totalPHEV: 237717,
+  totalHEV: 59230,
+  totalBEVPHEV: 438309,  // BEV + PHEV = os que carregam na tomada
+  marketSharePct: 2.16,
   totalChargers: 21061,
   totalAC: 14582,
   totalDC: 6479,
+  growthRate: 0.26,       // 26% ao ano
+  growthQ1_2026: 0.90,    // 90% jan-fev 2026
+  // Mantidos para compatibilidade
   totalEVs: 778502,
-  marketSharePct: 2.16,
   topModels: [
     { model: 'Toyota Cross XRX Hybrid', qty: 53099 },
     { model: 'BYD Dolphin Mini', qty: 50975 },
     { model: 'BYD Song Plus', qty: 46010 },
     { model: 'BYD Dolphin GS 180EV', qty: 34126 },
     { model: 'BYD Song Pro', qty: 32386 },
-  ]
+  ],
 };
+
+// Proporções nacionais (BEV/PHEV/HEV) usadas como fallback de breakdown
+export const ABVE_BEV_RATIO = ABVE_NATIONAL.totalBEV / ABVE_NATIONAL.totalVehicles;       // ~0.258
+export const ABVE_PHEV_RATIO = ABVE_NATIONAL.totalPHEV / ABVE_NATIONAL.totalVehicles;     // ~0.305
+export const ABVE_PLUGIN_RATIO = ABVE_NATIONAL.totalBEVPHEV / ABVE_NATIONAL.totalVehicles; // ~0.563
 
 // Dados por estado
 export const ABVE_STATES: Record<string, { ac: number, dc: number, total: number, evsSold: number }> = {
@@ -169,6 +185,61 @@ export function getABVEData(city: string, state: string): CityABVEData | null {
   }
 
   return null;
+}
+
+export interface CityEVData {
+  totalEVs: number;       // Total acumulado (BEV + PHEV + HEV/MHEV) ou estimativa
+  bev: number;            // 100% elétricos
+  phev: number;           // Híbridos plug-in
+  bevPlusPHEV: number;    // BEV + PHEV = mercado real de eletropostos
+  source: string;         // Origem do dado
+  ratioEVperDC: number;   // BEV+PHEV por carregador DC (ideal IEA/AFIR: 10)
+  dcChargers: number;     // DC ABVE (0 se cidade não está na base)
+}
+
+export function getCityEVData(
+  city: string,
+  state: string,
+  population: number,
+  gdpPerCapita: number
+): CityEVData {
+  const abve = getABVEData(city, state);
+
+  if (abve && abve.evsSold) {
+    const bev = abve.bev ?? Math.round(abve.evsSold * ABVE_BEV_RATIO);
+    const phev = abve.phev ?? Math.round(abve.evsSold * ABVE_PHEV_RATIO);
+    const bevPlusPHEV = bev + phev;
+    return {
+      totalEVs: abve.evsSold,
+      bev,
+      phev,
+      bevPlusPHEV,
+      source: 'ABVE fev/2026',
+      ratioEVperDC: abve.dc > 0 ? Math.round(bevPlusPHEV / abve.dc) : 0,
+      dcChargers: abve.dc,
+    };
+  }
+
+  // Estimativa pra cidades sem dados ABVE (penetração total = BEV+PHEV+HEV)
+  const penetration =
+    gdpPerCapita > 60000 ? 0.006 :
+    gdpPerCapita > 40000 ? 0.004 :
+    gdpPerCapita > 25000 ? 0.002 : 0.001;
+  const estimated = Math.round(population * penetration);
+  const bev = Math.round(estimated * ABVE_BEV_RATIO);
+  const phev = Math.round(estimated * ABVE_PHEV_RATIO);
+  const bevPlusPHEV = bev + phev;
+  const dc = abve ? abve.dc : 0;
+
+  return {
+    totalEVs: estimated,
+    bev,
+    phev,
+    bevPlusPHEV,
+    source: 'Estimativa baseada em população e PIB',
+    ratioEVperDC: dc > 0 ? Math.round(bevPlusPHEV / dc) : 0,
+    dcChargers: dc,
+  };
 }
 
 // Teste de boot — confirma que SJC é encontrada na base
