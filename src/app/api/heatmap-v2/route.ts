@@ -402,7 +402,7 @@ function regionLabel(
 // ---------- POST ----------
 
 export async function POST(req: Request) {
-  let body: { city?: string; state?: string };
+  let body: { city?: string; state?: string; forceRefresh?: boolean };
   try {
     body = await req.json();
   } catch {
@@ -410,6 +410,7 @@ export async function POST(req: Request) {
   }
   const city = (body.city || "").trim();
   const state = (body.state || "").trim().toUpperCase();
+  const forceRefresh = Boolean(body.forceRefresh);
   if (!city || !state) {
     return Response.json({ error: "city e state são obrigatórios" }, { status: 400 });
   }
@@ -424,29 +425,33 @@ export async function POST(req: Request) {
 
   const supabase = await createClient();
 
-  // 0. Cache (7 dias)
-  try {
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    const { data: cached } = await supabase
-      .from("city_analyses")
-      .select("points_json, created_at")
-      .eq("city", city)
-      .eq("state", state)
-      .eq("status", "heatmap_v2")
-      .gte("created_at", sevenDaysAgo)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (cached && cached.points_json) {
-      console.log(`heatmap-v2 CACHE HIT: ${city}/${state}`);
-      const payload =
-        typeof cached.points_json === "string"
-          ? JSON.parse(cached.points_json)
-          : cached.points_json;
-      return Response.json({ ...payload, fromCache: true });
+  // 0. Cache (7 dias) — ignorado quando forceRefresh
+  if (!forceRefresh) {
+    try {
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const { data: cached } = await supabase
+        .from("city_analyses")
+        .select("points_json, created_at")
+        .eq("city", city)
+        .eq("state", state)
+        .eq("status", "heatmap_v2")
+        .gte("created_at", sevenDaysAgo)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (cached && cached.points_json) {
+        console.log(`heatmap-v2 CACHE HIT: ${city}/${state}`);
+        const payload =
+          typeof cached.points_json === "string"
+            ? JSON.parse(cached.points_json)
+            : cached.points_json;
+        return Response.json({ ...payload, fromCache: true });
+      }
+    } catch (err) {
+      console.error("heatmap-v2 cache lookup erro:", err);
     }
-  } catch (err) {
-    console.error("heatmap-v2 cache lookup erro:", err);
+  } else {
+    console.log(`heatmap-v2 FORCE REFRESH: ${city}/${state}`);
   }
 
   // 1. Geocoding
@@ -855,12 +860,19 @@ export async function POST(req: Request) {
     topRegions,
   };
 
-  // 13. Salva cache
+  // 13. Salva cache (apaga entradas anteriores da mesma cidade/estado primeiro)
   try {
     const {
       data: { user },
     } = await supabase.auth.getUser();
     if (user) {
+      await supabase
+        .from("city_analyses")
+        .delete()
+        .eq("city", city)
+        .eq("state", state)
+        .eq("status", "heatmap_v2");
+
       await supabase.from("city_analyses").insert({
         user_id: user.id,
         city,

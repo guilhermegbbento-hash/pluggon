@@ -129,6 +129,7 @@ export default function HeatmapPage() {
   const [showCompetitors, setShowCompetitors] = useState(false);
   const [showComplementary, setShowComplementary] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [forceRefresh, setForceRefresh] = useState(false);
 
   // Detect admin
   useEffect(() => {
@@ -167,7 +168,11 @@ export default function HeatmapPage() {
         const res = await fetch("/api/heatmap-v2", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ city: city.trim(), state: state.trim() }),
+          body: JSON.stringify({
+            city: city.trim(),
+            state: state.trim(),
+            ...(forceRefresh ? { forceRefresh: true } : {}),
+          }),
         });
         const data = await res.json();
         if (!res.ok) {
@@ -180,7 +185,7 @@ export default function HeatmapPage() {
         setLoading(false);
       }
     },
-    [city, state]
+    [city, state, forceRefresh]
   );
 
   const handleReset = () => {
@@ -188,6 +193,7 @@ export default function HeatmapPage() {
     setError("");
     setCity("");
     setState("");
+    setForceRefresh(false);
   };
 
   const exportHTML = useCallback(() => {
@@ -506,6 +512,21 @@ if (allCoords.length) map.fitBounds(allCoords, { padding: [40,40] });
                 }}
               />
             </div>
+
+            {isAdmin && (
+              <label className="mt-4 flex cursor-pointer items-center gap-2 rounded-lg border border-[#30363D] bg-[#0D1117] px-3 py-2 text-xs text-[#C9A84C]">
+                <input
+                  type="checkbox"
+                  checked={forceRefresh}
+                  onChange={(e) => setForceRefresh(e.target.checked)}
+                  className="h-3.5 w-3.5 cursor-pointer accent-[#C9A84C]"
+                />
+                <span className="font-medium">[ADMIN]</span>
+                <span className="text-[#8B949E]">
+                  Forçar nova análise (ignorar cache)
+                </span>
+              </label>
+            )}
 
             {error && <p className="mt-4 text-sm text-red-400">{error}</p>}
 
