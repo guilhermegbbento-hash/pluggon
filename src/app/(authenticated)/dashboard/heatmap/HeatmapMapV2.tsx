@@ -6,6 +6,9 @@ interface GridCell {
   lat: number;
   lng: number;
   score: number;
+  anchorCount?: number;
+  compCount?: number;
+  competitorCount?: number;
 }
 
 interface Anchor {
@@ -40,6 +43,7 @@ interface Competitor {
 interface HeatmapMapV2Props {
   center: { lat: number; lng: number };
   grid: GridCell[];
+  gridStep?: { lat: number; lng: number };
   anchors: Anchor[];
   complementary: Complementary[];
   competitors: Competitor[];
@@ -79,6 +83,17 @@ function escapeHtml(str: string): string {
     .replace(/"/g, "&quot;");
 }
 
+function getGridColor(normalizedScore: number): string {
+  if (normalizedScore >= 0.8) return "#FF0000";
+  if (normalizedScore >= 0.65) return "#FF4400";
+  if (normalizedScore >= 0.5) return "#FF8800";
+  if (normalizedScore >= 0.4) return "#FFBB00";
+  if (normalizedScore >= 0.3) return "#FFFF00";
+  if (normalizedScore >= 0.2) return "#88FF00";
+  if (normalizedScore >= 0.1) return "#00CC00";
+  return "#0066FF";
+}
+
 const ANCHOR_ICONS: Record<string, string> = {
   gas_station: "⛽",
   bus_station: "🚌",
@@ -89,6 +104,7 @@ const ANCHOR_ICONS: Record<string, string> = {
 export default function HeatmapMapV2({
   center,
   grid,
+  gridStep,
   anchors,
   complementary,
   competitors,
@@ -97,18 +113,18 @@ export default function HeatmapMapV2({
 }: HeatmapMapV2Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
-  const heatLayerRef = useRef<any>(null);
+  const gridLayerRef = useRef<any>(null);
   const anchorsLayerRef = useRef<any>(null);
   const compLayerRef = useRef<any>(null);
   const competitorsLayerRef = useRef<any>(null);
   const [mapReady, setMapReady] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
 
   const initMap = useCallback(async () => {
     if (!containerRef.current) return;
 
     loadCSS("https://unpkg.com/leaflet@1.9.4/dist/leaflet.css");
     await loadScript("https://unpkg.com/leaflet@1.9.4/dist/leaflet.js");
-    await loadScript("https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js");
 
     const L = (window as any).L;
     if (!L || mapRef.current) return;
@@ -139,41 +155,59 @@ export default function HeatmapMapV2({
     };
   }, [initMap]);
 
-  // Heatmap layer
+  // Grid de quadrados coloridos
   useEffect(() => {
     if (!mapReady) return;
     const L = (window as any).L;
     if (!L || !mapRef.current) return;
 
-    if (heatLayerRef.current) {
-      mapRef.current.removeLayer(heatLayerRef.current);
-      heatLayerRef.current = null;
+    if (gridLayerRef.current) {
+      mapRef.current.removeLayer(gridLayerRef.current);
+      gridLayerRef.current = null;
     }
     if (grid.length === 0 || maxScore <= 0) return;
 
-    const heatData = grid.map((c) => [c.lat, c.lng, c.score / maxScore] as [
-      number,
-      number,
-      number,
-    ]);
+    const latStep = gridStep?.lat ?? 0.0045;
+    const lngStep =
+      gridStep?.lng ?? 0.0045 / Math.cos((center.lat * Math.PI) / 180);
 
-    const layer = (L as any).heatLayer(heatData, {
-      radius: 25,
-      blur: 20,
-      maxZoom: 17,
-      gradient: {
-        0.2: "#0000ff",
-        0.4: "#00ff00",
-        0.6: "#ffff00",
-        0.8: "#ff8800",
-        1.0: "#ff0000",
-      },
+    const group = L.layerGroup();
+
+    grid.forEach((cell) => {
+      const normalized = cell.score / maxScore;
+      const color = getGridColor(normalized);
+      const sw: [number, number] = [
+        cell.lat - latStep / 2,
+        cell.lng - lngStep / 2,
+      ];
+      const ne: [number, number] = [
+        cell.lat + latStep / 2,
+        cell.lng + lngStep / 2,
+      ];
+      const rect = L.rectangle([sw, ne], {
+        color: "transparent",
+        fillColor: color,
+        fillOpacity: 0.35,
+        weight: 0,
+      });
+      const aCount = cell.anchorCount ?? 0;
+      const cCount = cell.compCount ?? 0;
+      const xCount = cell.competitorCount ?? 0;
+      rect.bindPopup(
+        `<div style="font-family:system-ui;min-width:200px;">
+          <div style="font-weight:700;font-size:13px;margin-bottom:4px;">Região: ${cell.score} pontos</div>
+          <div style="font-size:11px;color:#C9D1D9;">Âncoras: ${aCount} | Potenciais: ${cCount} | Concorrentes: ${xCount}</div>
+        </div>`,
+        { maxWidth: 260 }
+      );
+      group.addLayer(rect);
     });
-    layer.addTo(mapRef.current);
-    heatLayerRef.current = layer;
-  }, [grid, maxScore, mapReady]);
 
-  // Anchor markers (gold)
+    group.addTo(mapRef.current);
+    gridLayerRef.current = group;
+  }, [grid, gridStep, maxScore, mapReady, center.lat]);
+
+  // Anchor markers (gold) → ÂNCORA
   useEffect(() => {
     if (!mapReady) return;
     const L = (window as any).L;
@@ -195,6 +229,9 @@ export default function HeatmapMapV2({
       const marker = L.marker([a.lat, a.lng], { icon, zIndexOffset: 1000 });
       marker.bindPopup(
         `<div style="font-family:system-ui;min-width:220px;">
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
+            <span style="background:#C9A84C30;color:#C9A84C;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;">ÂNCORA</span>
+          </div>
           <div style="font-weight:700;font-size:14px;margin-bottom:4px;">${emoji} ${escapeHtml(a.name)}</div>
           <div style="color:#666;font-size:12px;margin-bottom:6px;">${escapeHtml(a.address)}</div>
           <span style="background:#C9A84C20;color:#C9A84C;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;">${escapeHtml(a.typeLabel)}</span>
@@ -208,7 +245,7 @@ export default function HeatmapMapV2({
     anchorsLayerRef.current = group;
   }, [anchors, mapReady]);
 
-  // Complementary markers (white)
+  // Complementary markers (white) → POTENCIAL
   useEffect(() => {
     if (!mapReady) return;
     const L = (window as any).L;
@@ -229,10 +266,13 @@ export default function HeatmapMapV2({
       const marker = L.marker([cp.lat, cp.lng], { icon, zIndexOffset: 500 });
       const distHtml =
         cp.nearAnchor && cp.nearAnchorDist
-          ? `<div style="color:#8B949E;font-size:11px;margin-top:4px;">Próximo a: ${escapeHtml(cp.nearAnchor)} (${cp.nearAnchorDist}m)</div>`
+          ? `<div style="color:#8B949E;font-size:11px;margin-top:4px;">Próximo a ${escapeHtml(cp.nearAnchor)} (${cp.nearAnchorDist}m)</div>`
           : "";
       marker.bindPopup(
         `<div style="font-family:system-ui;min-width:220px;">
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
+            <span style="background:#FFFFFF20;color:#FFFFFF;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;border:1px solid #FFFFFF40;">POTENCIAL</span>
+          </div>
           <div style="font-weight:700;font-size:13px;">${escapeHtml(cp.name)}</div>
           <div style="color:#666;font-size:12px;margin-top:2px;">${escapeHtml(cp.address)}</div>
           <div style="margin-top:6px;">
@@ -287,8 +327,6 @@ export default function HeatmapMapV2({
       });
       const marker = L.marker([cm.lat, cm.lng], { icon, zIndexOffset: 800 });
 
-      // Quando o backend não classifica o tipo (Google sem powerKW),
-      // tenta inferir DC pelo nome. Caso contrário, fica "Tipo não confirmado".
       let displayType: "DC" | "AC" | "unknown" = cm.charger_type;
       if (displayType === "unknown") {
         const lower = (cm.name || "").toLowerCase();
@@ -359,29 +397,109 @@ export default function HeatmapMapV2({
 
       {/* Legend */}
       <div className="absolute bottom-3 right-3 z-[400] rounded-lg border border-[#30363D] bg-[#161B22]/95 p-3 text-xs text-[#C9D1D9] shadow-xl backdrop-blur">
-        <div className="mb-2 font-semibold text-white">Legenda</div>
+        <div className="mb-2 flex items-center gap-2 font-semibold text-white">
+          <span>Legenda</span>
+          <button
+            type="button"
+            onClick={() => setShowHelp(true)}
+            aria-label="Ajuda da legenda"
+            className="flex h-4 w-4 items-center justify-center rounded-full border border-[#C9A84C] text-[10px] font-bold text-[#C9A84C] transition-colors hover:bg-[#C9A84C] hover:text-[#0D1117]"
+          >
+            ?
+          </button>
+        </div>
         <div className="mb-1.5">
-          <div className="h-2 w-40 rounded-sm" style={{ background: "linear-gradient(90deg,#0000ff,#00ff00,#ffff00,#ff8800,#ff0000)" }} />
+          <div
+            className="h-2 w-40 rounded-sm"
+            style={{
+              background:
+                "linear-gradient(90deg,#0066FF,#00CC00,#FFFF00,#FF8800,#FF0000)",
+            }}
+          />
           <div className="mt-1 flex justify-between text-[9px] text-[#8B949E]">
-            <span>Menor</span>
-            <span>Maior concentração</span>
+            <span>Mínima</span>
+            <span>Melhor região</span>
           </div>
         </div>
         <div className="space-y-1 text-[11px]">
           <div className="flex items-center gap-2">
-            <span className="inline-block h-3 w-3 rounded-full" style={{ background: "#C9A84C", border: "2px solid #0D1117", boxShadow: "0 0 4px #C9A84C" }} />
-            Ponto potencial
+            <span
+              className="inline-block h-3 w-3 rounded-full"
+              style={{
+                background: "#C9A84C",
+                border: "2px solid #0D1117",
+                boxShadow: "0 0 4px #C9A84C",
+              }}
+            />
+            Ponto Âncora
           </div>
           <div className="flex items-center gap-2">
-            <span className="inline-block h-2 w-2 rounded-full" style={{ background: "#fff", border: "1px solid #0D1117" }} />
-            Estabelecimento complementar
+            <span
+              className="inline-block h-2 w-2 rounded-full"
+              style={{ background: "#fff", border: "1px solid #0D1117" }}
+            />
+            Ponto Potencial
           </div>
           <div className="flex items-center gap-2">
-            <span className="inline-block h-3 w-3 rounded-full" style={{ background: "#F44336", border: "2px solid #0D1117" }} />
+            <span
+              className="inline-block h-3 w-3 rounded-full"
+              style={{ background: "#F44336", border: "2px solid #0D1117" }}
+            />
             Concorrente existente
           </div>
         </div>
       </div>
+
+      {/* Help modal */}
+      {showHelp && (
+        <>
+          <div
+            className="absolute inset-0 z-[1000]"
+            onClick={() => setShowHelp(false)}
+          />
+          <div
+            className="absolute bottom-3 right-3 z-[1001] max-w-[350px] rounded-lg border text-white shadow-2xl"
+            style={{
+              background: "#161B22",
+              borderColor: "#C9A84C",
+              padding: 16,
+            }}
+          >
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-sm font-semibold text-[#C9A84C]">
+                Sobre a legenda
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowHelp(false)}
+                aria-label="Fechar"
+                className="text-lg leading-none text-[#8B949E] transition-colors hover:text-white"
+              >
+                ×
+              </button>
+            </div>
+            <div className="space-y-2 text-[12px] leading-relaxed text-white">
+              <p>
+                <strong className="text-[#C9A84C]">Ponto Âncora:</strong> Ponto
+                de grande potencial para instalação de eletroposto.
+              </p>
+              <p>
+                <strong className="text-white">Ponto Potencial:</strong> Ponto
+                com potencial de instalação, próximo a um ponto âncora.
+              </p>
+              <p>
+                <strong className="text-[#F44336]">Concorrente:</strong>{" "}
+                Carregador existente.
+              </p>
+              <p className="border-t border-[#30363D] pt-2 text-[11px] text-[#C9D1D9]">
+                Outros locais não apresentados no mapa podem e devem ser
+                considerados. Entre em contato com a equipe da Blev Educação
+                para estudar o ponto.
+              </p>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

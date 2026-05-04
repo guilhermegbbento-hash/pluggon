@@ -636,8 +636,8 @@ export async function POST(req: Request) {
   const minLng = Math.min(...allPoints.map((p) => p.lng)) - 0.005;
   const maxLng = Math.max(...allPoints.map((p) => p.lng)) + 0.005;
 
-  const latStep = 0.0027;
-  const lngStep = 0.0027 / Math.cos((center.lat * Math.PI) / 180);
+  const latStep = 0.0045;
+  const lngStep = 0.0045 / Math.cos((center.lat * Math.PI) / 180);
 
   const rows = Math.max(1, Math.ceil((maxLat - minLat) / latStep));
   const cols = Math.max(1, Math.ceil((maxLng - minLng) / lngStep));
@@ -862,10 +862,17 @@ export async function POST(req: Request) {
       };
     });
 
-  // 12. Grid output
+  // 12. Grid output (com contagens pra popup do quadrado)
   const gridOut = flatCells
     .filter((c) => c.score > 0)
-    .map((c) => ({ lat: c.centerLat, lng: c.centerLng, score: c.score }));
+    .map((c) => ({
+      lat: c.centerLat,
+      lng: c.centerLng,
+      score: c.score,
+      anchorCount: c.anchors.length,
+      compCount: c.complementary.length,
+      competitorCount: c.competitors.length,
+    }));
 
   const maxScore = gridOut.reduce((m, c) => Math.max(m, c.score), 0);
 
@@ -873,6 +880,7 @@ export async function POST(req: Request) {
     city,
     state,
     center,
+    gridStep: { lat: latStep, lng: lngStep },
     grid: gridOut,
     anchors: anchorsOut,
     complementary: complementaryOut,

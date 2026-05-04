@@ -13,6 +13,9 @@ interface GridCell {
   lat: number;
   lng: number;
   score: number;
+  anchorCount?: number;
+  compCount?: number;
+  competitorCount?: number;
 }
 
 interface Anchor {
@@ -84,6 +87,7 @@ interface HeatmapV2Result {
   city: string;
   state: string;
   center: { lat: number; lng: number };
+  gridStep?: { lat: number; lng: number };
   grid: GridCell[];
   anchors: Anchor[];
   complementary: Complementary[];
@@ -228,7 +232,6 @@ export default function HeatmapPage() {
 <title>PLUGGON — Mapa de Calor — ${result.city}/${result.state}</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\/script>
-<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"><\/script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0D1117; color: #C9D1D9; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
@@ -269,10 +272,22 @@ export default function HeatmapPage() {
   .collapse-body { max-height: 240px; overflow-y: auto; border-top: 1px solid #30363D; display: none; }
   .collapse-body.open { display: block; }
   .legend { position: absolute; bottom: 12px; right: 12px; background: rgba(22,27,34,0.95); border: 1px solid #30363D; border-radius: 8px; padding: 10px 12px; font-size: 11px; backdrop-filter: blur(6px); z-index: 400; }
+  .legend-title { display: flex; align-items: center; gap: 8px; font-weight: 700; color: #fff; margin-bottom: 6px; }
+  .legend-help { width: 16px; height: 16px; border-radius: 50%; border: 1px solid #C9A84C; color: #C9A84C; font-size: 10px; font-weight: 700; cursor: pointer; background: transparent; display: inline-flex; align-items: center; justify-content: center; line-height: 1; }
+  .legend-help:hover { background: #C9A84C; color: #0D1117; }
   .legend-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
   .legend-dot { width: 10px; height: 10px; border-radius: 50%; border: 2px solid #0D1117; }
-  .gradient-bar { width: 160px; height: 8px; border-radius: 2px; background: linear-gradient(90deg,#0000ff,#00ff00,#ffff00,#ff8800,#ff0000); }
+  .gradient-bar { width: 160px; height: 8px; border-radius: 2px; background: linear-gradient(90deg,#0066FF,#00CC00,#FFFF00,#FF8800,#FF0000); }
   .gradient-labels { display: flex; justify-content: space-between; font-size: 9px; color: #8B949E; margin-top: 2px; }
+  .help-overlay { position: absolute; inset: 0; z-index: 999; display: none; }
+  .help-modal { position: absolute; bottom: 12px; right: 12px; max-width: 350px; background: #161B22; border: 1px solid #C9A84C; border-radius: 8px; padding: 16px; color: #fff; font-size: 12px; line-height: 1.5; z-index: 1000; display: none; box-shadow: 0 4px 16px rgba(0,0,0,0.6); }
+  .help-modal.open, .help-overlay.open { display: block; }
+  .help-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .help-head .title { color: #C9A84C; font-weight: 700; font-size: 13px; }
+  .help-close { background: transparent; border: none; color: #8B949E; cursor: pointer; font-size: 18px; line-height: 1; }
+  .help-close:hover { color: #fff; }
+  .help-modal p { margin-bottom: 6px; }
+  .help-modal .footnote { border-top: 1px solid #30363D; padding-top: 8px; margin-top: 8px; color: #C9D1D9; font-size: 11px; }
   .footer { display: flex; align-items: center; justify-content: space-between; padding: 8px 20px; background: #161B22; border-top: 1px solid #30363D; font-size: 11px; color: #8B949E; }
   .leaflet-popup-content-wrapper { background: #161B22; color: #C9D1D9; border: 1px solid #30363D; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
   .leaflet-popup-tip { background: #161B22; border: 1px solid #30363D; }
@@ -288,14 +303,28 @@ export default function HeatmapPage() {
   <div class="map-container">
     <div id="map"></div>
     <div class="legend">
-      <div style="font-weight:700;color:#fff;margin-bottom:6px;">Legenda</div>
+      <div class="legend-title">
+        <span>Legenda</span>
+        <button type="button" class="legend-help" id="helpBtn" aria-label="Ajuda">?</button>
+      </div>
       <div class="gradient-bar"></div>
-      <div class="gradient-labels"><span>Menor</span><span>Maior concentra&ccedil;&atilde;o</span></div>
+      <div class="gradient-labels"><span>M&iacute;nima</span><span>Melhor regi&atilde;o</span></div>
       <div style="margin-top:8px;">
-        <div class="legend-row"><span class="legend-dot" style="background:#C9A84C;box-shadow:0 0 4px #C9A84C;"></span> Ponto potencial</div>
-        <div class="legend-row"><span class="legend-dot" style="background:#fff;width:6px;height:6px;border:1px solid #0D1117;"></span> Estabelecimento complementar</div>
+        <div class="legend-row"><span class="legend-dot" style="background:#C9A84C;box-shadow:0 0 4px #C9A84C;"></span> Ponto &Acirc;ncora</div>
+        <div class="legend-row"><span class="legend-dot" style="background:#fff;width:6px;height:6px;border:1px solid #0D1117;"></span> Ponto Potencial</div>
         <div class="legend-row"><span class="legend-dot" style="background:#F44336;"></span> Concorrente existente</div>
       </div>
+    </div>
+    <div class="help-overlay" id="helpOverlay"></div>
+    <div class="help-modal" id="helpModal">
+      <div class="help-head">
+        <span class="title">Sobre a legenda</span>
+        <button type="button" class="help-close" id="helpClose" aria-label="Fechar">&times;</button>
+      </div>
+      <p><strong style="color:#C9A84C;">Ponto &Acirc;ncora:</strong> Ponto de grande potencial para instala&ccedil;&atilde;o de eletroposto.</p>
+      <p><strong>Ponto Potencial:</strong> Ponto com potencial de instala&ccedil;&atilde;o, pr&oacute;ximo a um ponto &acirc;ncora.</p>
+      <p><strong style="color:#F44336;">Concorrente:</strong> Carregador existente.</p>
+      <p class="footnote">Outros locais n&atilde;o apresentados no mapa podem e devem ser considerados. Entre em contato com a equipe da Blev Educa&ccedil;&atilde;o para estudar o ponto.</p>
     </div>
   </div>
   <div class="sidebar">
@@ -306,14 +335,14 @@ export default function HeatmapPage() {
       <div class="stat-card"><div class="label">DC</div><div class="value">${result.cityData.dcChargers}</div></div>
       <div class="stat-card"><div class="label">BEV+PHEV/DC</div><div class="value">${result.cityData.ratioEVperDC || "—"}</div></div>
     </div>
-    <div class="section-head gold">Pontos Potenciais (${result.anchors.length})</div>
+    <div class="section-head gold">Pontos &Acirc;ncora (${result.anchors.length})</div>
     <div class="anchors-list scroll-list" id="anchorsList"></div>
     <div class="section-head toggle red" id="toggleCompetitors">
       <span>Concorrentes (${result.competitors.length})</span><span id="arrowCompetitors">&#9662;</span>
     </div>
     <div class="collapse-body" id="competitorsList"></div>
     <div class="section-head toggle gray" id="toggleComplementary">
-      <span>Complementares Pr&oacute;ximos (${result.complementary.length})</span><span id="arrowComplementary">&#9662;</span>
+      <span>Pontos Potenciais (${result.complementary.length})</span><span id="arrowComplementary">&#9662;</span>
     </div>
     <div class="collapse-body" id="complementaryList"></div>
   </div>
@@ -324,6 +353,7 @@ export default function HeatmapPage() {
 </div>
 <script>
 const grid = ${JSON.stringify(result.grid)};
+const gridStep = ${JSON.stringify(result.gridStep ?? { lat: 0.0045, lng: 0.0045 / Math.cos((result.center.lat * Math.PI) / 180) })};
 const anchors = ${JSON.stringify(result.anchors)};
 const complementary = ${JSON.stringify(result.complementary)};
 const competitors = ${JSON.stringify(result.competitors)};
@@ -334,15 +364,39 @@ const ANCHOR_EMOJI = { gas_station: '⛽', bus_station: '🚌', airport: '✈️
 const map = L.map('map').setView([center.lat, center.lng], 12);
 L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; CARTO', maxZoom: 19 }).addTo(map);
 
-if (grid.length && maxScore > 0) {
-  const heatData = grid.map(c => [c.lat, c.lng, c.score / maxScore]);
-  L.heatLayer(heatData, {
-    radius: 25, blur: 20, maxZoom: 17,
-    gradient: { 0.2: '#0000ff', 0.4: '#00ff00', 0.6: '#ffff00', 0.8: '#ff8800', 1.0: '#ff0000' }
-  }).addTo(map);
+function getGridColor(n) {
+  if (n >= 0.8) return '#FF0000';
+  if (n >= 0.65) return '#FF4400';
+  if (n >= 0.5) return '#FF8800';
+  if (n >= 0.4) return '#FFBB00';
+  if (n >= 0.3) return '#FFFF00';
+  if (n >= 0.2) return '#88FF00';
+  if (n >= 0.1) return '#00CC00';
+  return '#0066FF';
 }
 
 const escapeHtml = (s) => (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+if (grid.length && maxScore > 0) {
+  const latStep = gridStep.lat;
+  const lngStep = gridStep.lng;
+  grid.forEach(cell => {
+    const sw = [cell.lat - latStep/2, cell.lng - lngStep/2];
+    const ne = [cell.lat + latStep/2, cell.lng + lngStep/2];
+    const aCount = cell.anchorCount || 0;
+    const cCount = cell.compCount || 0;
+    const xCount = cell.competitorCount || 0;
+    L.rectangle([sw, ne], {
+      color: 'transparent',
+      fillColor: getGridColor(cell.score / maxScore),
+      fillOpacity: 0.35,
+      weight: 0
+    })
+    .bindPopup('<div style="font-weight:700;font-size:13px;margin-bottom:4px;">Regi&atilde;o: ' + cell.score + ' pontos</div>' +
+               '<div style="font-size:11px;color:#C9D1D9;">&Acirc;ncoras: ' + aCount + ' | Potenciais: ' + cCount + ' | Concorrentes: ' + xCount + '</div>')
+    .addTo(map);
+  });
+}
 
 anchors.forEach(a => {
   const emoji = ANCHOR_EMOJI[a.type] || '📍';
@@ -351,7 +405,8 @@ anchors.forEach(a => {
     className: '', iconSize: [14,14], iconAnchor:[7,7]
   });
   L.marker([a.lat, a.lng], { icon, zIndexOffset: 1000 })
-    .bindPopup('<div style="font-weight:700;font-size:13px;margin-bottom:4px;">' + emoji + ' ' + escapeHtml(a.name) + '</div>' +
+    .bindPopup('<div style="margin-bottom:6px;"><span style="background:#C9A84C30;color:#C9A84C;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;">&Acirc;NCORA</span></div>' +
+               '<div style="font-weight:700;font-size:13px;margin-bottom:4px;">' + emoji + ' ' + escapeHtml(a.name) + '</div>' +
                '<div style="color:#8B949E;font-size:11px;margin-bottom:6px;">' + escapeHtml(a.address) + '</div>' +
                '<span style="background:#C9A84C20;color:#C9A84C;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;">' + escapeHtml(a.typeLabel) + '</span>')
     .addTo(map);
@@ -363,10 +418,11 @@ complementary.forEach(c => {
     className: '', iconSize:[8,8], iconAnchor:[4,4]
   });
   L.marker([c.lat, c.lng], { icon, zIndexOffset: 500 })
-    .bindPopup('<div style="font-weight:700;font-size:12px;">' + escapeHtml(c.name) + '</div>' +
+    .bindPopup('<div style="margin-bottom:6px;"><span style="background:#FFFFFF20;color:#fff;border:1px solid #FFFFFF40;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;">POTENCIAL</span></div>' +
+               '<div style="font-weight:700;font-size:12px;">' + escapeHtml(c.name) + '</div>' +
                '<div style="color:#8B949E;font-size:11px;margin-top:2px;">' + escapeHtml(c.address) + '</div>' +
                '<div style="margin-top:4px;font-size:11px;color:#C9D1D9;">' + escapeHtml(c.typeLabel) + '</div>' +
-               (c.nearAnchor ? '<div style="color:#8B949E;font-size:11px;margin-top:4px;">Próximo a: ' + escapeHtml(c.nearAnchor) + ' (' + c.nearAnchorDist + 'm)</div>' : ''))
+               (c.nearAnchor ? '<div style="color:#8B949E;font-size:11px;margin-top:4px;">Pr&oacute;ximo a ' + escapeHtml(c.nearAnchor) + ' (' + c.nearAnchorDist + 'm)</div>' : ''))
     .addTo(map);
 });
 
@@ -427,7 +483,7 @@ const compEntries = Object.keys(compGroups)
   .sort((a,b) => b.items.length - a.items.length);
 const complementaryList = document.getElementById('complementaryList');
 complementaryList.innerHTML = compEntries.length === 0
-  ? '<div style="padding:12px;text-align:center;font-size:11px;color:#8B949E;">Nenhum complementar encontrado.</div>'
+  ? '<div style="padding:12px;text-align:center;font-size:11px;color:#8B949E;">Nenhum ponto potencial encontrado.</div>'
   : compEntries.map(g =>
       '<div class="group-head muted">Pr&oacute;ximos a ' + escapeHtml(g.name) + ' (' + g.items.length + ')</div>' +
       g.items.map(cp =>
@@ -453,6 +509,16 @@ function setupToggle(headId, bodyId, arrowId) {
 }
 setupToggle('toggleCompetitors', 'competitorsList', 'arrowCompetitors');
 setupToggle('toggleComplementary', 'complementaryList', 'arrowComplementary');
+
+const helpBtn = document.getElementById('helpBtn');
+const helpModal = document.getElementById('helpModal');
+const helpOverlay = document.getElementById('helpOverlay');
+const helpClose = document.getElementById('helpClose');
+function openHelp() { helpModal.classList.add('open'); helpOverlay.classList.add('open'); }
+function closeHelp() { helpModal.classList.remove('open'); helpOverlay.classList.remove('open'); }
+helpBtn.addEventListener('click', openHelp);
+helpClose.addEventListener('click', closeHelp);
+helpOverlay.addEventListener('click', closeHelp);
 
 const allCoords = [].concat(grid.map(c => [c.lat, c.lng]), anchors.map(a => [a.lat, a.lng]), competitors.map(c => [c.lat, c.lng]));
 if (allCoords.length) map.fitBounds(allCoords, { padding: [40,40] });
@@ -505,7 +571,7 @@ if (allCoords.length) map.fitBounds(allCoords, { padding: [40,40] });
       <div>
         <h1 className="text-2xl font-bold text-white">Mapa de Calor</h1>
         <p className="mt-1 text-[#8B949E]">
-          Mapa de calor mostrando pontos potenciais e concentração de estabelecimentos. Sem IA — cálculo determinístico.
+          Mapa de calor mostrando pontos âncora e concentração de estabelecimentos. Sem IA — cálculo determinístico.
         </p>
 
         <div className="mt-8 flex items-center justify-center">
@@ -613,7 +679,7 @@ if (allCoords.length) map.fitBounds(allCoords, { padding: [40,40] });
             Mapa de Calor — {result.city}/{result.state}
           </h1>
           <p className="mt-1 text-sm text-[#8B949E]">
-            {stats.totalAnchors} pontos potenciais · {stats.totalComplementary} complementares · {stats.totalCompetitors} concorrentes
+            {stats.totalAnchors} pontos âncora · {stats.totalComplementary} pontos potenciais · {stats.totalCompetitors} concorrentes
             {result.fromCache && (
               <span className="ml-2 rounded bg-[#2196F320] px-2 py-0.5 text-xs text-[#2196F3]">cache</span>
             )}
@@ -725,6 +791,7 @@ if (allCoords.length) map.fitBounds(allCoords, { padding: [40,40] });
           <HeatmapMapV2
             center={result.center}
             grid={result.grid}
+            gridStep={result.gridStep}
             anchors={result.anchors}
             complementary={result.complementary}
             competitors={result.competitors}
@@ -735,16 +802,16 @@ if (allCoords.length) map.fitBounds(allCoords, { padding: [40,40] });
 
         {/* Sidebar (30%) */}
         <div className="flex w-[28rem] shrink-0 flex-col rounded-xl border border-[#30363D] bg-[#161B22]">
-          {/* PONTOS POTENCIAIS */}
+          {/* PONTOS ÂNCORA */}
           <div className="border-b border-[#30363D] px-3 py-2">
             <h3 className="text-xs font-bold uppercase tracking-wide text-[#C9A84C]">
-              Pontos Potenciais ({result.anchors.length})
+              Pontos Âncora ({result.anchors.length})
             </h3>
           </div>
           <div className="flex-1 overflow-y-auto">
             {result.anchors.length === 0 ? (
               <p className="p-4 text-center text-sm text-[#8B949E]">
-                Nenhum ponto potencial encontrado.
+                Nenhum ponto âncora encontrado.
               </p>
             ) : (
               Object.entries(anchorsByType).map(([typeLabel, items]) => (
@@ -819,20 +886,20 @@ if (allCoords.length) map.fitBounds(allCoords, { padding: [40,40] });
             )}
           </div>
 
-          {/* COMPLEMENTARES PRÓXIMOS (collapsible) */}
+          {/* PONTOS POTENCIAIS (collapsible) */}
           <div className="border-t border-[#30363D]">
             <button
               onClick={() => setShowComplementary((v) => !v)}
               className="flex w-full items-center justify-between px-3 py-2 text-xs font-bold uppercase tracking-wide text-[#8B949E] transition-colors hover:text-white"
             >
-              <span>Complementares Próximos ({result.complementary.length})</span>
+              <span>Pontos Potenciais ({result.complementary.length})</span>
               <span>{showComplementary ? "▴" : "▾"}</span>
             </button>
             {showComplementary && (
               <div className="max-h-60 overflow-y-auto border-t border-[#30363D]">
                 {complementaryByAnchor.length === 0 ? (
                   <p className="p-3 text-center text-xs text-[#8B949E]">
-                    Nenhum complementar encontrado.
+                    Nenhum ponto potencial encontrado.
                   </p>
                 ) : (
                   complementaryByAnchor.map((g) => (
