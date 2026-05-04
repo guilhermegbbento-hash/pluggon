@@ -57,6 +57,7 @@ interface POI {
   lat: number;
   lng: number;
   rating: number;
+  reviews: number;
   address: string;
   placeType: PlaceType;
 }
@@ -122,12 +123,14 @@ async function searchNearbyOld(
           name?: string;
           geometry: { location: { lat: number; lng: number } };
           rating?: number;
+          user_ratings_total?: number;
           vicinity?: string;
         }) => ({
           name: p.name || "Sem nome",
           lat: p.geometry.location.lat,
           lng: p.geometry.location.lng,
           rating: p.rating || 0,
+          reviews: p.user_ratings_total || 0,
           address: p.vicinity || "",
           placeType: type,
         })
@@ -151,39 +154,146 @@ function deduplicatePOIs(pois: POI[]): POI[] {
 
 // Remove points that are just addresses, not real commercial establishments
 function isValidCommercialPoint(poi: POI): boolean {
-  const name = (poi.name || "").toLowerCase().trim();
+  const name = (poi.name || "").trim();
 
-  if (!name || name.length < 3) return false;
+  if (!name || name.length < 4) return false;
 
   if (
-    /^(r\.|rua|av\.|avenida|al\.|alameda|tv\.|travessa|rod\.|rodovia)\s/i.test(
+    /^(r\.|rua|av\.|avenida|al\.|alameda|tv\.|travessa|rod\.|rodovia|estr\.|estrada|br-|pr-|sp-|mg-|rj-)\s/i.test(
       name
     )
   )
     return false;
 
-  if (/^\d+$/.test(name)) return false;
+  if (/^(n\.?|nº|numero|número)\s*\d/i.test(name)) return false;
 
-  if (/^[-\d.,\s]+$/.test(name)) return false;
+  if (/^[\d\s.,\-/]+$/.test(name)) return false;
 
-  const genericNames = [
+  const lower = name.toLowerCase();
+  const generic = [
     "lote",
     "terreno",
-    "loja",
     "sala",
-    "ponto",
-    "local",
     "espaço",
     "galpão",
     "barracão",
     "casa",
     "residência",
-    "residencia",
     "apartamento",
+    "prédio",
+    "edifício",
+    "condomínio",
+    "sobrado",
+    "kitnet",
   ];
-  if (genericNames.some((g) => name === g)) return false;
+  if (generic.some((g) => lower === g)) return false;
+
+  if (/^\d/.test(name) && name.length < 10) return false;
+
+  if (!/[a-zA-ZÀ-ÿ]/.test(name)) return false;
 
   return true;
+}
+
+// Aceita só rodoviárias intermunicipais/interestaduais, rejeita terminais urbanos
+function isRealBusStation(poi: POI): boolean {
+  const name = (poi.name || "").toLowerCase();
+  const accept = [
+    "rodoviária",
+    "rodoviaria",
+    "terminal rodoviário",
+    "terminal rodoviario",
+    "rodoferroviária",
+    "rodoferroviaria",
+  ];
+  if (accept.some((a) => name.includes(a))) return true;
+
+  const reject = [
+    "terminal urbano",
+    "terminal de ônibus",
+    "terminal de onibus",
+    "estação tubo",
+    "estacao tubo",
+    "ponto de ônibus",
+    "ponto de onibus",
+    "parada",
+    "terminal metropolitano",
+    "terminal de integração",
+    "terminal de integracao",
+    "tube",
+    "brt",
+    "ligeirinho",
+    "biarticulado",
+  ];
+  if (reject.some((r) => name.includes(r))) return false;
+
+  if (name.includes("terminal") && !name.includes("rodoviári")) return false;
+
+  return false;
+}
+
+// Aceita só aeroportos comerciais, rejeita helipontos/aeroclubes
+function isRealAirport(poi: POI): boolean {
+  const name = (poi.name || "").toLowerCase();
+  const reject = [
+    "heliponto",
+    "heliporto",
+    "helipad",
+    "helicóptero",
+    "helicoptero",
+    "aeroclube",
+    "aero clube",
+    "pista particular",
+    "campo de aviação",
+  ];
+  if (reject.some((r) => name.includes(r))) return false;
+
+  const accept = [
+    "aeroporto",
+    "airport",
+    "internacional",
+    "regional",
+    "santos dumont",
+    "congonhas",
+    "galeão",
+    "guarulhos",
+    "afonso pena",
+    "salgado filho",
+  ];
+  if (accept.some((a) => name.includes(a))) return true;
+
+  return false;
+}
+
+// Aceita só shoppings de médio/grande porte, rejeita galerias pequenas
+function isRealShopping(poi: POI): boolean {
+  const name = (poi.name || "").toLowerCase();
+  const reject = [
+    "galeria",
+    "mini shopping",
+    "mini mall",
+    "camelódromo",
+    "box",
+    "loja de",
+  ];
+  if (reject.some((r) => name.includes(r))) return false;
+
+  const accept = [
+    "shopping",
+    "mall",
+    "shopping center",
+    "centro comercial",
+    "outlet",
+    "plaza",
+    "park shopping",
+    "pátio",
+    "patio",
+  ];
+  if (accept.some((a) => name.includes(a))) return true;
+
+  if ((poi.reviews || 0) > 500) return true;
+
+  return false;
 }
 
 async function geocodeCity(
@@ -406,9 +516,12 @@ export async function POST(req: Request) {
     shopping_mall: [],
   };
   for (const t of ANCHOR_TYPES) {
-    dedupedAnchorsByType[t] = deduplicatePOIs(
-      allAnchors.filter((p) => p.placeType === t)
-    ).filter(isValidCommercialPoint);
+    let arr = deduplicatePOIs(allAnchors.filter((p) => p.placeType === t))
+      .filter(isValidCommercialPoint);
+    if (t === "bus_station") arr = arr.filter(isRealBusStation);
+    else if (t === "airport") arr = arr.filter(isRealAirport);
+    else if (t === "shopping_mall") arr = arr.filter(isRealShopping);
+    dedupedAnchorsByType[t] = arr;
   }
   let dedupedAnchors = ANCHOR_TYPES.flatMap((t) => dedupedAnchorsByType[t]);
 
@@ -422,9 +535,13 @@ export async function POST(req: Request) {
     );
     googleQueries += ANCHOR_TYPES.length;
     ANCHOR_TYPES.forEach((t, i) => {
-      dedupedAnchorsByType[t] = deduplicatePOIs(
-        expandedAnchorResults[i]
-      ).filter(isValidCommercialPoint);
+      let arr = deduplicatePOIs(expandedAnchorResults[i]).filter(
+        isValidCommercialPoint
+      );
+      if (t === "bus_station") arr = arr.filter(isRealBusStation);
+      else if (t === "airport") arr = arr.filter(isRealAirport);
+      else if (t === "shopping_mall") arr = arr.filter(isRealShopping);
+      dedupedAnchorsByType[t] = arr;
     });
     dedupedAnchors = ANCHOR_TYPES.flatMap((t) => dedupedAnchorsByType[t]);
   }
