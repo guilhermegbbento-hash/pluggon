@@ -118,9 +118,67 @@ export const ABVE_STATES: Record<string, { ac: number, dc: number, total: number
 
 // Buscar dados de uma cidade
 export function getABVEData(city: string, state: string): CityABVEData | null {
-  const normalizedCity = city.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
-  return ABVE_CHARGERS_DATA.find(d => {
-    const dCity = d.city.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
-    return dCity === normalizedCity && d.state === state;
-  }) || null;
+  if (!city || !state) return null;
+
+  // Normalizar input
+  const normalizeStr = (s: string) =>
+    s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+  const inputCity = normalizeStr(city);
+  const inputState = state.trim().toUpperCase();
+
+  // Se state veio como nome completo, converter pra sigla
+  const stateMap: Record<string, string> = {
+    'acre': 'AC', 'alagoas': 'AL', 'amapa': 'AP', 'amazonas': 'AM',
+    'bahia': 'BA', 'ceara': 'CE', 'distrito federal': 'DF', 'espirito santo': 'ES',
+    'goias': 'GO', 'maranhao': 'MA', 'mato grosso': 'MT', 'mato grosso do sul': 'MS',
+    'minas gerais': 'MG', 'para': 'PA', 'paraiba': 'PB', 'parana': 'PR',
+    'pernambuco': 'PE', 'piaui': 'PI', 'rio de janeiro': 'RJ',
+    'rio grande do norte': 'RN', 'rio grande do sul': 'RS', 'rondonia': 'RO',
+    'roraima': 'RR', 'santa catarina': 'SC', 'sao paulo': 'SP',
+    'sergipe': 'SE', 'tocantins': 'TO',
+  };
+
+  const normalizedStateName = normalizeStr(state);
+  const stateCode = stateMap[normalizedStateName] || inputState.substring(0, 2);
+
+  console.log('=== ABVE LOOKUP ===', 'city:', inputCity, 'state:', stateCode);
+
+  const result = ABVE_CHARGERS_DATA.find(d => {
+    const dCity = normalizeStr(d.city);
+    const dState = d.state.toUpperCase();
+    return dCity === inputCity && dState === stateCode;
+  });
+
+  if (result) {
+    console.log('=== ABVE FOUND ===', result.city, result.state, 'DC:', result.dc, 'Total:', result.total);
+    return result;
+  }
+
+  console.log('=== ABVE NOT FOUND ===', city, state, '- tentando busca parcial');
+
+  // Busca parcial: se a cidade contém o input ou vice-versa
+  const partial = ABVE_CHARGERS_DATA.find(d => {
+    const dCity = normalizeStr(d.city);
+    const dState = d.state.toUpperCase();
+    return dState === stateCode && (dCity.includes(inputCity) || inputCity.includes(dCity));
+  });
+
+  if (partial) {
+    console.log('=== ABVE PARTIAL MATCH ===', partial.city, partial.state);
+    return partial;
+  }
+
+  return null;
+}
+
+// Teste de boot — confirma que SJC é encontrada na base
+if (process.env.NODE_ENV !== 'production') {
+  console.log(
+    '=== TESTE SJC ===',
+    ABVE_CHARGERS_DATA.find(
+      d =>
+        d.city.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase() ===
+          'sao jose dos campos' && d.state === 'SP'
+    ) ?? null
+  );
 }
