@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { APP_VERSION } from "@/lib/version";
 import { useEffect, useState } from "react";
 
 const ADMIN_EMAIL = "guilherme@bfranca.com";
@@ -197,6 +198,9 @@ export default function AuthenticatedLayout({
             </svg>
             Sair
           </button>
+          <p className="mt-2 text-center text-[10px] text-[#8B949E]">
+            PLUGGON v{APP_VERSION}
+          </p>
         </div>
       </aside>
 

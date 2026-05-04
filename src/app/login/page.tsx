@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { APP_VERSION } from "@/lib/version";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -97,6 +98,9 @@ export default function LoginPage() {
             >
               {loading ? "Entrando..." : "Entrar"}
             </button>
+            <p className="text-center text-xs text-[#8B949E]">
+              v{APP_VERSION}
+            </p>
           </form>
         </div>
       </div>
