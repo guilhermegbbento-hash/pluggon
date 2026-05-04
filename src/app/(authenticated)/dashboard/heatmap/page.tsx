@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import { createClient } from "@/lib/supabase/client";
 import CityStateSelect from "@/components/CityStateSelect";
 
-const ADMIN_EMAIL = "guilherme@bfranca.com";
+const ADMIN_EMAILS = ['guilhermegbbento@gmail.com', 'marco@bleveducacao.com.br'];
 
 // ---------- Types ----------
 
@@ -139,7 +139,7 @@ export default function HeatmapPage() {
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      if (!cancelled && user?.email === ADMIN_EMAIL) setIsAdmin(true);
+      if (!cancelled && user?.email && ADMIN_EMAILS.includes(user.email)) setIsAdmin(true);
     })();
     return () => {
       cancelled = true;
