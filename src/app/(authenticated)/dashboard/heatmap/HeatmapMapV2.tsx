@@ -2,16 +2,6 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 
-interface GridCell {
-  lat: number;
-  lng: number;
-  score: number;
-  anchorsCount?: number;
-  compCount?: number;
-  competitorsCount?: number;
-  anchorNames?: string[];
-}
-
 interface Anchor {
   name: string;
   lat: number;
@@ -19,7 +9,7 @@ interface Anchor {
   type: string;
   typeLabel: string;
   address: string;
-  cellScore: number;
+  nearbyCompCount?: number;
 }
 
 interface Complementary {
@@ -43,13 +33,9 @@ interface Competitor {
 
 interface HeatmapMapV2Props {
   center: { lat: number; lng: number };
-  grid: GridCell[];
-  gridStep?: { lat: number; lng: number };
-  gridConfig?: { latStep: number; lngStep: number };
   anchors: Anchor[];
   complementary: Complementary[];
   competitors: Competitor[];
-  maxScore: number;
   flyTo: { lat: number; lng: number; zoom?: number } | null;
 }
 
@@ -85,15 +71,11 @@ function escapeHtml(str: string): string {
     .replace(/"/g, "&quot;");
 }
 
-function getGridColor(normalizedScore: number): string {
-  if (normalizedScore >= 0.8) return "#FF0000";
-  if (normalizedScore >= 0.65) return "#FF4400";
-  if (normalizedScore >= 0.5) return "#FF8800";
-  if (normalizedScore >= 0.4) return "#FFBB00";
-  if (normalizedScore >= 0.3) return "#FFFF00";
-  if (normalizedScore >= 0.2) return "#88FF00";
-  if (normalizedScore >= 0.1) return "#00CC00";
-  return "#0066FF";
+function innerRadiusFor(nearbyCompCount: number): number {
+  if (nearbyCompCount >= 7) return 350;
+  if (nearbyCompCount >= 4) return 300;
+  if (nearbyCompCount >= 1) return 250;
+  return 200;
 }
 
 const ANCHOR_ICONS: Record<string, string> = {
@@ -105,18 +87,15 @@ const ANCHOR_ICONS: Record<string, string> = {
 
 export default function HeatmapMapV2({
   center,
-  grid,
-  gridStep,
-  gridConfig,
   anchors,
   complementary,
   competitors,
-  maxScore,
   flyTo,
 }: HeatmapMapV2Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
-  const gridLayerRef = useRef<any>(null);
+  const influenceLayerRef = useRef<any>(null);
+  const competitorZoneLayerRef = useRef<any>(null);
   const anchorsLayerRef = useRef<any>(null);
   const compLayerRef = useRef<any>(null);
   const competitorsLayerRef = useRef<any>(null);
@@ -158,60 +137,82 @@ export default function HeatmapMapV2({
     };
   }, [initMap]);
 
-  // Grid de quadrados coloridos
+  // Círculos de influência (âncoras): 3 concêntricos, sobreposições somam opacidade
   useEffect(() => {
     if (!mapReady) return;
     const L = (window as any).L;
     if (!L || !mapRef.current) return;
 
-    if (gridLayerRef.current) {
-      mapRef.current.removeLayer(gridLayerRef.current);
-      gridLayerRef.current = null;
+    if (influenceLayerRef.current) {
+      mapRef.current.removeLayer(influenceLayerRef.current);
+      influenceLayerRef.current = null;
     }
-    if (grid.length === 0 || maxScore <= 0) return;
-
-    const latStep =
-      gridConfig?.latStep ?? gridStep?.lat ?? 0.0045;
-    const lngStep =
-      gridConfig?.lngStep ??
-      gridStep?.lng ??
-      0.0045 / Math.cos((center.lat * Math.PI) / 180);
+    if (anchors.length === 0) return;
 
     const group = L.layerGroup();
 
-    grid.forEach((cell) => {
-      const normalized = cell.score / maxScore;
-      const color = getGridColor(normalized);
-      const sw: [number, number] = [
-        cell.lat - latStep / 2,
-        cell.lng - lngStep / 2,
-      ];
-      const ne: [number, number] = [
-        cell.lat + latStep / 2,
-        cell.lng + lngStep / 2,
-      ];
-      const rect = L.rectangle([sw, ne], {
+    anchors.forEach((a) => {
+      const inner = innerRadiusFor(a.nearbyCompCount ?? 0);
+
+      L.circle([a.lat, a.lng], {
+        radius: 500,
         color: "transparent",
-        fillColor: color,
-        fillOpacity: 0.35,
+        fillColor: "#C9A84C",
+        fillOpacity: 0.06,
         weight: 0,
-      });
-      const aCount = cell.anchorsCount ?? 0;
-      const cCount = cell.compCount ?? 0;
-      const xCount = cell.competitorsCount ?? 0;
-      rect.bindPopup(
-        `<div style="font-family:system-ui;min-width:200px;">
-          <div style="font-weight:700;font-size:13px;margin-bottom:4px;">Região: ${cell.score} pontos</div>
-          <div style="font-size:11px;color:#C9D1D9;">Âncoras: ${aCount} | Potenciais: ${cCount} | Concorrentes: ${xCount}</div>
-        </div>`,
-        { maxWidth: 260 }
-      );
-      group.addLayer(rect);
+        interactive: false,
+      }).addTo(group);
+
+      L.circle([a.lat, a.lng], {
+        radius: 350,
+        color: "transparent",
+        fillColor: "#C9A84C",
+        fillOpacity: 0.12,
+        weight: 0,
+        interactive: false,
+      }).addTo(group);
+
+      L.circle([a.lat, a.lng], {
+        radius: inner,
+        color: "transparent",
+        fillColor: "#C9A84C",
+        fillOpacity: 0.25,
+        weight: 0,
+        interactive: false,
+      }).addTo(group);
     });
 
     group.addTo(mapRef.current);
-    gridLayerRef.current = group;
-  }, [grid, gridStep, gridConfig, maxScore, mapReady, center.lat]);
+    influenceLayerRef.current = group;
+  }, [anchors, mapReady]);
+
+  // Zonas dos concorrentes (vermelho)
+  useEffect(() => {
+    if (!mapReady) return;
+    const L = (window as any).L;
+    if (!L || !mapRef.current) return;
+
+    if (competitorZoneLayerRef.current) {
+      mapRef.current.removeLayer(competitorZoneLayerRef.current);
+      competitorZoneLayerRef.current = null;
+    }
+    if (competitors.length === 0) return;
+
+    const group = L.layerGroup();
+    competitors.forEach((cm) => {
+      L.circle([cm.lat, cm.lng], {
+        radius: 300,
+        color: "transparent",
+        fillColor: "#FF4444",
+        fillOpacity: 0.1,
+        weight: 0,
+        interactive: false,
+      }).addTo(group);
+    });
+
+    group.addTo(mapRef.current);
+    competitorZoneLayerRef.current = group;
+  }, [competitors, mapReady]);
 
   // Anchor markers (gold) → ÂNCORA
   useEffect(() => {
@@ -375,7 +376,6 @@ export default function HeatmapMapV2({
     const L = (window as any).L;
     if (!L) return;
     const all: [number, number][] = [
-      ...grid.map((c) => [c.lat, c.lng] as [number, number]),
       ...anchors.map((a) => [a.lat, a.lng] as [number, number]),
       ...competitors.map((c) => [c.lat, c.lng] as [number, number]),
     ];
@@ -414,20 +414,7 @@ export default function HeatmapMapV2({
             ?
           </button>
         </div>
-        <div className="mb-1.5">
-          <div
-            className="h-2 w-40 rounded-sm"
-            style={{
-              background:
-                "linear-gradient(90deg,#0066FF,#00CC00,#FFFF00,#FF8800,#FF0000)",
-            }}
-          />
-          <div className="mt-1 flex justify-between text-[9px] text-[#8B949E]">
-            <span>Mínima</span>
-            <span>Melhor região</span>
-          </div>
-        </div>
-        <div className="space-y-1 text-[11px]">
+        <div className="space-y-1.5 text-[11px]">
           <div className="flex items-center gap-2">
             <span
               className="inline-block h-3 w-3 rounded-full"
@@ -453,6 +440,20 @@ export default function HeatmapMapV2({
             />
             Concorrente existente
           </div>
+          <div className="mt-1 flex items-center gap-2">
+            <span
+              className="inline-block h-3 w-3 rounded-full"
+              style={{ background: "#C9A84C", opacity: 0.45 }}
+            />
+            Zona de influência (âncora)
+          </div>
+          <div className="flex items-center gap-2">
+            <span
+              className="inline-block h-3 w-3 rounded-full"
+              style={{ background: "#FF4444", opacity: 0.4 }}
+            />
+            Zona do concorrente
+          </div>
         </div>
       </div>
 
@@ -464,7 +465,7 @@ export default function HeatmapMapV2({
             onClick={() => setShowHelp(false)}
           />
           <div
-            className="absolute bottom-3 right-3 z-[1001] max-w-[350px] rounded-lg border text-white shadow-2xl"
+            className="absolute bottom-3 right-3 z-[1001] max-w-[360px] rounded-lg border text-white shadow-2xl"
             style={{
               background: "#161B22",
               borderColor: "#C9A84C",
@@ -485,6 +486,19 @@ export default function HeatmapMapV2({
               </button>
             </div>
             <div className="space-y-2 text-[12px] leading-relaxed text-white">
+              <p>
+                <strong className="text-[#C9A84C]">Círculo dourado:</strong>{" "}
+                Zona de influência do ponto âncora.
+              </p>
+              <p>
+                <strong className="text-white">Sobreposição:</strong> Onde dois
+                ou mais círculos se sobrepõem, a cor fica mais intensa — regiões
+                com mais âncoras próximas têm maior potencial.
+              </p>
+              <p>
+                <strong className="text-[#FF4444]">Círculo vermelho:</strong>{" "}
+                Zona de atuação de um concorrente existente.
+              </p>
               <p>
                 <strong className="text-[#C9A84C]">Ponto Âncora:</strong> Ponto
                 de grande potencial para instalação de eletroposto.

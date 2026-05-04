@@ -22,25 +22,6 @@ type ComplementaryType =
   | "gym";
 type PlaceType = AnchorType | ComplementaryType;
 
-const ANCHOR_TYPES: AnchorType[] = [
-  "gas_station",
-  "bus_station",
-  "airport",
-  "shopping_mall",
-];
-const COMPLEMENTARY_TYPES: ComplementaryType[] = [
-  "pharmacy",
-  "bakery",
-  "parking",
-  "supermarket",
-  "restaurant",
-  "lodging",
-  "university",
-  "hospital",
-  "convenience",
-  "gym",
-];
-
 const ANCHOR_LABELS: Record<AnchorType, string> = {
   gas_station: "Posto de combustível",
   bus_station: "Rodoviária",
@@ -77,17 +58,6 @@ interface CompetitorOut {
   lng: number;
   charger_type: "DC" | "AC" | "unknown";
   address: string;
-}
-
-interface Cell {
-  row: number;
-  col: number;
-  centerLat: number;
-  centerLng: number;
-  score: number;
-  anchors: POI[];
-  complementary: POI[];
-  competitors: CompetitorOut[];
 }
 
 // ---------- Helpers ----------
@@ -399,22 +369,6 @@ function classifyChargerType(c: CompetitorStation): "DC" | "AC" | "unknown" {
   return "unknown";
 }
 
-function regionLabel(
-  cellLat: number,
-  cellLng: number,
-  centerLat: number,
-  centerLng: number
-): string {
-  const dLat = cellLat - centerLat;
-  const dLng = cellLng - centerLng;
-  const ns = dLat > 0.005 ? "Norte" : dLat < -0.005 ? "Sul" : "Centro";
-  const ew = dLng > 0.005 ? "Leste" : dLng < -0.005 ? "Oeste" : "";
-  if (ns === "Centro" && !ew) return "Centro";
-  if (!ew) return ns;
-  if (ns === "Centro") return ew;
-  return `${ns}-${ew}`;
-}
-
 // ---------- POST ----------
 
 export async function POST(req: Request) {
@@ -566,7 +520,6 @@ export async function POST(req: Request) {
       charger_type: classifyChargerType(c),
       address: c.address,
     }));
-    // queryStats sums (excluding cache hits) approximated
     if (
       compResult.queryStats &&
       compResult.queryStats.cache === undefined
@@ -590,19 +543,16 @@ export async function POST(req: Request) {
   const abveAC = abveData?.ac ?? 0;
   const abveTotal = abveData?.total ?? 0;
 
-  // Quantidade do Google (localização confirmada no banco)
   const googleDC = competitors.filter((c) => c.charger_type === "DC").length;
   const googleAC = competitors.filter((c) => c.charger_type === "AC").length;
   const googleTotal = competitors.length;
 
-  // Quantidade exibida nos cards: ABVE manda, com fallback Google quando ABVE=0
   const dcCity = abveDC > 0 ? abveDC : googleDC;
   const totalChargers = abveTotal > 0 ? abveTotal : googleTotal;
 
   const population = ibge.population ?? 0;
   const gdpPerCapita = ibge.gdpPerCapita ?? 0;
 
-  // Dados de EVs: total + breakdown BEV/PHEV (mercado real de eletropostos)
   const evData = getCityEVData(city, state, population, gdpPerCapita);
 
   console.log("=== EV DATA ===", city, state);
@@ -620,253 +570,12 @@ export async function POST(req: Request) {
     googleTotal,
     "total localizados"
   );
-  console.log("Usando ABVE pra contagem, Google pra localização");
   if (!abveData) {
     console.log("Cidade não encontrada na ABVE - usando apenas Google Places");
   }
 
-  // 7. Grid 300x300m
-  const allPOIs = [...dedupedAnchors, ...dedupedComplementary];
-  const allPoints = [
-    ...allPOIs.map((p) => ({ lat: p.lat, lng: p.lng })),
-    ...competitors.map((c) => ({ lat: c.lat, lng: c.lng })),
-  ];
-  const minLat = Math.min(...allPoints.map((p) => p.lat)) - 0.005;
-  const maxLat = Math.max(...allPoints.map((p) => p.lat)) + 0.005;
-  const minLng = Math.min(...allPoints.map((p) => p.lng)) - 0.005;
-  const maxLng = Math.max(...allPoints.map((p) => p.lng)) + 0.005;
-
-  const latStep = 0.0045;
-  const lngStep = 0.0045 / Math.cos((center.lat * Math.PI) / 180);
-
-  const rows = Math.max(1, Math.ceil((maxLat - minLat) / latStep));
-  const cols = Math.max(1, Math.ceil((maxLng - minLng) / lngStep));
-
-  console.log("=== GRID DEBUG ===");
-  console.log("Grid:", rows, "rows x", cols, "cols =", rows * cols, "células");
-  console.log("Bounds: lat", minLat, "-", maxLat, "| lng", minLng, "-", maxLng);
-  console.log("Steps: latStep", latStep, "| lngStep", lngStep);
-  console.log("Total âncoras:", dedupedAnchors.length);
-  console.log("Total complementares:", dedupedComplementary.length);
-
-  // Grid como Map "row,col" — evita problemas de índice 1D/2D
-  const gridMap = new Map<string, Cell>();
-
-  const cellIndices = (lat: number, lng: number): { row: number; col: number } => ({
-    row: Math.floor((lat - minLat) / latStep),
-    col: Math.floor((lng - minLng) / lngStep),
-  });
-
-  const getOrCreateCell = (lat: number, lng: number): Cell => {
-    const { row, col } = cellIndices(lat, lng);
-    const key = `${row},${col}`;
-    let cell = gridMap.get(key);
-    if (!cell) {
-      cell = {
-        row,
-        col,
-        centerLat: minLat + (row + 0.5) * latStep,
-        centerLng: minLng + (col + 0.5) * lngStep,
-        score: 0,
-        anchors: [],
-        complementary: [],
-        competitors: [],
-      };
-      gridMap.set(key, cell);
-    }
-    return cell;
-  };
-
-  // 8. Popular células
-  let anchorsNotInGrid = 0;
-  for (const a of dedupedAnchors) {
-    const { row, col } = cellIndices(a.lat, a.lng);
-    if (row < 0 || row >= rows || col < 0 || col >= cols) {
-      anchorsNotInGrid++;
-      console.log(
-        "ÂNCORA FORA DO GRID:",
-        a.name,
-        "lat:",
-        a.lat,
-        "lng:",
-        a.lng,
-        "row:",
-        row,
-        "col:",
-        col
-      );
-      continue;
-    }
-    getOrCreateCell(a.lat, a.lng).anchors.push(a);
-  }
-  for (const cp of dedupedComplementary) {
-    getOrCreateCell(cp.lat, cp.lng).complementary.push(cp);
-  }
-  for (const cm of competitors) {
-    getOrCreateCell(cm.lat, cm.lng).competitors.push(cm);
-  }
-
-  console.log("Âncoras fora do grid:", anchorsNotInGrid);
-  console.log("Células populadas:", gridMap.size);
-
-  // 9. Score por célula
-  const ANCHOR_WEIGHTS: Record<AnchorType, number> = {
-    gas_station: 10,
-    bus_station: 10,
-    airport: 10,
-    shopping_mall: 8,
-  };
-  const COMP_WEIGHTS: Record<ComplementaryType, number> = {
-    pharmacy: 3,
-    bakery: 3,
-    parking: 3,
-    supermarket: 4,
-    restaurant: 2,
-    lodging: 2,
-    university: 2,
-    hospital: 4,
-    convenience: 3,
-    gym: 2,
-  };
-
-  const NEIGHBORS: [number, number][] = [
-    [-1, -1], [-1, 0], [-1, 1],
-    [0, -1], [0, 1],
-    [1, -1], [1, 0], [1, 1],
-  ];
-
-  for (const cell of gridMap.values()) {
-    let score = 0;
-
-    for (const t of ANCHOR_TYPES) {
-      score += cell.anchors.filter((a) => a.placeType === t).length * ANCHOR_WEIGHTS[t];
-    }
-    for (const t of COMPLEMENTARY_TYPES) {
-      score += cell.complementary.filter((a) => a.placeType === t).length * COMP_WEIGHTS[t];
-    }
-
-    const totalAnchors = cell.anchors.length;
-    const totalComp = cell.complementary.length;
-    const totalPOIs = totalAnchors + totalComp;
-
-    if (totalAnchors >= 1 && totalComp >= 3) score *= 1.2;
-    if (totalAnchors >= 2) score *= 1.3;
-
-    if (totalAnchors === 0 && totalComp >= 5) score = Math.max(score, 15);
-    if (totalAnchors === 0 && totalComp >= 8) score = Math.max(score, 25);
-    if (totalAnchors === 0 && totalComp >= 12) score = Math.max(score, 35);
-
-    const dcInCell = cell.competitors.filter((cp) => cp.charger_type === "DC").length;
-    if (dcInCell > 4) score *= 0.5;
-
-    // Cancela só células sem âncora E com poucos POIs — âncoras sozinhas continuam pintando.
-    if (totalAnchors === 0 && totalPOIs < 2) score = 0;
-
-    cell.score = Math.round(score);
-  }
-
-  // 9b. Bônus de vizinhança: aplicado depois pra usar scores já calculados
-  for (const cell of gridMap.values()) {
-    for (const [dr, dc] of NEIGHBORS) {
-      const neighborKey = `${cell.row + dr},${cell.col + dc}`;
-      const neighbor = gridMap.get(neighborKey);
-      if (neighbor && neighbor.anchors.length > 0) {
-        cell.score = Math.round(cell.score * 1.1);
-        break;
-      }
-    }
-  }
-
-  // 9c. Garantir que TODA célula com pelo menos 1 âncora tem score > 0
-  for (const cell of gridMap.values()) {
-    if (cell.anchors.length > 0 && cell.score === 0) {
-      cell.score = cell.anchors.length * 10;
-      console.log(
-        "CORRIGIDO: célula com âncora e score 0 → score:",
-        cell.score,
-        "row:",
-        cell.row,
-        "col:",
-        cell.col
-      );
-    }
-  }
-
-  // 9d. Score mínimo OBRIGATÓRIO por presença de POIs
-  for (const cell of gridMap.values()) {
-    if (cell.anchors.length >= 1 && cell.score < 15) {
-      cell.score = 15; // mínimo verde
-    }
-    if (cell.anchors.length >= 2 && cell.score < 30) {
-      cell.score = 30; // mínimo amarelo
-    }
-    if (cell.complementary.length >= 1 && cell.score < 5) {
-      cell.score = 5; // mínimo azul
-    }
-    if (cell.complementary.length >= 3 && cell.score < 10) {
-      cell.score = 10; // mínimo azul-verde
-    }
-  }
-
-  // 9e. Pintar as 8 células vizinhas de cada célula com âncora
-  const anchorCells = Array.from(gridMap.entries()).filter(
-    ([, c]) => c.anchors.length > 0
-  );
-  for (const [, cell] of anchorCells) {
-    for (const [dr, dc] of NEIGHBORS) {
-      const nRow = cell.row + dr;
-      const nCol = cell.col + dc;
-      const neighborKey = `${nRow},${nCol}`;
-      const existing = gridMap.get(neighborKey);
-      if (!existing) {
-        gridMap.set(neighborKey, {
-          row: nRow,
-          col: nCol,
-          centerLat: minLat + (nRow + 0.5) * latStep,
-          centerLng: minLng + (nCol + 0.5) * lngStep,
-          score: 8, // azul claro - proximidade de âncora
-          anchors: [],
-          complementary: [],
-          competitors: [],
-        });
-      } else if (existing.score < 8) {
-        existing.score = 8;
-      }
-    }
-  }
-
-  let cellsWithAnchors = 0;
-  let cellsWithScore = 0;
-  let cellsWithZero = 0;
-  for (const cell of gridMap.values()) {
-    if (cell.anchors.length > 0) cellsWithAnchors++;
-    if (cell.score > 0) cellsWithScore++;
-    else cellsWithZero++;
-  }
-  console.log("Células com âncoras:", cellsWithAnchors);
-  console.log("Células com score > 0:", cellsWithScore);
-  console.log("Células com score = 0:", cellsWithZero);
-
-  const cellScoreFor = (lat: number, lng: number): number => {
-    const { row, col } = cellIndices(lat, lng);
-    return gridMap.get(`${row},${col}`)?.score ?? 0;
-  };
-
-  // 10. Selecionar marcadores
-
-  // Anchors: todos deduplicados (já temos `dedupedAnchors`). Score região = score da célula que cai.
-  const anchorsOut = dedupedAnchors.map((a) => ({
-    name: a.name,
-    lat: a.lat,
-    lng: a.lng,
-    type: a.placeType,
-    typeLabel: ANCHOR_LABELS[a.placeType as AnchorType],
-    address: a.address,
-    cellScore: cellScoreFor(a.lat, a.lng),
-  }));
-
-  // Complementares: top 5 mais próximos (< 500m) de cada âncora, sem repetição.
-  // Garantir mínimo de 50 marcadores (âncoras + complementares); se faltar, completar.
+  // 7. Selecionar marcadores complementares
+  // Top 5 mais próximos (< 500m) de cada âncora, sem repetição.
   const keyOf = (p: POI) => `${p.lat.toFixed(6)}|${p.lng.toFixed(6)}|${p.name}`;
   const selectedKeys = new Set<string>();
   const selectedComp: { cp: POI; nearAnchor: string; nearAnchorDist: number }[] = [];
@@ -927,80 +636,34 @@ export async function POST(req: Request) {
     nearAnchorDist,
   }));
 
-  // 11. Top 10 regiões
-  const flatCells: Cell[] = Array.from(gridMap.values());
-  const topRegions = flatCells
-    .filter((c) => c.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 10)
-    .map((c) => {
-      const anchorsByType: Record<string, number> = {};
-      for (const a of c.anchors) {
-        const lbl = ANCHOR_LABELS[a.placeType as AnchorType];
-        anchorsByType[lbl] = (anchorsByType[lbl] || 0) + 1;
-      }
-      const compByType: Record<string, number> = {};
-      for (const cp of c.complementary) {
-        const lbl = COMPLEMENTARY_LABELS[cp.placeType as ComplementaryType];
-        compByType[lbl] = (compByType[lbl] || 0) + 1;
-      }
-      return {
-        lat: c.centerLat,
-        lng: c.centerLng,
-        score: c.score,
-        region: regionLabel(c.centerLat, c.centerLng, center.lat, center.lng),
-        anchors: c.anchors.map((a) => a.name),
-        anchorsByType,
-        complementary: c.complementary.map((cp) => cp.name),
-        complementaryByType: compByType,
-        competitorsDC: c.competitors.filter((cp) => cp.charger_type === "DC").length,
-        competitorsAC: c.competitors.filter((cp) => cp.charger_type === "AC").length,
-      };
-    });
-
-  // 12. Grid output (com contagens pra popup do quadrado)
-  const gridOut = flatCells
-    .filter((c) => c.score >= 3)
-    .map((c) => ({
-      lat: c.centerLat,
-      lng: c.centerLng,
-      score: c.score,
-      anchorsCount: c.anchors.length,
-      compCount: c.complementary.length,
-      competitorsCount: c.competitors.length,
-      anchorNames: c.anchors.map((a) => a.name).slice(0, 3),
-    }));
-
-  const maxScore = gridOut.reduce((m, c) => Math.max(m, c.score), 0);
-
-  console.log("=== GRID FINAL ===");
-  console.log("Células pintadas:", gridOut.length);
-  console.log(
-    "Células com âncora:",
-    Array.from(gridMap.values()).filter((c) => c.anchors.length > 0).length
-  );
-  console.log(
-    "Células vizinhas de âncora criadas:",
-    gridOut.filter((c) => c.anchorsCount === 0 && c.score > 0).length
-  );
-  console.log("Max score:", maxScore);
+  // 8. Anchors: contar complementares próximos (< 300m) pra escalar raio do círculo
+  const anchorsOut = dedupedAnchors.map((a) => {
+    const nearbyCompCount = dedupedComplementary.reduce((count, cp) => {
+      const d = haversineMeters(a.lat, a.lng, cp.lat, cp.lng);
+      return count + (d < 300 ? 1 : 0);
+    }, 0);
+    return {
+      name: a.name,
+      lat: a.lat,
+      lng: a.lng,
+      type: a.placeType,
+      typeLabel: ANCHOR_LABELS[a.placeType as AnchorType],
+      address: a.address,
+      nearbyCompCount,
+    };
+  });
 
   const payload = {
     city,
     state,
     center,
-    gridStep: { lat: latStep, lng: lngStep },
-    gridConfig: { latStep, lngStep },
-    grid: gridOut,
     anchors: anchorsOut,
     complementary: complementaryOut,
     competitors,
     cityData: {
       population: ibge.population,
       gdpPerCapita: ibge.gdpPerCapita,
-      // Total inclui HEV/MHEV — mantido pra compatibilidade
       evs: evData.totalEVs,
-      // Mercado real de eletropostos = BEV + PHEV
       totalEVs: evData.totalEVs,
       bev: evData.bev,
       phev: evData.phev,
@@ -1021,16 +684,13 @@ export async function POST(req: Request) {
     },
     stats: {
       totalAnchors: dedupedAnchors.length,
-      totalComplementary: dedupedComplementary.length,
+      totalComplementary: complementaryOut.length,
       totalCompetitors: competitors.length,
-      totalCells: flatCells.filter((c) => c.score > 0).length,
-      maxScore,
       googleQueries,
     },
-    topRegions,
   };
 
-  // 13. Salva cache (apaga entradas anteriores da mesma cidade/estado primeiro)
+  // 9. Salva cache (apaga entradas anteriores da mesma cidade/estado primeiro)
   try {
     const {
       data: { user },
@@ -1060,7 +720,7 @@ export async function POST(req: Request) {
     console.error("heatmap-v2 cache save erro:", err);
   }
 
-  // 14. Log usage
+  // 10. Log usage
   await logUsage({
     module: "heatmap",
     city: `${city}/${state}`,

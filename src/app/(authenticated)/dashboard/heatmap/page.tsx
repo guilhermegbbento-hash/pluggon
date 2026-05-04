@@ -9,16 +9,6 @@ const ADMIN_EMAILS = ['guilhermegbbento@gmail.com', 'marco@bleveducacao.com.br']
 
 // ---------- Types ----------
 
-interface GridCell {
-  lat: number;
-  lng: number;
-  score: number;
-  anchorsCount?: number;
-  compCount?: number;
-  competitorsCount?: number;
-  anchorNames?: string[];
-}
-
 interface Anchor {
   name: string;
   lat: number;
@@ -26,7 +16,7 @@ interface Anchor {
   type: string;
   typeLabel: string;
   address: string;
-  cellScore: number;
+  nearbyCompCount?: number;
 }
 
 interface Complementary {
@@ -71,26 +61,10 @@ interface CityData {
   hasAbve?: boolean;
 }
 
-interface TopRegion {
-  lat: number;
-  lng: number;
-  score: number;
-  region: string;
-  anchors: string[];
-  anchorsByType: Record<string, number>;
-  complementary: string[];
-  complementaryByType: Record<string, number>;
-  competitorsDC: number;
-  competitorsAC: number;
-}
-
 interface HeatmapV2Result {
   city: string;
   state: string;
   center: { lat: number; lng: number };
-  gridStep?: { lat: number; lng: number };
-  gridConfig?: { latStep: number; lngStep: number };
-  grid: GridCell[];
   anchors: Anchor[];
   complementary: Complementary[];
   competitors: Competitor[];
@@ -99,11 +73,8 @@ interface HeatmapV2Result {
     totalAnchors: number;
     totalComplementary: number;
     totalCompetitors: number;
-    totalCells: number;
-    maxScore: number;
     googleQueries: number;
   };
-  topRegions: TopRegion[];
   fromCache?: boolean;
 }
 
@@ -279,8 +250,7 @@ export default function HeatmapPage() {
   .legend-help:hover { background: #C9A84C; color: #0D1117; }
   .legend-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
   .legend-dot { width: 10px; height: 10px; border-radius: 50%; border: 2px solid #0D1117; }
-  .gradient-bar { width: 160px; height: 8px; border-radius: 2px; background: linear-gradient(90deg,#0066FF,#00CC00,#FFFF00,#FF8800,#FF0000); }
-  .gradient-labels { display: flex; justify-content: space-between; font-size: 9px; color: #8B949E; margin-top: 2px; }
+  .legend-zone { width: 12px; height: 12px; border-radius: 50%; border: none; }
   .help-overlay { position: absolute; inset: 0; z-index: 999; display: none; }
   .help-modal { position: absolute; bottom: 12px; right: 12px; max-width: 350px; background: #161B22; border: 1px solid #C9A84C; border-radius: 8px; padding: 16px; color: #fff; font-size: 12px; line-height: 1.5; z-index: 1000; display: none; box-shadow: 0 4px 16px rgba(0,0,0,0.6); }
   .help-modal.open, .help-overlay.open { display: block; }
@@ -309,12 +279,12 @@ export default function HeatmapPage() {
         <span>Legenda</span>
         <button type="button" class="legend-help" id="helpBtn" aria-label="Ajuda">?</button>
       </div>
-      <div class="gradient-bar"></div>
-      <div class="gradient-labels"><span>M&iacute;nima</span><span>Melhor regi&atilde;o</span></div>
-      <div style="margin-top:8px;">
+      <div>
         <div class="legend-row"><span class="legend-dot" style="background:#C9A84C;box-shadow:0 0 4px #C9A84C;"></span> Ponto &Acirc;ncora</div>
         <div class="legend-row"><span class="legend-dot" style="background:#fff;width:6px;height:6px;border:1px solid #0D1117;"></span> Ponto Potencial</div>
         <div class="legend-row"><span class="legend-dot" style="background:#F44336;"></span> Concorrente existente</div>
+        <div class="legend-row" style="margin-top:8px;"><span class="legend-zone" style="background:#C9A84C;opacity:0.45;"></span> Zona de influ&ecirc;ncia (&acirc;ncora)</div>
+        <div class="legend-row"><span class="legend-zone" style="background:#FF4444;opacity:0.4;"></span> Zona do concorrente</div>
       </div>
     </div>
     <div class="help-overlay" id="helpOverlay"></div>
@@ -323,6 +293,9 @@ export default function HeatmapPage() {
         <span class="title">Sobre a legenda</span>
         <button type="button" class="help-close" id="helpClose" aria-label="Fechar">&times;</button>
       </div>
+      <p><strong style="color:#C9A84C;">C&iacute;rculo dourado:</strong> Zona de influ&ecirc;ncia do ponto &acirc;ncora.</p>
+      <p><strong>Sobreposi&ccedil;&atilde;o:</strong> Onde dois ou mais c&iacute;rculos se sobrep&otilde;em, a cor fica mais intensa &mdash; regi&otilde;es com mais &acirc;ncoras pr&oacute;ximas t&ecirc;m maior potencial.</p>
+      <p><strong style="color:#FF4444;">C&iacute;rculo vermelho:</strong> Zona de atua&ccedil;&atilde;o de um concorrente existente.</p>
       <p><strong style="color:#C9A84C;">Ponto &Acirc;ncora:</strong> Ponto de grande potencial para instala&ccedil;&atilde;o de eletroposto.</p>
       <p><strong>Ponto Potencial:</strong> Ponto com potencial de instala&ccedil;&atilde;o, pr&oacute;ximo a um ponto &acirc;ncora.</p>
       <p><strong style="color:#F44336;">Concorrente:</strong> Carregador existente.</p>
@@ -354,51 +327,36 @@ export default function HeatmapPage() {
   <div>Gerado em ${dateStr}</div>
 </div>
 <script>
-const grid = ${JSON.stringify(result.grid)};
-const gridStep = ${JSON.stringify(result.gridStep ?? { lat: 0.0045, lng: 0.0045 / Math.cos((result.center.lat * Math.PI) / 180) })};
 const anchors = ${JSON.stringify(result.anchors)};
 const complementary = ${JSON.stringify(result.complementary)};
 const competitors = ${JSON.stringify(result.competitors)};
 const center = ${JSON.stringify(result.center)};
-const maxScore = ${result.stats.maxScore};
 const ANCHOR_EMOJI = { gas_station: '⛽', bus_station: '🚌', airport: '✈️', shopping_mall: '🏬' };
 
 const map = L.map('map').setView([center.lat, center.lng], 12);
 L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; CARTO', maxZoom: 19 }).addTo(map);
 
-function getGridColor(n) {
-  if (n >= 0.8) return '#FF0000';
-  if (n >= 0.65) return '#FF4400';
-  if (n >= 0.5) return '#FF8800';
-  if (n >= 0.4) return '#FFBB00';
-  if (n >= 0.3) return '#FFFF00';
-  if (n >= 0.2) return '#88FF00';
-  if (n >= 0.1) return '#00CC00';
-  return '#0066FF';
-}
-
 const escapeHtml = (s) => (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
-if (grid.length && maxScore > 0) {
-  const latStep = gridStep.lat;
-  const lngStep = gridStep.lng;
-  grid.forEach(cell => {
-    const sw = [cell.lat - latStep/2, cell.lng - lngStep/2];
-    const ne = [cell.lat + latStep/2, cell.lng + lngStep/2];
-    const aCount = cell.anchorsCount || 0;
-    const cCount = cell.compCount || 0;
-    const xCount = cell.competitorsCount || 0;
-    L.rectangle([sw, ne], {
-      color: 'transparent',
-      fillColor: getGridColor(cell.score / maxScore),
-      fillOpacity: 0.35,
-      weight: 0
-    })
-    .bindPopup('<div style="font-weight:700;font-size:13px;margin-bottom:4px;">Regi&atilde;o: ' + cell.score + ' pontos</div>' +
-               '<div style="font-size:11px;color:#C9D1D9;">&Acirc;ncoras: ' + aCount + ' | Potenciais: ' + cCount + ' | Concorrentes: ' + xCount + '</div>')
-    .addTo(map);
-  });
+function innerRadiusFor(n) {
+  if (n >= 7) return 350;
+  if (n >= 4) return 300;
+  if (n >= 1) return 250;
+  return 200;
 }
+
+// Zonas dos concorrentes (vermelho) — desenhadas antes pra ficarem por baixo das zonas das âncoras
+competitors.forEach(c => {
+  L.circle([c.lat, c.lng], { radius: 300, color: 'transparent', fillColor: '#FF4444', fillOpacity: 0.10, weight: 0, interactive: false }).addTo(map);
+});
+
+// Círculos de influência (âncoras): 3 concêntricos, sobreposições somam opacidade
+anchors.forEach(a => {
+  const inner = innerRadiusFor(a.nearbyCompCount || 0);
+  L.circle([a.lat, a.lng], { radius: 500, color: 'transparent', fillColor: '#C9A84C', fillOpacity: 0.06, weight: 0, interactive: false }).addTo(map);
+  L.circle([a.lat, a.lng], { radius: 350, color: 'transparent', fillColor: '#C9A84C', fillOpacity: 0.12, weight: 0, interactive: false }).addTo(map);
+  L.circle([a.lat, a.lng], { radius: inner, color: 'transparent', fillColor: '#C9A84C', fillOpacity: 0.25, weight: 0, interactive: false }).addTo(map);
+});
 
 anchors.forEach(a => {
   const emoji = ANCHOR_EMOJI[a.type] || '📍';
@@ -522,7 +480,7 @@ helpBtn.addEventListener('click', openHelp);
 helpClose.addEventListener('click', closeHelp);
 helpOverlay.addEventListener('click', closeHelp);
 
-const allCoords = [].concat(grid.map(c => [c.lat, c.lng]), anchors.map(a => [a.lat, a.lng]), competitors.map(c => [c.lat, c.lng]));
+const allCoords = [].concat(anchors.map(a => [a.lat, a.lng]), competitors.map(c => [c.lat, c.lng]));
 if (allCoords.length) map.fitBounds(allCoords, { padding: [40,40] });
 <\/script>
 </body>
@@ -792,13 +750,9 @@ if (allCoords.length) map.fitBounds(allCoords, { padding: [40,40] });
         <div className="flex-1 overflow-hidden rounded-xl border border-[#30363D]">
           <HeatmapMapV2
             center={result.center}
-            grid={result.grid}
-            gridStep={result.gridStep}
-            gridConfig={result.gridConfig}
             anchors={result.anchors}
             complementary={result.complementary}
             competitors={result.competitors}
-            maxScore={stats.maxScore}
             flyTo={flyTo}
           />
         </div>
