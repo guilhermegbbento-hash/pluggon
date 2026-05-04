@@ -260,6 +260,24 @@ export default function HeatmapMapV2({
     }
     const group = L.layerGroup();
 
+    const dcByNameKeywords = [
+      "rápido",
+      "rapido",
+      "fast",
+      "supercharger",
+      "ultra",
+      "ccs",
+      "chademo",
+      "shell recharge",
+      "zletric",
+      "ezvolt",
+      "tupinamba",
+      "tupinambá",
+      "voltbras",
+      "neocharge",
+    ];
+    const dcByNamePower = /\b(50|60|80|100|120|150|180|200|240|300|350)\s*kw\b/i;
+
     competitors.forEach((cm) => {
       const icon = L.divIcon({
         html: `<div style="width:12px;height:12px;border-radius:50%;background:#F44336;border:2px solid #0D1117;box-shadow:0 0 6px #F4433680;"></div>`,
@@ -268,12 +286,27 @@ export default function HeatmapMapV2({
         iconAnchor: [6, 6],
       });
       const marker = L.marker([cm.lat, cm.lng], { icon, zIndexOffset: 800 });
+
+      // Quando o backend não classifica o tipo (Google sem powerKW),
+      // tenta inferir DC pelo nome. Caso contrário, fica "Tipo não confirmado".
+      let displayType: "DC" | "AC" | "unknown" = cm.charger_type;
+      if (displayType === "unknown") {
+        const lower = (cm.name || "").toLowerCase();
+        if (
+          dcByNameKeywords.some((k) => lower.includes(k)) ||
+          dcByNamePower.test(cm.name || "") ||
+          / dc(\b|[\s\-/(])/i.test(` ${cm.name || ""}`)
+        ) {
+          displayType = "DC";
+        }
+      }
+
       const typeBadge =
-        cm.charger_type === "DC"
+        displayType === "DC"
           ? `<span style="background:#FF980030;color:#FF9800;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;">DC</span>`
-          : cm.charger_type === "AC"
+          : displayType === "AC"
             ? `<span style="background:#42A5F530;color:#42A5F5;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;">AC</span>`
-            : `<span style="background:#21262D;color:#8B949E;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;">?</span>`;
+            : `<span style="background:#21262D;color:#8B949E;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;">Tipo não confirmado</span>`;
       marker.bindPopup(
         `<div style="font-family:system-ui;min-width:220px;">
           <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;">

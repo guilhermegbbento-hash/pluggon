@@ -155,7 +155,9 @@ export function calculateScore(input: ScoreInput): ScoreResult {
   };
 
   // ---------- Cálculos auxiliares ----------
-  const dcCity = Math.max(input.abveDC || 0, input.dcInCity || 0);
+  // ABVE = quantidade oficial. Quando ABVE = 0 (cidade pequena fora da base),
+  // cai pro Google/banco como fallback.
+  const dcCity = input.abveDC > 0 ? input.abveDC : input.dcInCity || 0;
   const evsCityFromAbve = (input.abveEVs ?? 0) > 0;
   const evsCity =
     input.abveEVs ||
@@ -568,7 +570,7 @@ export function calculateScore(input: ScoreInput): ScoreResult {
     "Concorrência",
     v22,
     2,
-    `${dcCity} carregadores rápidos na cidade`,
+    `${dcCity} carregadores DC na cidade`,
     input.abveDC ? "ABVE" : "Cálculo"
   );
 

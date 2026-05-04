@@ -52,6 +52,13 @@ interface CityData {
   totalChargers: number;
   ratioEVperDC: number;
   source?: string;
+  abveDC?: number;
+  abveAC?: number;
+  abveTotal?: number;
+  googleDC?: number;
+  googleAC?: number;
+  googleTotal?: number;
+  hasAbve?: boolean;
 }
 
 interface TopRegion {
@@ -622,13 +629,21 @@ if (allCoords.length) map.fitBounds(allCoords, { padding: [40,40] });
         </div>
       </div>
 
-      {/* City data cards */}
-      <div className="mt-4 grid grid-cols-5 gap-2">
+      {/* City data cards — ABVE como fonte de quantidade, Google como fallback */}
+      <div
+        className={`mt-4 grid gap-2 ${
+          (cityData.abveAC ?? 0) > 0 ? "grid-cols-7" : "grid-cols-6"
+        }`}
+      >
         {[
           { label: "População", value: formatNumber(cityData.population), color: "text-white", available: cityData.population !== null },
           { label: "PIB per capita", value: formatCurrency(cityData.gdpPerCapita), color: "text-white", available: cityData.gdpPerCapita !== null },
           { label: "EVs na cidade", value: formatNumber(cityData.evs), color: "text-[#66BB6A]", available: cityData.evs > 0 },
           { label: "Carregadores DC", value: formatNumber(cityData.dcChargers), color: "text-[#FF8800]", available: cityData.dcChargers > 0 },
+          ...(((cityData.abveAC ?? 0) > 0)
+            ? [{ label: "Carregadores AC", value: formatNumber(cityData.abveAC ?? 0), color: "text-[#42A5F5]", available: true }]
+            : []),
+          { label: "Total Carregadores", value: formatNumber(cityData.totalChargers), color: "text-white", available: cityData.totalChargers > 0 },
           { label: "EVs / DC", value: formatNumber(cityData.ratioEVperDC), color: "text-[#C9A84C]", available: cityData.ratioEVperDC > 0 },
         ].map((s) => (
           <div

@@ -352,7 +352,21 @@ function classifyChargerType(c: CompetitorStation): "DC" | "AC" | "unknown" {
   if (c.powerKW > 0 && c.powerKW < 40) return "AC";
   // classify by name as fallback
   const nameLower = (c.name || "").toLowerCase();
+  const dcByPower = /\b(50|60|80|100|120|150|180|200|240|300|350)\s*kw\b/i.test(
+    c.name || ""
+  );
+  if (dcByPower) return "DC";
   const dcKeywords = [
+    "rápido",
+    "rapido",
+    "fast",
+    "supercharger",
+    "ultra",
+    "ccs",
+    "chademo",
+    " dc ",
+    "(dc)",
+    " dc-",
     "shell recharge",
     "zletric",
     "ezvolt",
@@ -378,7 +392,9 @@ function classifyChargerType(c: CompetitorStation): "DC" | "AC" | "unknown" {
     "pátio",
     "mall",
   ];
-  if (dcKeywords.some((k) => nameLower.includes(k))) return "DC";
+  // Match " dc " com espaços simulados
+  const padded = ` ${nameLower} `;
+  if (dcKeywords.some((k) => padded.includes(k))) return "DC";
   if (acKeywords.some((k) => nameLower.includes(k))) return "AC";
   return "unknown";
 }
@@ -568,25 +584,47 @@ export async function POST(req: Request) {
   // 5. IBGE
   const ibge = await fetchIBGECityData(city, state);
 
-  // 6. ABVE (com fallback de estimativa por população × PIB quando cidade não está na base)
+  // 6. ABVE (quantidade oficial) + Google (localização)
   const abveData = getABVEData(city, state);
-  const evsCity = abveData?.evsSold ?? 0;
-  const dcCity = abveData?.dc ?? 0;
-  const totalChargers = abveData?.total ?? 0;
+  const abveDC = abveData?.dc ?? 0;
+  const abveAC = abveData?.ac ?? 0;
+  const abveTotal = abveData?.total ?? 0;
+  const evsFromAbve = abveData?.evsSold ?? 0;
+
+  // Quantidade do Google (localização confirmada no banco)
+  const googleDC = competitors.filter((c) => c.charger_type === "DC").length;
+  const googleAC = competitors.filter((c) => c.charger_type === "AC").length;
+  const googleTotal = competitors.length;
+
+  // Quantidade exibida nos cards: ABVE manda, com fallback Google quando ABVE=0
+  const dcCity = abveDC > 0 ? abveDC : googleDC;
+  const totalChargers = abveTotal > 0 ? abveTotal : googleTotal;
 
   const population = ibge.population ?? 0;
   const gdpPerCapita = ibge.gdpPerCapita ?? 0;
   const evsEstimate =
-    evsCity ||
+    evsFromAbve ||
     Math.round(
       population *
         (gdpPerCapita > 50000 ? 0.006 : gdpPerCapita > 30000 ? 0.004 : 0.002)
     );
-  const ratioEVperDC = dcCity > 0 ? Math.round(evsEstimate / dcCity) : 0;
+  // Ratio sempre baseado em abveDC (não Google)
+  const ratioEVperDC = abveDC > 0 ? Math.round(evsEstimate / abveDC) : 0;
   const source = abveData ? "ABVE fev/2026" : "Estimativa";
 
-  console.log("=== ABVE DATA ===", city, state, abveData);
-  console.log("EVs:", evsEstimate, "DC:", dcCity, "Fonte:", source);
+  console.log("=== CARREGADORES ===");
+  console.log("ABVE:", abveDC, "DC,", abveAC, "AC,", abveTotal, "total");
+  console.log(
+    "Google/Banco:",
+    googleDC,
+    "DC classificados,",
+    googleTotal,
+    "total localizados"
+  );
+  console.log("Usando ABVE pra contagem, Google pra localização");
+  if (!abveData) {
+    console.log("Cidade não encontrada na ABVE - usando apenas Google Places");
+  }
 
   // 7. Grid 300x300m
   const allPOIs = [...dedupedAnchors, ...dedupedComplementary];
@@ -848,6 +886,13 @@ export async function POST(req: Request) {
       totalChargers,
       ratioEVperDC,
       source,
+      abveDC,
+      abveAC,
+      abveTotal,
+      googleDC,
+      googleAC,
+      googleTotal,
+      hasAbve: !!abveData,
     },
     stats: {
       totalAnchors: dedupedAnchors.length,

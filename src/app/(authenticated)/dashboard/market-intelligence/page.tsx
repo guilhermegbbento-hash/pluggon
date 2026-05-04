@@ -834,12 +834,21 @@ function PanelOverview({ data }: { data: Panel1Data }) {
       value: String(data.abveCity?.dc ?? 0),
       available: !!data.abveCity && data.abveCity.dc > 0,
     },
+    ...((data.abveCity?.ac ?? 0) > 0
+      ? [
+          {
+            label: "Carregadores AC (ABVE)",
+            value: String(data.abveCity?.ac ?? 0),
+            available: true,
+          },
+        ]
+      : []),
     {
       label: "Carregadores Total (ABVE)",
       value: String(data.abveCity?.total ?? 0),
       available: !!data.abveCity && data.abveCity.total > 0,
     },
-    { label: "Carregadores Encontrados (Google)", value: String(data.chargersExisting), available: data.chargersExisting > 0 },
+    { label: "Localizados no mapa (Google)", value: String(data.chargersExisting), available: data.chargersExisting > 0 },
   ];
   if (data.totalCarregadosComBr != null) {
     cards.push({

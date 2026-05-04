@@ -429,7 +429,10 @@ async function handleFinalMode(body: Record<string, unknown>) {
 
   const scoreResult = calculateScore(scoreInput);
 
-  const dcCityForPrompt = Math.max(collected.abveDC || 0, collected.dcInCity || 0);
+  const dcCityForPrompt =
+    (collected.abveDC || 0) > 0
+      ? collected.abveDC
+      : collected.dcInCity || 0;
   const evsCityForPrompt =
     collected.abveEVs ||
     Math.round(
@@ -847,12 +850,29 @@ export async function POST(request: Request) {
       .filter((c) => c.charger_type === "DC")
       .map(formatChargerLabel);
 
-    console.log("=== EV_CHARGERS DEBUG ===");
+    console.log("=== CARREGADORES ===");
     console.log(
-      `Total carregadores no banco para ${geo.city}:`,
-      chargersNear.totalInCity
+      "ABVE:",
+      abve?.dc ?? 0,
+      "DC,",
+      abve?.ac ?? 0,
+      "AC,",
+      abve?.total ?? 0,
+      "total"
     );
-    console.log("DC no banco:", chargersNear.dcInCity);
+    console.log(
+      "Google/Banco:",
+      chargersNear.dcInCity,
+      "DC classificados,",
+      chargersNear.totalInCity,
+      "total localizados"
+    );
+    console.log("Usando ABVE pra contagem, Google pra localização");
+    if (!abve) {
+      console.log(
+        "Cidade não encontrada na ABVE - usando apenas Google Places"
+      );
+    }
 
     console.log("=== CONCORRENTES POR RAIO ===");
     console.log("DC 200m:", chargersNear.dcIn200m, dcNamesIn200m);
@@ -1033,10 +1053,9 @@ export async function POST(request: Request) {
     const scoreResult = calculateScore(scoreInput);
 
     // 9. Claude (1x, max 1500 tokens) — apenas pontos fortes/atenção/recomendação
-    const dcCityForPrompt = Math.max(
-      abve?.dc ?? 0,
-      chargersNear.dcInCity || 0
-    );
+    // ABVE manda; Google só preenche cidades fora da base ABVE.
+    const dcCityForPrompt =
+      (abve?.dc ?? 0) > 0 ? abve!.dc : chargersNear.dcInCity || 0;
     const evsCityForPrompt =
       abve?.evsSold ??
       Math.round(

@@ -616,18 +616,43 @@ export async function POST(request: Request) {
         }
 
         const chargerInfo = classifyCompetitors(allCompetitors);
-        // Só DC conta como concorrência real — AC lento de shopping não compete com DC 80kW
-        const realDcCount = chargerInfo.realCompetition;
-        const evChargerRatio = realDcCount > 0
-          ? (fleet.evs / realDcCount).toFixed(1)
+        // Quantidade oficial = ABVE; Google só preenche cidades fora da base.
+        const dcForMath = abveDc > 0 ? abveDc : chargerInfo.realCompetition;
+        const totalForMath = abveTotalChargers > 0 ? abveTotalChargers : chargerInfo.total;
+        const evChargerRatio = dcForMath > 0
+          ? (fleet.evs / dcForMath).toFixed(1)
           : "∞ (sem DC)";
-        const marketPhase = realDcCount === 0
+        const marketPhase = dcForMath === 0
           ? "Início"
-          : fleet.evs / realDcCount > 70
+          : fleet.evs / dcForMath > 70
             ? "Início"
-            : fleet.evs / realDcCount > 30
+            : fleet.evs / dcForMath > 30
               ? "Crescimento"
               : "Maduro";
+
+        console.log("=== CARREGADORES ===");
+        console.log(
+          "ABVE:",
+          abveDc,
+          "DC,",
+          abveAc,
+          "AC,",
+          abveTotalChargers,
+          "total"
+        );
+        console.log(
+          "Google/Banco:",
+          chargerInfo.dc,
+          "DC classificados,",
+          chargerInfo.total,
+          "total localizados"
+        );
+        console.log("Usando ABVE pra contagem, Google pra localização");
+        if (!abveCity) {
+          console.log(
+            "Cidade não encontrada na ABVE - usando apenas Google Places"
+          );
+        }
 
         // Update panel 1 with charger data
         send({
@@ -769,9 +794,9 @@ export async function POST(request: Request) {
           },
         });
 
-        // Step 7: Projections
+        // Step 7: Projections — base oficial = ABVE total da cidade
         send({ type: "progress", step: 7, total: 8, label: "Calculando projeções..." });
-        const projections = calculateProjections(fleet.evs, chargerInfo.total);
+        const projections = calculateProjections(fleet.evs, totalForMath);
 
         send({
           type: "panel",
@@ -780,7 +805,7 @@ export async function POST(request: Request) {
           data: {
             projections,
             currentEVs: fleet.evs,
-            currentChargers: chargerInfo.total,
+            currentChargers: totalForMath,
           },
         });
 
@@ -794,7 +819,7 @@ export async function POST(request: Request) {
           population,
           gdpPerCapita,
           fleet.evs,
-          realDcCount,
+          dcForMath,
           opportunityCells,
           coverageGrid.length,
           premiumWithoutCharger
@@ -846,7 +871,7 @@ export async function POST(request: Request) {
           population,
           gdpPerCapita,
           evs: fleet.evs,
-          totalChargers: chargerInfo.total,
+          totalChargers: totalForMath,
           ratio: evChargerRatio,
           marketPhase,
           opportunityCells,
