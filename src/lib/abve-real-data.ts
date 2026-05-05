@@ -194,52 +194,236 @@ export interface CityEVData {
   bevPlusPHEV: number;    // BEV + PHEV = mercado real de eletropostos
   source: string;         // Origem do dado
   ratioEVperDC: number;   // BEV+PHEV por carregador DC (ideal IEA/AFIR: 10)
-  dcChargers: number;     // DC ABVE (0 se cidade não está na base)
+  dcChargers: number;     // DC final (manual > cache > ABVE > 0)
+  acChargers: number;     // AC final (manual > cache > ABVE > 0)
+  totalChargers: number;  // AC + DC final
+  evsSourceTag: 'manual' | 'cache' | 'abve' | 'estimate';
+  chargersSource: string; // Origem dos carregadores
+  chargersSourceTag: 'manual' | 'cache' | 'abve' | 'none';
+  cacheUpdatedAt?: string | null;
 }
 
-export function getCityEVData(
-  city: string,
-  state: string,
-  population: number,
-  gdpPerCapita: number
-): CityEVData {
-  const abve = getABVEData(city, state);
+export interface ManualCityEVInput {
+  bev?: number | null;
+  phev?: number | null;
+  chargersAC?: number | null;
+  chargersDC?: number | null;
+}
 
-  if (abve && abve.evsSold) {
-    const bev = abve.bev ?? Math.round(abve.evsSold * ABVE_BEV_RATIO);
-    const phev = abve.phev ?? Math.round(abve.evsSold * ABVE_PHEV_RATIO);
-    const bevPlusPHEV = bev + phev;
-    return {
-      totalEVs: abve.evsSold,
-      bev,
-      phev,
-      bevPlusPHEV,
-      source: 'ABVE fev/2026',
-      ratioEVperDC: abve.dc > 0 ? Math.round(bevPlusPHEV / abve.dc) : 0,
-      dcChargers: abve.dc,
+interface CacheRow {
+  bev: number | null;
+  phev: number | null;
+  chargers_ac: number | null;
+  chargers_dc: number | null;
+  updated_at: string | null;
+}
+
+// Tipo mínimo do client Supabase usado aqui — evita import circular do supabase-js.
+// Na prática recebemos o client real e cast por castle dentro das chamadas.
+type SupabaseLike = {
+  from: (table: string) => {
+    select: (cols: string) => {
+      eq: (col: string, val: string) => {
+        eq: (col: string, val: string) => {
+          maybeSingle: () => Promise<{ data: CacheRow | null; error: unknown }>;
+        };
+      };
     };
-  }
+    upsert: (
+      v: Record<string, unknown>,
+      opts?: { onConflict?: string }
+    ) => Promise<{ error: unknown }>;
+  };
+};
 
-  // Estimativa pra cidades sem dados ABVE (penetração total = BEV+PHEV+HEV)
+function estimateFromDemo(population: number, gdpPerCapita: number) {
   const penetration =
     gdpPerCapita > 60000 ? 0.006 :
     gdpPerCapita > 40000 ? 0.004 :
     gdpPerCapita > 25000 ? 0.002 : 0.001;
-  const estimated = Math.round(population * penetration);
-  const bev = Math.round(estimated * ABVE_BEV_RATIO);
-  const phev = Math.round(estimated * ABVE_PHEV_RATIO);
+  const total = Math.round(population * penetration);
+  const bev = Math.round(total * ABVE_BEV_RATIO);
+  const phev = Math.round(total * ABVE_PHEV_RATIO);
+  return { total, bev, phev };
+}
+
+// Versão síncrona (mantida por compatibilidade): manual > ABVE > estimativa.
+// Não consulta o cache do Supabase — para isso use getCityEVDataAsync.
+export function getCityEVData(
+  city: string,
+  state: string,
+  population: number,
+  gdpPerCapita: number,
+  manualData?: ManualCityEVInput | null
+): CityEVData {
+  return resolveCityEVData(city, state, population, gdpPerCapita, manualData, null);
+}
+
+// Versão async: prioridade manual > cache (Supabase) > ABVE > estimativa.
+export async function getCityEVDataAsync(
+  city: string,
+  state: string,
+  population: number,
+  gdpPerCapita: number,
+  manualData?: ManualCityEVInput | null,
+  supabase?: SupabaseLike | null
+): Promise<CityEVData> {
+  let cache: CacheRow | null = null;
+  if (supabase && city && state) {
+    try {
+      const { data } = await supabase
+        .from('city_ev_data')
+        .select('bev, phev, chargers_ac, chargers_dc, updated_at')
+        .eq('city', city)
+        .eq('state', state)
+        .maybeSingle();
+      cache = data ?? null;
+    } catch (err) {
+      console.warn('city_ev_data cache lookup failed:', err);
+    }
+  }
+  return resolveCityEVData(city, state, population, gdpPerCapita, manualData, cache);
+}
+
+function resolveCityEVData(
+  city: string,
+  state: string,
+  population: number,
+  gdpPerCapita: number,
+  manualData: ManualCityEVInput | null | undefined,
+  cache: CacheRow | null
+): CityEVData {
+  const abve = getABVEData(city, state);
+  const manualBev = manualData?.bev ?? null;
+  const manualPhev = manualData?.phev ?? null;
+  const manualAC = manualData?.chargersAC ?? null;
+  const manualDC = manualData?.chargersDC ?? null;
+  const hasManualEVs = (manualBev !== null && manualBev > 0) || (manualPhev !== null && manualPhev > 0);
+  const hasManualChargers = (manualAC !== null && manualAC > 0) || (manualDC !== null && manualDC > 0);
+
+  // Resolve EVs
+  let bev: number;
+  let phev: number;
+  let evsSourceTag: CityEVData['evsSourceTag'];
+  let evsSourceLabel: string;
+
+  if (hasManualEVs) {
+    bev = manualBev ?? 0;
+    phev = manualPhev ?? 0;
+    evsSourceTag = 'manual';
+    evsSourceLabel = 'Dados informados';
+  } else if (cache && (cache.bev !== null || cache.phev !== null) && ((cache.bev ?? 0) > 0 || (cache.phev ?? 0) > 0)) {
+    bev = cache.bev ?? 0;
+    phev = cache.phev ?? 0;
+    evsSourceTag = 'cache';
+    evsSourceLabel = 'Dados salvos';
+  } else if (abve && abve.evsSold) {
+    bev = abve.bev ?? Math.round(abve.evsSold * ABVE_BEV_RATIO);
+    phev = abve.phev ?? Math.round(abve.evsSold * ABVE_PHEV_RATIO);
+    evsSourceTag = 'abve';
+    evsSourceLabel = 'ABVE fev/2026';
+  } else {
+    const est = estimateFromDemo(population, gdpPerCapita);
+    bev = est.bev;
+    phev = est.phev;
+    evsSourceTag = 'estimate';
+    evsSourceLabel = 'Estimativa baseada em população e PIB';
+  }
   const bevPlusPHEV = bev + phev;
-  const dc = abve ? abve.dc : 0;
+  const totalEVs = evsSourceTag === 'abve' && abve?.evsSold ? abve.evsSold : bevPlusPHEV;
+
+  // Resolve chargers (AC/DC)
+  let acChargers: number;
+  let dcChargers: number;
+  let chargersSourceTag: CityEVData['chargersSourceTag'];
+  let chargersSourceLabel: string;
+
+  if (hasManualChargers) {
+    acChargers = manualAC ?? 0;
+    dcChargers = manualDC ?? 0;
+    chargersSourceTag = 'manual';
+    chargersSourceLabel = 'Dados informados';
+  } else if (cache && ((cache.chargers_ac ?? 0) > 0 || (cache.chargers_dc ?? 0) > 0)) {
+    acChargers = cache.chargers_ac ?? 0;
+    dcChargers = cache.chargers_dc ?? 0;
+    chargersSourceTag = 'cache';
+    chargersSourceLabel = 'Dados salvos';
+  } else if (abve && (abve.dc > 0 || abve.ac > 0)) {
+    acChargers = abve.ac;
+    dcChargers = abve.dc;
+    chargersSourceTag = 'abve';
+    chargersSourceLabel = 'ABVE fev/2026';
+  } else {
+    acChargers = 0;
+    dcChargers = 0;
+    chargersSourceTag = 'none';
+    chargersSourceLabel = 'Sem dados';
+  }
+  const totalChargers = acChargers + dcChargers;
 
   return {
-    totalEVs: estimated,
+    totalEVs,
     bev,
     phev,
     bevPlusPHEV,
-    source: 'Estimativa baseada em população e PIB',
-    ratioEVperDC: dc > 0 ? Math.round(bevPlusPHEV / dc) : 0,
-    dcChargers: dc,
+    source: evsSourceLabel,
+    ratioEVperDC: dcChargers > 0 ? Math.round(bevPlusPHEV / dcChargers) : 0,
+    dcChargers,
+    acChargers,
+    totalChargers,
+    evsSourceTag,
+    chargersSource: chargersSourceLabel,
+    chargersSourceTag,
+    cacheUpdatedAt: cache?.updated_at ?? null,
   };
+}
+
+// Persiste manualData no cache city_ev_data se ao menos um campo foi informado.
+// Usa upsert por (city, state).
+export async function upsertCityEVCache(
+  supabase: SupabaseLike,
+  city: string,
+  state: string,
+  manualData: ManualCityEVInput | null | undefined,
+  updatedBy?: string | null
+): Promise<void> {
+  if (!city || !state || !manualData) return;
+  const hasAny =
+    (manualData.bev !== null && manualData.bev !== undefined && manualData.bev > 0) ||
+    (manualData.phev !== null && manualData.phev !== undefined && manualData.phev > 0) ||
+    (manualData.chargersAC !== null && manualData.chargersAC !== undefined && manualData.chargersAC > 0) ||
+    (manualData.chargersDC !== null && manualData.chargersDC !== undefined && manualData.chargersDC > 0);
+  if (!hasAny) return;
+  try {
+    let existing: CacheRow | null = null;
+    try {
+      const { data } = await supabase
+        .from('city_ev_data')
+        .select('bev, phev, chargers_ac, chargers_dc, updated_at')
+        .eq('city', city)
+        .eq('state', state)
+        .maybeSingle();
+      existing = data ?? null;
+    } catch {
+      existing = null;
+    }
+    const row = {
+      city,
+      state,
+      bev: manualData.bev ?? existing?.bev ?? null,
+      phev: manualData.phev ?? existing?.phev ?? null,
+      chargers_ac: manualData.chargersAC ?? existing?.chargers_ac ?? null,
+      chargers_dc: manualData.chargersDC ?? existing?.chargers_dc ?? null,
+      source: 'manual',
+      updated_by: updatedBy || 'unknown',
+      updated_at: new Date().toISOString(),
+    };
+    await supabase
+      .from('city_ev_data')
+      .upsert(row, { onConflict: 'city,state' });
+  } catch (err) {
+    console.warn('upsertCityEVCache failed:', err);
+  }
 }
 
 // Teste de boot — confirma que SJC é encontrada na base

@@ -65,3 +65,23 @@ ALTER TABLE point_pois_cache DISABLE ROW LEVEL SECURITY;
 CREATE INDEX IF NOT EXISTS idx_point_pois_cache_loc ON point_pois_cache (lat, lng);
 CREATE INDEX IF NOT EXISTS idx_point_pois_cache_city ON point_pois_cache (city);
 CREATE INDEX IF NOT EXISTS idx_point_pois_cache_created ON point_pois_cache (created_at);
+
+-- 5. city_ev_data — dados manuais por cidade (frota EV + carregadores AC/DC)
+-- Cache que cresce conforme analistas preenchem, sobrepondo ABVE quando disponível.
+CREATE TABLE IF NOT EXISTS city_ev_data (
+  id              serial PRIMARY KEY,
+  city            text NOT NULL,
+  state           text NOT NULL,
+  bev             integer,
+  phev            integer,
+  total_evs       integer GENERATED ALWAYS AS (COALESCE(bev, 0) + COALESCE(phev, 0)) STORED,
+  chargers_ac     integer,
+  chargers_dc     integer,
+  total_chargers  integer GENERATED ALWAYS AS (COALESCE(chargers_ac, 0) + COALESCE(chargers_dc, 0)) STORED,
+  source          text DEFAULT 'manual',
+  updated_by      text,
+  updated_at      timestamptz DEFAULT now(),
+  UNIQUE(city, state)
+);
+ALTER TABLE city_ev_data DISABLE ROW LEVEL SECURITY;
+CREATE INDEX IF NOT EXISTS idx_city_ev_data_city_state ON city_ev_data (city, state);

@@ -5,6 +5,10 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line,
 } from "recharts";
 import CityStateSelect from "@/components/CityStateSelect";
+import CityEVDataForm, {
+  EMPTY_MANUAL_DATA,
+  type CityEVManualData,
+} from "@/components/CityEVDataForm";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -44,6 +48,9 @@ interface Panel1Data {
     total: number;
     evsSold: number;
     source: string;
+    evsSourceTag?: "manual" | "cache" | "abve" | "estimate";
+    chargersSourceTag?: "manual" | "cache" | "abve" | "none";
+    cacheUpdatedAt?: string | null;
   };
   ratio: string; marketPhase: string;
   cityScore: number | null;
@@ -248,6 +255,7 @@ export default function MarketIntelligencePage() {
   const [loading, setLoading] = useState(false);
   const [progressStep, setProgressStep] = useState(0);
   const [progressLabel, setProgressLabel] = useState("");
+  const [manualData, setManualData] = useState<CityEVManualData>(EMPTY_MANUAL_DATA);
 
   const [panel1, setPanel1] = useState<Panel1Data | null>(null);
   const [panel2, setPanel2] = useState<Panel2Data | null>(null);
@@ -273,7 +281,16 @@ export default function MarketIntelligencePage() {
       const res = await fetch("/api/market-intelligence", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ city: city.trim(), state }),
+        body: JSON.stringify({
+          city: city.trim(),
+          state,
+          manualData: {
+            bev: manualData.bev,
+            phev: manualData.phev,
+            chargersAC: manualData.chargersAC,
+            chargersDC: manualData.chargersDC,
+          },
+        }),
       });
 
       if (!res.ok) throw new Error("Erro na requisição");
@@ -334,7 +351,7 @@ export default function MarketIntelligencePage() {
     } finally {
       setLoading(false);
     }
-  }, [city, state]);
+  }, [city, state, manualData]);
 
   // ===================== EXPORT HTML =====================
 
@@ -745,6 +762,16 @@ ${p8 ? `<!-- PAINEL 8: RELATÓRIO EXECUTIVO -->
           </button>
         </div>
 
+        <div className="mt-4">
+          <CityEVDataForm
+            city={city}
+            state={state}
+            value={manualData}
+            onChange={setManualData}
+            disabled={loading}
+          />
+        </div>
+
         {/* Progress */}
         {loading && (
           <div className="mt-4">
@@ -832,8 +859,22 @@ function PanelOverview({ data }: { data: Panel1Data }) {
     : data.cityScore >= 40 ? "#FFC107"
     : "#F44336";
 
-  const isAbveSource = (data.evsSource ?? "").startsWith("ABVE");
-  const sourceTag = isAbveSource ? "(ABVE)" : "(Estimativa)";
+  const evsTag = data.abveCity?.evsSourceTag;
+  const chargersTag = data.abveCity?.chargersSourceTag;
+  const tagLabel = (t?: string) =>
+    t === "manual"
+      ? "Dados informados"
+      : t === "cache"
+        ? "Dados salvos"
+        : t === "abve"
+          ? "ABVE"
+          : t === "estimate"
+            ? "Estimativa"
+            : t === "none"
+              ? "Sem dados"
+              : "—";
+  const evsSourceTag = `(${tagLabel(evsTag)})`;
+  const chargersSourceTag = `(${tagLabel(chargersTag)})`;
   const bevPlusPHEV = data.bevPlusPHEV ?? 0;
   const bev = data.bev ?? 0;
   const phev = data.phev ?? 0;
@@ -844,41 +885,41 @@ function PanelOverview({ data }: { data: Panel1Data }) {
     { label: "PIB per Capita", value: `R$ ${data.gdpPerCapita.toLocaleString("pt-BR")}`, available: data.gdpPerCapita > 0 },
     { label: "Frota Total", value: data.totalVehicles.toLocaleString("pt-BR"), available: data.totalVehicles > 0 },
     {
-      label: `Veículos Plug-in (BEV+PHEV) ${sourceTag}`,
+      label: `Veículos Plug-in (BEV+PHEV) ${evsSourceTag}`,
       value: bevPlusPHEV.toLocaleString("pt-BR"),
       available: bevPlusPHEV > 0,
     },
     {
-      label: `100% Elétricos (BEV) ${sourceTag}`,
+      label: `100% Elétricos (BEV) ${evsSourceTag}`,
       value: bev.toLocaleString("pt-BR"),
       available: bev > 0,
     },
     {
-      label: `Híbridos Plug-in (PHEV) ${sourceTag}`,
+      label: `Híbridos Plug-in (PHEV) ${evsSourceTag}`,
       value: phev.toLocaleString("pt-BR"),
       available: phev > 0,
     },
     {
-      label: `Total Eletrificados ${sourceTag}`,
+      label: `Total Eletrificados ${evsSourceTag}`,
       value: totalEVs.toLocaleString("pt-BR"),
       available: totalEVs > 0,
     },
     {
-      label: "Carregadores DC (ABVE)",
+      label: `Carregadores DC ${chargersSourceTag}`,
       value: String(data.abveCity?.dc ?? 0),
       available: !!data.abveCity && data.abveCity.dc > 0,
     },
     ...((data.abveCity?.ac ?? 0) > 0
       ? [
           {
-            label: "Carregadores AC (ABVE)",
+            label: `Carregadores AC ${chargersSourceTag}`,
             value: String(data.abveCity?.ac ?? 0),
             available: true,
           },
         ]
       : []),
     {
-      label: "Carregadores Total (ABVE)",
+      label: `Carregadores Total ${chargersSourceTag}`,
       value: String(data.abveCity?.total ?? 0),
       available: !!data.abveCity && data.abveCity.total > 0,
     },
@@ -910,9 +951,12 @@ function PanelOverview({ data }: { data: Panel1Data }) {
           </div>
         ))}
       </div>
-      {data.abveCity && data.abveCity.total > 0 && (
+      {data.abveCity && (data.abveCity.total > 0 || data.abveCity.evsSold > 0) && (
         <p className="text-right text-[10px] italic text-[#8B949E]">
-          Fonte carregadores: {data.abveCity.source}
+          EVs: {data.evsSource ?? tagLabel(evsTag)} · Carregadores: {data.abveCity.source}
+          {data.abveCity.cacheUpdatedAt
+            ? ` · Atualizado em ${new Date(data.abveCity.cacheUpdatedAt).toLocaleDateString("pt-BR")}`
+            : ""}
         </p>
       )}
 

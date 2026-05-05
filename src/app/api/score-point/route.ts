@@ -3,7 +3,12 @@ import { createClient } from "@/lib/supabase/server";
 import { calculateScore } from "@/lib/scoring-engine";
 import type { ScoreInput } from "@/lib/scoring-engine";
 import { logUsage } from "@/lib/usage-logger";
-import { getABVEData, getCityEVData } from "@/lib/abve-real-data";
+import {
+  getABVEData,
+  getCityEVDataAsync,
+  upsertCityEVCache,
+  type ManualCityEVInput,
+} from "@/lib/abve-real-data";
 import {
   populateChargersFromGoogle,
   populateChargersLocal,
@@ -354,6 +359,10 @@ interface CollectedData {
   abveDC: number;
   abveTotal: number;
   abveEVs: number;
+  bev?: number | null;
+  phev?: number | null;
+  chargersAC?: number | null;
+  chargersDC?: number | null;
   dcInCity: number;
   totalInCity: number;
   dcIn200m: number;
@@ -397,12 +406,36 @@ async function handleFinalMode(body: Record<string, unknown>) {
   const state = String(body.state || "");
   const establishment_type = String(body.establishment_type || "outro");
   const establishment_name = String(body.establishment_name || "");
+  // manualData pode vir explícito no body OU embutido em collected (admin edita BEV/PHEV/AC/DC na revisão).
+  const explicitManual = body.manualData as ManualCityEVInput | null | undefined;
+  const manualData: ManualCityEVInput | null =
+    explicitManual ??
+    (collected
+      ? {
+          bev: collected.bev ?? null,
+          phev: collected.phev ?? null,
+          chargersAC: collected.chargersAC ?? null,
+          chargersDC: collected.chargersDC ?? null,
+        }
+      : null);
 
-  const evDataFinal = getCityEVData(
+  // Persiste o que o admin editou (ou os campos manuais originais) no cache.
+  if (manualData) {
+    let userEmail: string | null = null;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      userEmail = user?.email ?? null;
+    } catch {}
+    await upsertCityEVCache(supabase as never, city, state, manualData, userEmail);
+  }
+
+  const evDataFinal = await getCityEVDataAsync(
     city,
     state,
     collected.population || 0,
-    collected.gdpPerCapita || 0
+    collected.gdpPerCapita || 0,
+    manualData,
+    supabase as never
   );
 
   console.log("=== EV DATA ===", city, state);
@@ -532,6 +565,20 @@ async function handleFinalMode(body: Record<string, unknown>) {
         idhm: null,
       },
     abve_data: (body.abve_data as Record<string, unknown>) || null,
+    city_ev_data: {
+      bev: evDataFinal.bev,
+      phev: evDataFinal.phev,
+      bevPlusPHEV: evDataFinal.bevPlusPHEV,
+      totalEVs: evDataFinal.totalEVs,
+      chargersAC: evDataFinal.acChargers,
+      chargersDC: evDataFinal.dcChargers,
+      totalChargers: evDataFinal.totalChargers,
+      evsSource: evDataFinal.source,
+      evsSourceTag: evDataFinal.evsSourceTag,
+      chargersSource: evDataFinal.chargersSource,
+      chargersSourceTag: evDataFinal.chargersSourceTag,
+      cacheUpdatedAt: evDataFinal.cacheUpdatedAt,
+    },
     charger_summary: {
       total_in_city: collected.totalInCity || 0,
       dc_in_city: collected.dcInCity || 0,
@@ -597,12 +644,14 @@ export async function POST(request: Request) {
       establishment_name,
       lat: providedLat,
       lng: providedLng,
+      manualData,
     } = body as {
       address?: string;
       establishment_type?: string;
       establishment_name?: string;
       lat?: number;
       lng?: number;
+      manualData?: ManualCityEVInput | null;
     };
 
     if (!address && (providedLat == null || providedLng == null)) {
@@ -652,6 +701,16 @@ export async function POST(request: Request) {
     }
 
     const supabase = await createClient();
+
+    // Se admin/usuário forneceu dados manuais, salvar no cache antes de qualquer cálculo.
+    if (manualData) {
+      let userEmail: string | null = null;
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        userEmail = user?.email ?? null;
+      } catch {}
+      await upsertCityEVCache(supabase as never, geo.city, geo.state, manualData, userEmail);
+    }
 
     // 2. Buscar dados ABVE da cidade
     const abve = getABVEData(geo.city, geo.state);
@@ -943,17 +1002,23 @@ export async function POST(request: Request) {
 
     // === MODO COLLECT — admin: retorna dados sem calcular score nem chamar Claude ===
     if (mode === "collect") {
-      const evsCityEstimate =
-        abve?.evsSold ??
-        Math.round(
-          population *
-            (gdpPerCapita > 50_000
-              ? 0.006
-              : gdpPerCapita > 30_000
-              ? 0.004
-              : 0.002)
-        );
-      const abveSource = abve?.evsSold ? "ABVE" : "Estimativa";
+      const evDataCollect = await getCityEVDataAsync(
+        geo.city,
+        geo.state,
+        population,
+        gdpPerCapita,
+        manualData,
+        supabase as never
+      );
+      const evsCityEstimate = evDataCollect.totalEVs || abve?.evsSold || 0;
+      const abveSource =
+        evDataCollect.evsSourceTag === "manual"
+          ? "Dados informados"
+          : evDataCollect.evsSourceTag === "cache"
+            ? "Dados salvos"
+            : evDataCollect.evsSourceTag === "abve"
+              ? "ABVE"
+              : "Estimativa";
 
       // Logar uso parcial (Google Places usado mesmo sem score final)
       await logUsage({
@@ -976,15 +1041,33 @@ export async function POST(request: Request) {
         establishment_name: establishment_name || "",
         ibge_data: ibgeData,
         abve_data: abve,
+        city_ev_data: {
+          bev: evDataCollect.bev,
+          phev: evDataCollect.phev,
+          bevPlusPHEV: evDataCollect.bevPlusPHEV,
+          totalEVs: evDataCollect.totalEVs,
+          chargersAC: evDataCollect.acChargers,
+          chargersDC: evDataCollect.dcChargers,
+          totalChargers: evDataCollect.totalChargers,
+          evsSource: evDataCollect.source,
+          evsSourceTag: evDataCollect.evsSourceTag,
+          chargersSource: evDataCollect.chargersSource,
+          chargersSourceTag: evDataCollect.chargersSourceTag,
+          cacheUpdatedAt: evDataCollect.cacheUpdatedAt,
+        },
         nearby_pois: allPOIs,
         nearby_chargers: nearbyChargersForMap,
         collected: {
           population,
           gdpPerCapita,
-          abveDC: abve?.dc ?? 0,
-          abveTotal: abve?.total ?? 0,
+          abveDC: evDataCollect.dcChargers > 0 ? evDataCollect.dcChargers : (abve?.dc ?? 0),
+          abveTotal: evDataCollect.totalChargers > 0 ? evDataCollect.totalChargers : (abve?.total ?? 0),
           abveEVs: evsCityEstimate,
           abveSource,
+          bev: evDataCollect.bev,
+          phev: evDataCollect.phev,
+          chargersAC: evDataCollect.acChargers,
+          chargersDC: evDataCollect.dcChargers,
           dcInCity: chargersNear.dcInCity,
           totalInCity: chargersNear.totalInCity,
           dcIn200m: chargersNear.dcIn200m,
@@ -1030,19 +1113,26 @@ export async function POST(request: Request) {
     }
 
     // 8. Calcular score
-    const evData = getCityEVData(geo.city, geo.state, population, gdpPerCapita);
+    const evData = await getCityEVDataAsync(
+      geo.city,
+      geo.state,
+      population,
+      gdpPerCapita,
+      manualData,
+      supabase as never
+    );
 
     console.log("=== EV DATA ===", geo.city, geo.state);
     console.log("Total EVs:", evData.totalEVs, "| BEV:", evData.bev, "| PHEV:", evData.phev);
     console.log("BEV+PHEV (carregam):", evData.bevPlusPHEV, "| DC:", evData.dcChargers, "| Ratio:", evData.ratioEVperDC);
-    console.log("Fonte:", evData.source);
+    console.log("Fonte EVs:", evData.source, "| Fonte carregadores:", evData.chargersSource);
 
     const scoreInput: ScoreInput = {
       population,
       gdpPerCapita,
-      abveDC: abve?.dc ?? 0,
-      abveTotal: abve?.total ?? 0,
-      abveEVs: abve?.evsSold ?? 0,
+      abveDC: evData.dcChargers > 0 ? evData.dcChargers : (abve?.dc ?? 0),
+      abveTotal: evData.totalChargers > 0 ? evData.totalChargers : (abve?.total ?? 0),
+      abveEVs: evData.totalEVs || (abve?.evsSold ?? 0),
       bev: evData.bev,
       phev: evData.phev,
       bevPlusPHEV: evData.bevPlusPHEV,
@@ -1162,6 +1252,20 @@ export async function POST(request: Request) {
       nearby_chargers: nearbyChargers,
       ibge_data: ibgeData,
       abve_data: abve,
+      city_ev_data: {
+        bev: evData.bev,
+        phev: evData.phev,
+        bevPlusPHEV: evData.bevPlusPHEV,
+        totalEVs: evData.totalEVs,
+        chargersAC: evData.acChargers,
+        chargersDC: evData.dcChargers,
+        totalChargers: evData.totalChargers,
+        evsSource: evData.source,
+        evsSourceTag: evData.evsSourceTag,
+        chargersSource: evData.chargersSource,
+        chargersSourceTag: evData.chargersSourceTag,
+        cacheUpdatedAt: evData.cacheUpdatedAt,
+      },
       charger_summary: {
         total_in_city: chargersNear.totalInCity,
         dc_in_city: chargersNear.dcInCity,

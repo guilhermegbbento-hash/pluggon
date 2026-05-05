@@ -4,6 +4,10 @@ import { useState, useCallback, useEffect, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { createClient } from "@/lib/supabase/client";
 import CityStateSelect from "@/components/CityStateSelect";
+import CityEVDataForm, {
+  EMPTY_MANUAL_DATA,
+  type CityEVManualData,
+} from "@/components/CityEVDataForm";
 
 const ADMIN_EMAILS = ['guilhermegbbento@gmail.com', 'marco@bleveducacao.com.br'];
 
@@ -52,6 +56,10 @@ interface CityData {
   ratioEVperDC: number;
   source?: string;
   evsSource?: string;
+  evsSourceTag?: "manual" | "cache" | "abve" | "estimate";
+  chargersSource?: string;
+  chargersSourceTag?: "manual" | "cache" | "abve" | "none";
+  cacheUpdatedAt?: string | null;
   abveDC?: number;
   abveAC?: number;
   abveTotal?: number;
@@ -120,6 +128,7 @@ export default function HeatmapPage() {
   const [showComplementary, setShowComplementary] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [forceRefresh, setForceRefresh] = useState(false);
+  const [manualData, setManualData] = useState<CityEVManualData>(EMPTY_MANUAL_DATA);
 
   // Detect admin
   useEffect(() => {
@@ -161,6 +170,12 @@ export default function HeatmapPage() {
           body: JSON.stringify({
             city: city.trim(),
             state: state.trim(),
+            manualData: {
+              bev: manualData.bev,
+              phev: manualData.phev,
+              chargersAC: manualData.chargersAC,
+              chargersDC: manualData.chargersDC,
+            },
             ...(forceRefresh ? { forceRefresh: true } : {}),
           }),
         });
@@ -175,7 +190,7 @@ export default function HeatmapPage() {
         setLoading(false);
       }
     },
-    [city, state, forceRefresh]
+    [city, state, forceRefresh, manualData]
   );
 
   const handleReset = () => {
@@ -184,6 +199,7 @@ export default function HeatmapPage() {
     setCity("");
     setState("");
     setForceRefresh(false);
+    setManualData(EMPTY_MANUAL_DATA);
   };
 
   const exportHTML = useCallback(() => {
@@ -550,6 +566,14 @@ if (allCoords.length) map.fitBounds(allCoords, { padding: [40,40] });
                   setState(s);
                 }}
               />
+
+              <CityEVDataForm
+                city={city}
+                state={state}
+                value={manualData}
+                onChange={setManualData}
+                disabled={loading}
+              />
             </div>
 
             {isAdmin && (
@@ -661,15 +685,39 @@ if (allCoords.length) map.fitBounds(allCoords, { padding: [40,40] });
         </div>
       </div>
 
-      {/* City data cards — ABVE como fonte de quantidade, Google como fallback */}
+      {/* City data cards — manual > cache > ABVE > estimativa */}
       {(() => {
         const bevPlusPHEV = cityData.bevPlusPHEV ?? 0;
         const bev = cityData.bev ?? 0;
         const phev = cityData.phev ?? 0;
         const totalEVs = cityData.totalEVs ?? cityData.evs ?? 0;
         const acChargers = cityData.acChargers ?? cityData.abveAC ?? 0;
-        const isAbveSource = (cityData.evsSource ?? cityData.source ?? "").startsWith("ABVE");
-        const sourceTag = isAbveSource ? "ABVE" : "Estimativa";
+        const evsTag = cityData.evsSourceTag;
+        const chargersTag = cityData.chargersSourceTag;
+        const tagLabel = (t?: string) =>
+          t === "manual"
+            ? "Dados informados"
+            : t === "cache"
+              ? "Dados salvos"
+              : t === "abve"
+                ? "ABVE"
+                : t === "estimate"
+                  ? "Estimativa"
+                  : t === "none"
+                    ? "Sem dados"
+                    : "—";
+        const tagColor = (t?: string) =>
+          t === "manual"
+            ? "text-[#66BB6A]"
+            : t === "cache"
+              ? "text-[#42A5F5]"
+              : t === "abve"
+                ? "text-[#C9A84C]"
+                : t === "estimate"
+                  ? "text-[#FFC107]"
+                  : "text-[#8B949E]";
+        const evsSubtitle = `(${tagLabel(evsTag)})`;
+        const chargersSubtitle = `(${tagLabel(chargersTag)})`;
         const evTooltip = `BEV: ${formatNumber(bev)} | PHEV: ${formatNumber(phev)} | Total eletrificados: ${formatNumber(totalEVs)}`;
         const cards: Array<{
           label: string;
@@ -678,6 +726,7 @@ if (allCoords.length) map.fitBounds(allCoords, { padding: [40,40] });
           available: boolean;
           title?: string;
           subtitle?: string;
+          subtitleColor?: string;
         }> = [
           { label: "População", value: formatNumber(cityData.population), color: "text-white", available: cityData.population !== null },
           { label: "PIB per capita", value: formatCurrency(cityData.gdpPerCapita), color: "text-white", available: cityData.gdpPerCapita !== null },
@@ -687,11 +736,26 @@ if (allCoords.length) map.fitBounds(allCoords, { padding: [40,40] });
             color: "text-[#66BB6A]",
             available: bevPlusPHEV > 0,
             title: evTooltip,
-            subtitle: `(${sourceTag})`,
+            subtitle: evsSubtitle,
+            subtitleColor: tagColor(evsTag),
           },
-          { label: "Carregadores DC", value: formatNumber(cityData.dcChargers), color: "text-[#FF8800]", available: cityData.dcChargers > 0 },
+          {
+            label: "Carregadores DC",
+            value: formatNumber(cityData.dcChargers),
+            color: "text-[#FF8800]",
+            available: cityData.dcChargers > 0,
+            subtitle: chargersSubtitle,
+            subtitleColor: tagColor(chargersTag),
+          },
           ...(acChargers > 0
-            ? [{ label: "Carregadores AC", value: formatNumber(acChargers), color: "text-[#42A5F5]", available: true }]
+            ? [{
+                label: "Carregadores AC",
+                value: formatNumber(acChargers),
+                color: "text-[#42A5F5]",
+                available: true,
+                subtitle: chargersSubtitle,
+                subtitleColor: tagColor(chargersTag),
+              }]
             : []),
           { label: "Total Carregadores", value: formatNumber(cityData.totalChargers), color: "text-white", available: cityData.totalChargers > 0 },
           {
@@ -717,7 +781,7 @@ if (allCoords.length) map.fitBounds(allCoords, { padding: [40,40] });
                     <>
                       <p className={`mt-1 text-lg font-bold ${s.color}`}>{s.value}</p>
                       {s.subtitle && (
-                        <p className="mt-0.5 text-[9px] italic text-[#8B949E]">{s.subtitle}</p>
+                        <p className={`mt-0.5 text-[9px] italic ${s.subtitleColor || "text-[#8B949E]"}`}>{s.subtitle}</p>
                       )}
                     </>
                   ) : (
@@ -726,9 +790,13 @@ if (allCoords.length) map.fitBounds(allCoords, { padding: [40,40] });
                 </div>
               ))}
             </div>
-            {(cityData.evsSource || cityData.source) && (bevPlusPHEV > 0 || cityData.dcChargers > 0) && (
+            {(cityData.evsSource || cityData.chargersSource) && (bevPlusPHEV > 0 || cityData.dcChargers > 0) && (
               <p className="mt-1 text-right text-[10px] italic text-[#8B949E]">
-                Fonte: {cityData.evsSource ?? cityData.source}
+                EVs: {cityData.evsSource ?? cityData.source}
+                {cityData.chargersSource ? ` · Carregadores: ${cityData.chargersSource}` : ""}
+                {cityData.cacheUpdatedAt
+                  ? ` · Atualizado em ${new Date(cityData.cacheUpdatedAt).toLocaleDateString("pt-BR")}`
+                  : ""}
               </p>
             )}
           </>

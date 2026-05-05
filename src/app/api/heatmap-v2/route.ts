@@ -1,7 +1,13 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCachedOrFetch } from "@/lib/competitors";
 import type { CompetitorStation } from "@/lib/competitors";
-import { getABVEData, getCityEVData, ABVE_NATIONAL } from "@/lib/abve-real-data";
+import {
+  getABVEData,
+  getCityEVDataAsync,
+  upsertCityEVCache,
+  ABVE_NATIONAL,
+  type ManualCityEVInput,
+} from "@/lib/abve-real-data";
 import { logUsage } from "@/lib/usage-logger";
 
 export const maxDuration = 300;
@@ -372,7 +378,12 @@ function classifyChargerType(c: CompetitorStation): "DC" | "AC" | "unknown" {
 // ---------- POST ----------
 
 export async function POST(req: Request) {
-  let body: { city?: string; state?: string; forceRefresh?: boolean };
+  let body: {
+    city?: string;
+    state?: string;
+    forceRefresh?: boolean;
+    manualData?: ManualCityEVInput;
+  };
   try {
     body = await req.json();
   } catch {
@@ -381,6 +392,13 @@ export async function POST(req: Request) {
   const city = (body.city || "").trim();
   const state = (body.state || "").trim().toUpperCase();
   const forceRefresh = Boolean(body.forceRefresh);
+  const manualData: ManualCityEVInput | null = body.manualData ?? null;
+  const hasManualInput =
+    !!manualData &&
+    ((manualData.bev ?? 0) > 0 ||
+      (manualData.phev ?? 0) > 0 ||
+      (manualData.chargersAC ?? 0) > 0 ||
+      (manualData.chargersDC ?? 0) > 0);
   if (!city || !state) {
     return Response.json({ error: "city e state são obrigatórios" }, { status: 400 });
   }
@@ -395,8 +413,19 @@ export async function POST(req: Request) {
 
   const supabase = await createClient();
 
-  // 0. Cache (7 dias) — ignorado quando forceRefresh
-  if (!forceRefresh) {
+  // Persistir manualData no cache assim que recebido (antes mesmo de checar cache de análise),
+  // para que análises subsequentes desta cidade já usem o valor informado.
+  if (hasManualInput) {
+    let userEmail: string | null = null;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      userEmail = user?.email ?? null;
+    } catch {}
+    await upsertCityEVCache(supabase as never, city, state, manualData, userEmail);
+  }
+
+  // 0. Cache (7 dias) — ignorado quando forceRefresh ou quando há manualData (analista forneceu dados novos)
+  if (!forceRefresh && !hasManualInput) {
     try {
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
       const { data: cached } = await supabase
@@ -537,7 +566,7 @@ export async function POST(req: Request) {
   // 5. IBGE
   const ibge = await fetchIBGECityData(city, state);
 
-  // 6. ABVE (quantidade oficial) + Google (localização)
+  // 6. Resolução de dados de EV/carregadores (manual > cache > ABVE > estimativa)
   const abveData = getABVEData(city, state);
   const abveDC = abveData?.dc ?? 0;
   const abveAC = abveData?.ac ?? 0;
@@ -547,18 +576,28 @@ export async function POST(req: Request) {
   const googleAC = competitors.filter((c) => c.charger_type === "AC").length;
   const googleTotal = competitors.length;
 
-  const dcCity = abveDC > 0 ? abveDC : googleDC;
-  const totalChargers = abveTotal > 0 ? abveTotal : googleTotal;
-
   const population = ibge.population ?? 0;
   const gdpPerCapita = ibge.gdpPerCapita ?? 0;
 
-  const evData = getCityEVData(city, state, population, gdpPerCapita);
+  const evData = await getCityEVDataAsync(
+    city,
+    state,
+    population,
+    gdpPerCapita,
+    manualData,
+    supabase as never
+  );
+
+  // DC final usa a prioridade manual/cache/ABVE; se nada disso existir, cai pro Google.
+  const dcCity = evData.dcChargers > 0 ? evData.dcChargers : googleDC;
+  const acCity = evData.acChargers > 0 ? evData.acChargers : googleAC;
+  const totalChargers = evData.totalChargers > 0 ? evData.totalChargers : googleTotal;
 
   console.log("=== EV DATA ===", city, state);
   console.log("Total EVs:", evData.totalEVs, "| BEV:", evData.bev, "| PHEV:", evData.phev);
   console.log("BEV+PHEV (carregam):", evData.bevPlusPHEV, "| DC:", evData.dcChargers, "| Ratio:", evData.ratioEVperDC);
-  console.log("Fonte:", evData.source);
+  console.log("Fonte EVs:", evData.source, "(", evData.evsSourceTag, ")");
+  console.log("Fonte carregadores:", evData.chargersSource, "(", evData.chargersSourceTag, ")");
   console.log("ABVE Nacional:", ABVE_NATIONAL.totalBEVPHEV, "veículos plug-in (BEV+PHEV)");
 
   console.log("=== CARREGADORES ===");
@@ -571,7 +610,7 @@ export async function POST(req: Request) {
     "total localizados"
   );
   if (!abveData) {
-    console.log("Cidade não encontrada na ABVE - usando apenas Google Places");
+    console.log("Cidade não encontrada na ABVE - usando manual/cache/Google");
   }
 
   // 7. Selecionar marcadores complementares
@@ -669,11 +708,15 @@ export async function POST(req: Request) {
       phev: evData.phev,
       bevPlusPHEV: evData.bevPlusPHEV,
       dcChargers: dcCity,
-      acChargers: abveAC,
+      acChargers: acCity,
       totalChargers,
       ratioEVperDC: evData.ratioEVperDC,
       evsSource: evData.source,
       source: evData.source,
+      evsSourceTag: evData.evsSourceTag,
+      chargersSource: evData.chargersSource,
+      chargersSourceTag: evData.chargersSourceTag,
+      cacheUpdatedAt: evData.cacheUpdatedAt,
       abveDC,
       abveAC,
       abveTotal,

@@ -6,6 +6,10 @@ import { buildScoreHtml } from "@/lib/score-html-export";
 import { createClient } from "@/lib/supabase/client";
 import { calculateScore, type ScoreInput, type ScoreResult as EngineScoreResult, type CriticalFactor } from "@/lib/scoring-engine";
 import CityStateSelect from "@/components/CityStateSelect";
+import CityEVDataForm, {
+  EMPTY_MANUAL_DATA,
+  type CityEVManualData,
+} from "@/components/CityEVDataForm";
 
 const COST_VIEWER_EMAIL = "guilhermegbbento@gmail.com";
 
@@ -78,6 +82,20 @@ interface ScoreResult {
     total: number;
     evsSold?: number;
   } | null;
+  city_ev_data?: {
+    bev: number;
+    phev: number;
+    bevPlusPHEV: number;
+    totalEVs: number;
+    chargersAC: number;
+    chargersDC: number;
+    totalChargers: number;
+    evsSource: string;
+    evsSourceTag: "manual" | "cache" | "abve" | "estimate";
+    chargersSource: string;
+    chargersSourceTag: "manual" | "cache" | "abve" | "none";
+    cacheUpdatedAt?: string | null;
+  } | null;
   data_sources?: {
     cross_check: Array<{
       source: string;
@@ -99,7 +117,11 @@ interface CollectedData {
   abveDC: number;
   abveTotal: number;
   abveEVs: number;
-  abveSource: "ABVE" | "Estimativa";
+  abveSource: string;
+  bev: number;
+  phev: number;
+  chargersAC: number;
+  chargersDC: number;
   dcInCity: number;
   totalInCity: number;
   dcIn200m: number;
@@ -676,28 +698,77 @@ function ReviewPanel({
       </div>
 
       {/* Card: Frota EV */}
-      <div className={cardClass(anyEditedInCard("abveEVs"))}>
+      <div className={cardClass(anyEditedInCard("abveEVs", "bev", "phev"))}>
         <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-white">
           ⚡ Frota EV
           <span
             className="rounded px-2 py-0.5 text-[10px] font-semibold"
             style={{
               backgroundColor:
-                original.abveSource === "ABVE" ? "#C9A84C22" : "#FFC10722",
-              color: original.abveSource === "ABVE" ? "#C9A84C" : "#FFC107",
+                original.abveSource === "Dados informados"
+                  ? "#66BB6A22"
+                  : original.abveSource === "Dados salvos"
+                    ? "#42A5F522"
+                    : original.abveSource === "ABVE"
+                      ? "#C9A84C22"
+                      : "#FFC10722",
+              color:
+                original.abveSource === "Dados informados"
+                  ? "#66BB6A"
+                  : original.abveSource === "Dados salvos"
+                    ? "#42A5F5"
+                    : original.abveSource === "ABVE"
+                      ? "#C9A84C"
+                      : "#FFC107",
             }}
           >
             Fonte: {original.abveSource}
           </span>
         </h3>
-        <div className="grid gap-4 md:grid-cols-1">
+        <div className="grid gap-4 md:grid-cols-3">
           <EditableNumber
-            label="EVs na cidade"
+            label="EVs na cidade (total)"
             value={editedData.abveEVs}
             original={original.abveEVs}
             onChange={(n) => onUpdateField("abveEVs", n)}
           />
+          <EditableNumber
+            label="BEV (100% Elétricos)"
+            value={editedData.bev}
+            original={original.bev}
+            onChange={(n) => onUpdateField("bev", n)}
+          />
+          <EditableNumber
+            label="PHEV (Híbridos Plug-in)"
+            value={editedData.phev}
+            original={original.phev}
+            onChange={(n) => onUpdateField("phev", n)}
+          />
         </div>
+      </div>
+
+      {/* Card: Carregadores na cidade (manual / cache / ABVE) */}
+      <div className={cardClass(anyEditedInCard("chargersAC", "chargersDC"))}>
+        <h3 className="mb-3 text-sm font-semibold text-white">
+          🔌 Carregadores na Cidade (manual)
+        </h3>
+        <div className="grid gap-4 md:grid-cols-2">
+          <EditableNumber
+            label="Carregadores AC"
+            value={editedData.chargersAC}
+            original={original.chargersAC}
+            onChange={(n) => onUpdateField("chargersAC", n)}
+          />
+          <EditableNumber
+            label="Carregadores DC"
+            value={editedData.chargersDC}
+            original={original.chargersDC}
+            onChange={(n) => onUpdateField("chargersDC", n)}
+          />
+        </div>
+        <p className="mt-2 text-[11px] text-[#8B949E]">
+          Estes campos sobrescrevem ABVE/cache. Deixe igual ao original se não houver dado novo.
+        </p>
       </div>
 
       {/* Card: Concorrentes */}
@@ -1040,6 +1111,11 @@ function ScorePageInner() {
   const [previewScore, setPreviewScore] = useState<EngineScoreResult | null>(null);
   const [generatingFinal, setGeneratingFinal] = useState(false);
 
+  // Dados manuais de frota/carregadores (opcional) — usados nos 3 fluxos
+  const [manualData, setManualData] = useState<CityEVManualData>(EMPTY_MANUAL_DATA);
+  const [cityForManual, setCityForManual] = useState("");
+  const [stateForManual, setStateForManual] = useState("");
+
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -1143,6 +1219,12 @@ function ScorePageInner() {
         address: address.trim(),
         establishment_type: establishmentType || "outro",
         establishment_name: establishmentName.trim(),
+        manualData: {
+          bev: manualData.bev,
+          phev: manualData.phev,
+          chargersAC: manualData.chargersAC,
+          chargersDC: manualData.chargersDC,
+        },
       };
       if (parsedCoords) {
         payload.lat = parsedCoords.lat;
@@ -1240,6 +1322,12 @@ function ScorePageInner() {
         establishment_type: editedType,
         establishment_name: editedObservations,
         collected: editedData,
+        manualData: {
+          bev: editedData.bev || null,
+          phev: editedData.phev || null,
+          chargersAC: editedData.chargersAC || null,
+          chargersDC: editedData.chargersDC || null,
+        },
         ibge_data: collectedRaw.ibge_data,
         abve_data: collectedRaw.abve_data,
         nearby_pois: collectedRaw.nearby_pois,
@@ -1408,6 +1496,8 @@ function ScorePageInner() {
                   onSelect={(c, s) => {
                     setParsedCoords(null);
                     setAddress(c && s ? `${c}, ${s}` : "");
+                    setCityForManual(c);
+                    setStateForManual(s);
                   }}
                 />
                 {address && (
@@ -1418,6 +1508,18 @@ function ScorePageInner() {
               </div>
             )}
           </div>
+
+          {addressTab === "city" && cityForManual && stateForManual && (
+            <div className="md:col-span-2">
+              <CityEVDataForm
+                city={cityForManual}
+                state={stateForManual}
+                value={manualData}
+                onChange={setManualData}
+                disabled={loading}
+              />
+            </div>
+          )}
 
           <div className="md:col-span-2">
             <label className="mb-1.5 block text-sm font-medium text-[#C9D1D9]">
@@ -1560,41 +1662,79 @@ function ScorePageInner() {
           </div>
 
           {/* Stats bar */}
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-            <div className="rounded-lg border border-[#30363D] bg-[#161B22] p-4">
-              <p className="text-xs text-[#8B949E]">População</p>
-              <p className="mt-1 text-xl font-bold text-white">
-                {result.ibge_data.population?.toLocaleString("pt-BR") ?? "N/D"}
-              </p>
-            </div>
-            <div className="rounded-lg border border-[#30363D] bg-[#161B22] p-4">
-              <p className="text-xs text-[#8B949E]">PIB per capita</p>
-              <p className="mt-1 text-xl font-bold text-white">
-                {result.ibge_data.gdp_per_capita
-                  ? `R$ ${Math.round(result.ibge_data.gdp_per_capita).toLocaleString("pt-BR")}`
-                  : "N/D"}
-              </p>
-            </div>
-            <div className="rounded-lg border border-[#30363D] bg-[#161B22] p-4">
-              <p className="text-xs text-[#8B949E]">Carregadores rápidos na cidade</p>
-              <p className="mt-1 text-xl font-bold text-white">
-                {result.abve_data?.dc ?? "N/D"}
-              </p>
-            </div>
-            <div className="rounded-lg border border-[#30363D] bg-[#161B22] p-4">
-              <p className="text-xs text-[#8B949E]">EVs na cidade</p>
-              <p className="mt-1 text-xl font-bold text-white">
-                {result.abve_data?.evsSold?.toLocaleString("pt-BR") ?? "N/D"}
-              </p>
-            </div>
-            <div className="rounded-lg border border-[#30363D] bg-[#161B22] p-4">
-              <p className="text-xs text-[#8B949E]">Concorrentes 500m</p>
-              <p className="mt-1 text-xl font-bold text-white">
-                {result.scoring_variables.find((v) => v.name === "Concorrência Próxima (500m)")?.score ?? "—"}
-                <span className="ml-1 text-sm font-normal text-[#8B949E]">/10</span>
-              </p>
-            </div>
-          </div>
+          {(() => {
+            const tagText = (t?: string) =>
+              t === "manual"
+                ? "Dados informados"
+                : t === "cache"
+                  ? "Dados salvos"
+                  : t === "abve"
+                    ? "ABVE"
+                    : t === "estimate"
+                      ? "Estimativa"
+                      : t === "none"
+                        ? "Sem dados"
+                        : null;
+            const tagColor = (t?: string) =>
+              t === "manual"
+                ? "text-[#66BB6A]"
+                : t === "cache"
+                  ? "text-[#42A5F5]"
+                  : t === "abve"
+                    ? "text-[#C9A84C]"
+                    : t === "estimate"
+                      ? "text-[#FFC107]"
+                      : "text-[#8B949E]";
+            const evsLabel = tagText(result.city_ev_data?.evsSourceTag);
+            const evsClr = tagColor(result.city_ev_data?.evsSourceTag);
+            const chgLabel = tagText(result.city_ev_data?.chargersSourceTag);
+            const chgClr = tagColor(result.city_ev_data?.chargersSourceTag);
+            const dcCity = result.city_ev_data?.chargersDC ?? result.abve_data?.dc ?? null;
+            const evsCity = result.city_ev_data?.bevPlusPHEV ?? result.abve_data?.evsSold ?? null;
+            return (
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+                <div className="rounded-lg border border-[#30363D] bg-[#161B22] p-4">
+                  <p className="text-xs text-[#8B949E]">População</p>
+                  <p className="mt-1 text-xl font-bold text-white">
+                    {result.ibge_data.population?.toLocaleString("pt-BR") ?? "N/D"}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-[#30363D] bg-[#161B22] p-4">
+                  <p className="text-xs text-[#8B949E]">PIB per capita</p>
+                  <p className="mt-1 text-xl font-bold text-white">
+                    {result.ibge_data.gdp_per_capita
+                      ? `R$ ${Math.round(result.ibge_data.gdp_per_capita).toLocaleString("pt-BR")}`
+                      : "N/D"}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-[#30363D] bg-[#161B22] p-4">
+                  <p className="text-xs text-[#8B949E]">Carregadores DC na cidade</p>
+                  <p className="mt-1 text-xl font-bold text-white">
+                    {dcCity != null && dcCity > 0 ? dcCity.toLocaleString("pt-BR") : "N/D"}
+                  </p>
+                  {chgLabel && (
+                    <p className={`mt-0.5 text-[10px] italic ${chgClr}`}>({chgLabel})</p>
+                  )}
+                </div>
+                <div className="rounded-lg border border-[#30363D] bg-[#161B22] p-4">
+                  <p className="text-xs text-[#8B949E]">EVs (BEV+PHEV)</p>
+                  <p className="mt-1 text-xl font-bold text-white">
+                    {evsCity != null && evsCity > 0 ? evsCity.toLocaleString("pt-BR") : "N/D"}
+                  </p>
+                  {evsLabel && (
+                    <p className={`mt-0.5 text-[10px] italic ${evsClr}`}>({evsLabel})</p>
+                  )}
+                </div>
+                <div className="rounded-lg border border-[#30363D] bg-[#161B22] p-4">
+                  <p className="text-xs text-[#8B949E]">Concorrentes 500m</p>
+                  <p className="mt-1 text-xl font-bold text-white">
+                    {result.scoring_variables.find((v) => v.name === "Concorrência Próxima (500m)")?.score ?? "—"}
+                    <span className="ml-1 text-sm font-normal text-[#8B949E]">/10</span>
+                  </p>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Variables Table */}
           <div className="overflow-hidden rounded-xl border border-[#30363D] bg-[#161B22]">

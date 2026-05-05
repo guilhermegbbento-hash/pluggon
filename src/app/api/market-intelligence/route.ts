@@ -8,7 +8,13 @@ import type { CompetitorStation } from "@/lib/competitors";
 import { searchPlaces, deduplicatePlaces } from "@/lib/google-places";
 import type { PlaceResult } from "@/lib/google-places";
 import { ABVE_DATA, estimateEVs } from "@/lib/abve-data";
-import { getABVEData, getCityEVData, ABVE_NATIONAL } from "@/lib/abve-real-data";
+import {
+  getABVEData,
+  getCityEVDataAsync,
+  upsertCityEVCache,
+  ABVE_NATIONAL,
+  type ManualCityEVInput,
+} from "@/lib/abve-real-data";
 import { logUsage } from "@/lib/usage-logger";
 
 const STATE_NAMES: Record<string, string> = {
@@ -496,9 +502,22 @@ Seja direto, use dados reais fornecidos, não invente números.`;
 
 export async function POST(request: Request) {
   try {
-    const { city, state } = await request.json();
+    const reqBody = await request.json();
+    const { city, state } = reqBody as { city?: string; state?: string };
+    const manualData: ManualCityEVInput | null =
+      (reqBody as { manualData?: ManualCityEVInput }).manualData ?? null;
     if (!city || !state) {
       return Response.json({ error: "Cidade e estado são obrigatórios" }, { status: 400 });
+    }
+
+    const supabase = await createSupabaseClient();
+    if (manualData) {
+      let userEmail: string | null = null;
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        userEmail = user?.email ?? null;
+      } catch {}
+      await upsertCityEVCache(supabase as never, city, state, manualData, userEmail);
     }
 
     const encoder = new TextEncoder();
@@ -518,7 +537,14 @@ export async function POST(request: Request) {
         const population = ibgeData.population || 200000;
         const gdpPerCapita = ibgeData.gdpPerCapita;
         const fleet = estimateFleet(city, state, population, gdpPerCapita || 30000);
-        const evData = getCityEVData(city, state, population, gdpPerCapita || 30000);
+        const evData = await getCityEVDataAsync(
+          city,
+          state,
+          population,
+          gdpPerCapita || 30000,
+          manualData,
+          supabase as never
+        );
         const stateAbbrForAbve = state.replace(/\s*\(.*\)/, '').trim().substring(0, 2).toUpperCase();
         const vendasEstado2025 =
           ABVE_DATA.topEstados[stateAbbrForAbve as keyof typeof ABVE_DATA.topEstados] || null;
@@ -530,13 +556,14 @@ export async function POST(request: Request) {
         console.log("ABVE Nacional:", ABVE_NATIONAL.totalBEVPHEV, "veículos plug-in (BEV+PHEV)");
 
         // ABVE — carregadores reais por cidade (fev/2026)
+        // Prioridade efetiva (manual > cache > ABVE) já é resolvida em evData.
         const abveCity = getABVEData(city, state);
-        const abveDc = abveCity?.dc ?? 0;
-        const abveAc = abveCity?.ac ?? 0;
-        const abveTotalChargers = abveCity?.total ?? 0;
-        const abveSource = abveCity ? "ABVE fev/2026" : "Estimativa";
+        const abveDc = evData.dcChargers > 0 ? evData.dcChargers : (abveCity?.dc ?? 0);
+        const abveAc = evData.acChargers > 0 ? evData.acChargers : (abveCity?.ac ?? 0);
+        const abveTotalChargers = evData.totalChargers > 0 ? evData.totalChargers : (abveCity?.total ?? 0);
+        const abveSource = evData.chargersSource;
         console.log("=== ABVE DATA ===", city, state, abveCity);
-        console.log("EVs:", fleet.evs, "DC:", abveDc, "Fonte:", abveSource);
+        console.log("EVs:", evData.bevPlusPHEV, "DC:", abveDc, "Fonte EVs:", evData.source, "| Fonte chargers:", abveSource);
 
         // Scrape carregados.com.br para obter número total registrado
         let totalCarregadosComBr: number | null = null;
@@ -608,6 +635,9 @@ export async function POST(request: Request) {
               total: abveTotalChargers,
               evsSold: abveCity?.evsSold ?? 0,
               source: abveSource,
+              evsSourceTag: evData.evsSourceTag,
+              chargersSourceTag: evData.chargersSourceTag,
+              cacheUpdatedAt: evData.cacheUpdatedAt,
             },
             ratio: "Calculando...",
             marketPhase: "Calculando...",
@@ -617,7 +647,6 @@ export async function POST(request: Request) {
 
         // Step 2: Competitors (with cache)
         send({ type: "progress", step: 2, total: 8, label: "Mapeando concorrentes..." });
-        const supabase = await createSupabaseClient();
         let allCompetitors: CompetitorStation[] = [];
         let competitorGoogleQueries = 0;
         try {
@@ -710,6 +739,9 @@ export async function POST(request: Request) {
               total: abveTotalChargers,
               evsSold: abveCity?.evsSold ?? 0,
               source: abveSource,
+              evsSourceTag: evData.evsSourceTag,
+              chargersSourceTag: evData.chargersSourceTag,
+              cacheUpdatedAt: evData.cacheUpdatedAt,
             },
             ratio: evChargerRatio,
             marketPhase,
@@ -890,6 +922,9 @@ export async function POST(request: Request) {
               total: abveTotalChargers,
               evsSold: abveCity?.evsSold ?? 0,
               source: abveSource,
+              evsSourceTag: evData.evsSourceTag,
+              chargersSourceTag: evData.chargersSourceTag,
+              cacheUpdatedAt: evData.cacheUpdatedAt,
             },
             ratio: evChargerRatio,
             marketPhase,
