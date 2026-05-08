@@ -37,6 +37,7 @@ interface HeatmapMapV2Props {
   complementary: Complementary[];
   competitors: Competitor[];
   flyTo: { lat: number; lng: number; zoom?: number } | null;
+  defaultZoom?: number;
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -91,6 +92,7 @@ export default function HeatmapMapV2({
   complementary,
   competitors,
   flyTo,
+  defaultZoom = 12,
 }: HeatmapMapV2Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
@@ -113,7 +115,7 @@ export default function HeatmapMapV2({
 
     const map = L.map(containerRef.current, {
       center: [center.lat, center.lng],
-      zoom: 12,
+      zoom: defaultZoom,
       zoomControl: true,
     });
 
@@ -124,7 +126,7 @@ export default function HeatmapMapV2({
 
     mapRef.current = map;
     setMapReady(true);
-  }, [center.lat, center.lng]);
+  }, [center.lat, center.lng, defaultZoom]);
 
   useEffect(() => {
     initMap();

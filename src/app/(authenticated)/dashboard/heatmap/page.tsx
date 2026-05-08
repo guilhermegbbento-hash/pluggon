@@ -119,16 +119,24 @@ function formatCurrency(n: number | null): string {
 export default function HeatmapPage() {
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
+  const [regions, setRegions] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [loadingStep, setLoadingStep] = useState(0);
   const [error, setError] = useState("");
   const [result, setResult] = useState<HeatmapV2Result | null>(null);
+  const [submittedRegions, setSubmittedRegions] = useState<string[]>([]);
   const [flyTo, setFlyTo] = useState<{ lat: number; lng: number; zoom?: number } | null>(null);
   const [showCompetitors, setShowCompetitors] = useState(false);
   const [showComplementary, setShowComplementary] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [forceRefresh, setForceRefresh] = useState(false);
   const [manualData, setManualData] = useState<CityEVManualData>(EMPTY_MANUAL_DATA);
+
+  const parsedRegions = useMemo(
+    () => regions.split(",").map((r) => r.trim()).filter(Boolean),
+    [regions]
+  );
+  const tooManyRegions = parsedRegions.length > 3;
 
   // Detect admin
   useEffect(() => {
@@ -158,10 +166,15 @@ export default function HeatmapPage() {
     async (e: React.FormEvent) => {
       e.preventDefault();
       if (!city.trim() || !state.trim()) return;
+      if (tooManyRegions) {
+        setError("Máximo 3 regiões por análise");
+        return;
+      }
       setError("");
       setResult(null);
       setLoading(true);
       setLoadingStep(0);
+      setSubmittedRegions(parsedRegions);
 
       try {
         const res = await fetch("/api/heatmap-v2", {
@@ -170,6 +183,7 @@ export default function HeatmapPage() {
           body: JSON.stringify({
             city: city.trim(),
             state: state.trim(),
+            regions: parsedRegions.length > 0 ? parsedRegions.join(", ") : null,
             manualData: {
               bev: manualData.bev,
               phev: manualData.phev,
@@ -190,7 +204,7 @@ export default function HeatmapPage() {
         setLoading(false);
       }
     },
-    [city, state, forceRefresh, manualData]
+    [city, state, forceRefresh, manualData, parsedRegions, tooManyRegions]
   );
 
   const handleReset = () => {
@@ -198,6 +212,8 @@ export default function HeatmapPage() {
     setError("");
     setCity("");
     setState("");
+    setRegions("");
+    setSubmittedRegions([]);
     setForceRefresh(false);
     setManualData(EMPTY_MANUAL_DATA);
   };
@@ -349,7 +365,7 @@ const competitors = ${JSON.stringify(result.competitors)};
 const center = ${JSON.stringify(result.center)};
 const ANCHOR_EMOJI = { gas_station: '⛽', bus_station: '🚌', airport: '✈️', shopping_mall: '🏬' };
 
-const map = L.map('map').setView([center.lat, center.lng], 12);
+const map = L.map('map').setView([center.lat, center.lng], ${submittedRegions.length > 0 ? 14 : 12});
 L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; CARTO', maxZoom: 19 }).addTo(map);
 
 const escapeHtml = (s) => (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -511,7 +527,7 @@ if (allCoords.length) map.fitBounds(allCoords, { padding: [40,40] });
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  }, [result]);
+  }, [result, submittedRegions]);
 
   // Group anchors by type for sidebar
   const anchorsByType = useMemo(() => {
@@ -567,6 +583,36 @@ if (allCoords.length) map.fitBounds(allCoords, { padding: [40,40] });
                 }}
               />
 
+              <div>
+                <label
+                  htmlFor="regions"
+                  className="mb-1 block text-xs font-medium text-[#C9D1D9]"
+                >
+                  Região ou Bairro <span className="text-[#8B949E]">(opcional)</span>
+                </label>
+                <input
+                  id="regions"
+                  type="text"
+                  value={regions}
+                  onChange={(e) => setRegions(e.target.value)}
+                  placeholder="Ex: Batel, Centro, Santa Felicidade"
+                  disabled={loading}
+                  className={`w-full rounded-md border bg-[#0D1117] px-3 py-2 text-sm text-white placeholder-[#484F58] outline-none transition-colors focus:border-[#C9A84C] disabled:opacity-60 ${
+                    tooManyRegions ? "border-red-500" : "border-[#30363D]"
+                  }`}
+                />
+                <p className="mt-1 text-[11px] text-[#8B949E]">
+                  Se preenchido, a busca será concentrada nesta região. Se vazio,
+                  busca na cidade inteira. Separe múltiplas regiões por vírgula
+                  (máx. 3).
+                </p>
+                {tooManyRegions && (
+                  <p className="mt-1 text-[11px] text-red-400">
+                    Máximo 3 regiões por análise.
+                  </p>
+                )}
+              </div>
+
               <CityEVDataForm
                 city={city}
                 state={state}
@@ -595,7 +641,8 @@ if (allCoords.length) map.fitBounds(allCoords, { padding: [40,40] });
 
             <button
               type="submit"
-              className="mt-6 w-full rounded-lg bg-[#C9A84C] px-4 py-3 font-semibold text-[#0D1117] transition-colors hover:bg-[#B89443]"
+              disabled={tooManyRegions}
+              className="mt-6 w-full rounded-lg bg-[#C9A84C] px-4 py-3 font-semibold text-[#0D1117] transition-colors hover:bg-[#B89443] disabled:cursor-not-allowed disabled:opacity-50"
             >
               Gerar Mapa
             </button>
@@ -822,6 +869,7 @@ if (allCoords.length) map.fitBounds(allCoords, { padding: [40,40] });
             complementary={result.complementary}
             competitors={result.competitors}
             flyTo={flyTo}
+            defaultZoom={submittedRegions.length > 0 ? 14 : 12}
           />
         </div>
 

@@ -268,6 +268,37 @@ async function geocodeCity(
   return null;
 }
 
+async function geocodeAddress(
+  address: string,
+  apiKey: string
+): Promise<{ lat: number; lng: number } | null> {
+  try {
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(
+      address
+    )}&key=${apiKey}&language=pt-BR&region=br`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.status === "OK" && data.results?.length) {
+      return {
+        lat: data.results[0].geometry.location.lat,
+        lng: data.results[0].geometry.location.lng,
+      };
+    }
+  } catch (err) {
+    console.error("geocodeAddress erro:", address, err);
+  }
+  return null;
+}
+
+function normalizeRegionsKey(regions: string[]): string {
+  return regions
+    .map((r) => r.trim().toLowerCase())
+    .filter(Boolean)
+    .sort()
+    .join("|");
+}
+
 interface IBGECityData {
   population: number | null;
   gdpPerCapita: number | null;
@@ -383,6 +414,7 @@ export async function POST(req: Request) {
     state?: string;
     forceRefresh?: boolean;
     manualData?: ManualCityEVInput;
+    regions?: string | null;
   };
   try {
     body = await req.json();
@@ -402,6 +434,21 @@ export async function POST(req: Request) {
   if (!city || !state) {
     return Response.json({ error: "city e state são obrigatórios" }, { status: 400 });
   }
+
+  const regionList = (body.regions ?? "")
+    .split(",")
+    .map((r) => r.trim())
+    .filter(Boolean);
+
+  if (regionList.length > 3) {
+    return Response.json(
+      { error: "Máximo 3 regiões por análise" },
+      { status: 400 }
+    );
+  }
+
+  const regionsKey = normalizeRegionsKey(regionList);
+  const cacheStatus = regionsKey ? `heatmap_v2:r:${regionsKey}` : "heatmap_v2";
 
   const apiKey = process.env.GOOGLE_MAPS_API_KEY;
   if (!apiKey) {
@@ -433,13 +480,13 @@ export async function POST(req: Request) {
         .select("points_json, created_at")
         .eq("city", city)
         .eq("state", state)
-        .eq("status", "heatmap_v2")
+        .eq("status", cacheStatus)
         .gte("created_at", sevenDaysAgo)
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
       if (cached && cached.points_json) {
-        console.log(`heatmap-v2 CACHE HIT: ${city}/${state}`);
+        console.log(`heatmap-v2 CACHE HIT: ${city}/${state} (${cacheStatus})`);
         const payload =
           typeof cached.points_json === "string"
             ? JSON.parse(cached.points_json)
@@ -450,77 +497,109 @@ export async function POST(req: Request) {
       console.error("heatmap-v2 cache lookup erro:", err);
     }
   } else {
-    console.log(`heatmap-v2 FORCE REFRESH: ${city}/${state}`);
+    console.log(`heatmap-v2 FORCE REFRESH: ${city}/${state} (${cacheStatus})`);
   }
 
-  // 1. Geocoding
-  const center = await geocodeCity(city, state, apiKey);
-  if (!center) {
+  // 1. Geocoding (cidade + regiões opcionais)
+  const cityCenter = await geocodeCity(city, state, apiKey);
+  if (!cityCenter) {
     return Response.json(
       { error: `Não foi possível geocodificar ${city}, ${state}` },
       { status: 400 }
     );
   }
 
-  // 2. Busca POIs via Text Search (22 queries paralelas)
-  let googleQueries = 0;
-  const cityQuery = `${city} ${state}`;
+  let googleQueries = 1; // geocode da cidade
 
-  const anchorQueries: { q: string; type: AnchorType }[] = [
-    { q: `posto de combustível ${cityQuery}`, type: "gas_station" },
-    { q: `posto de gasolina ${cityQuery}`, type: "gas_station" },
-    { q: `posto 24 horas ${cityQuery}`, type: "gas_station" },
-    { q: `rede de postos ${cityQuery}`, type: "gas_station" },
-    { q: `shopping center ${cityQuery}`, type: "shopping_mall" },
-    { q: `shopping mall ${cityQuery}`, type: "shopping_mall" },
-    { q: `rodoviária interestadual ${cityQuery}`, type: "bus_station" },
-    { q: `aeroporto ${cityQuery}`, type: "airport" },
-  ];
+  type SearchCenter = { lat: number; lng: number; name: string };
+  const searchCenters: SearchCenter[] = [];
 
-  const compQueries: { q: string; type: ComplementaryType }[] = [
-    { q: `farmácia ${cityQuery}`, type: "pharmacy" },
-    { q: `drogaria ${cityQuery}`, type: "pharmacy" },
-    { q: `padaria ${cityQuery}`, type: "bakery" },
-    { q: `supermercado ${cityQuery}`, type: "supermarket" },
-    { q: `hipermercado ${cityQuery}`, type: "supermarket" },
-    { q: `estacionamento ${cityQuery}`, type: "parking" },
-    { q: `restaurante ${cityQuery}`, type: "restaurant" },
-    { q: `lanchonete ${cityQuery}`, type: "restaurant" },
-    { q: `hotel ${cityQuery}`, type: "lodging" },
-    { q: `pousada ${cityQuery}`, type: "lodging" },
-    { q: `universidade ${cityQuery}`, type: "university" },
-    { q: `hospital ${cityQuery}`, type: "hospital" },
-    { q: `loja de conveniência ${cityQuery}`, type: "convenience" },
-    { q: `academia ${cityQuery}`, type: "gym" },
-  ];
-
-  const [anchorRaws, compRaws] = await Promise.all([
-    Promise.all(
-      anchorQueries.map((aq) =>
-        searchTextPlaces(aq.q, center.lat, center.lng, apiKey)
+  if (regionList.length > 0) {
+    const geos = await Promise.all(
+      regionList.map((region) =>
+        geocodeAddress(`${region}, ${city}, ${state}, Brasil`, apiKey)
       )
-    ),
-    Promise.all(
-      compQueries.map((cq) =>
-        searchTextPlaces(cq.q, center.lat, center.lng, apiKey)
-      )
-    ),
-  ]);
-  googleQueries += anchorQueries.length + compQueries.length; // 22
+    );
+    googleQueries += regionList.length;
+    regionList.forEach((region, i) => {
+      const g = geos[i];
+      if (g) searchCenters.push({ lat: g.lat, lng: g.lng, name: region });
+    });
+  }
 
-  let allAnchors: POI[] = anchorQueries.flatMap((aq, i) =>
-    anchorRaws[i].map((p) => ({ ...p, placeType: aq.type }))
-  );
-  let allComplementary: POI[] = compQueries.flatMap((cq, i) =>
-    compRaws[i].map((p) => ({ ...p, placeType: cq.type }))
-  );
+  if (searchCenters.length === 0) {
+    searchCenters.push({ lat: cityCenter.lat, lng: cityCenter.lng, name: city });
+  }
+
+  // 2. Busca POIs via Text Search — 22 queries por centro (8km se região, 15km se cidade)
+  const radius = regionList.length > 0 ? 8000 : 15000;
+
+  const buildAnchorQueries = (centerName: string): { q: string; type: AnchorType }[] => {
+    const ctx = `${centerName} ${city} ${state}`;
+    return [
+      { q: `posto de combustível ${ctx}`, type: "gas_station" },
+      { q: `posto de gasolina ${ctx}`, type: "gas_station" },
+      { q: `posto 24 horas ${ctx}`, type: "gas_station" },
+      { q: `rede de postos ${ctx}`, type: "gas_station" },
+      { q: `shopping center ${ctx}`, type: "shopping_mall" },
+      { q: `shopping mall ${ctx}`, type: "shopping_mall" },
+      { q: `rodoviária interestadual ${ctx}`, type: "bus_station" },
+      { q: `aeroporto ${ctx}`, type: "airport" },
+    ];
+  };
+
+  const buildCompQueries = (centerName: string): { q: string; type: ComplementaryType }[] => {
+    const ctx = `${centerName} ${city} ${state}`;
+    return [
+      { q: `farmácia ${ctx}`, type: "pharmacy" },
+      { q: `drogaria ${ctx}`, type: "pharmacy" },
+      { q: `padaria ${ctx}`, type: "bakery" },
+      { q: `supermercado ${ctx}`, type: "supermarket" },
+      { q: `hipermercado ${ctx}`, type: "supermarket" },
+      { q: `estacionamento ${ctx}`, type: "parking" },
+      { q: `restaurante ${ctx}`, type: "restaurant" },
+      { q: `lanchonete ${ctx}`, type: "restaurant" },
+      { q: `hotel ${ctx}`, type: "lodging" },
+      { q: `pousada ${ctx}`, type: "lodging" },
+      { q: `universidade ${ctx}`, type: "university" },
+      { q: `hospital ${ctx}`, type: "hospital" },
+      { q: `loja de conveniência ${ctx}`, type: "convenience" },
+      { q: `academia ${ctx}`, type: "gym" },
+    ];
+  };
+
+  const allAnchorsRaw: POI[] = [];
+  const allCompRaw: POI[] = [];
+
+  for (const sc of searchCenters) {
+    const anchorQueries = buildAnchorQueries(sc.name);
+    const compQueries = buildCompQueries(sc.name);
+
+    const [anchorRaws, compRaws] = await Promise.all([
+      Promise.all(
+        anchorQueries.map((aq) =>
+          searchTextPlaces(aq.q, sc.lat, sc.lng, apiKey, radius)
+        )
+      ),
+      Promise.all(
+        compQueries.map((cq) =>
+          searchTextPlaces(cq.q, sc.lat, sc.lng, apiKey, radius)
+        )
+      ),
+    ]);
+    googleQueries += anchorQueries.length + compQueries.length; // 22 por centro
+
+    anchorQueries.forEach((aq, i) => {
+      for (const p of anchorRaws[i]) allAnchorsRaw.push({ ...p, placeType: aq.type });
+    });
+    compQueries.forEach((cq, i) => {
+      for (const p of compRaws[i]) allCompRaw.push({ ...p, placeType: cq.type });
+    });
+  }
 
   // 3. Deduplicação geral + filtros de qualidade
-  allAnchors = deduplicatePOIs(allAnchors).filter(isQualityAnchor);
-  allComplementary = deduplicatePOIs(allComplementary).filter(isQualityPoint);
-
-  const dedupedAnchors = allAnchors;
-  const dedupedComplementary = allComplementary;
+  const dedupedAnchors: POI[] = deduplicatePOIs(allAnchorsRaw).filter(isQualityAnchor);
+  const dedupedComplementary: POI[] = deduplicatePOIs(allCompRaw).filter(isQualityPoint);
 
   if (dedupedAnchors.length === 0 && dedupedComplementary.length === 0) {
     return Response.json(
@@ -538,8 +617,8 @@ export async function POST(req: Request) {
     const compResult = await getCachedOrFetch(
       city,
       state,
-      center.lat,
-      center.lng,
+      cityCenter.lat,
+      cityCenter.lng,
       supabase
     );
     competitors = compResult.competitors.map((c) => ({
@@ -692,10 +771,25 @@ export async function POST(req: Request) {
     };
   });
 
+  const mapCenter =
+    searchCenters.length === 1
+      ? { lat: searchCenters[0].lat, lng: searchCenters[0].lng }
+      : {
+          lat:
+            searchCenters.reduce((sum, c) => sum + c.lat, 0) /
+            searchCenters.length,
+          lng:
+            searchCenters.reduce((sum, c) => sum + c.lng, 0) /
+            searchCenters.length,
+        };
+
   const payload = {
     city,
     state,
-    center,
+    center: mapCenter,
+    cityCenter,
+    mapCenter,
+    regions: regionList,
     anchors: anchorsOut,
     complementary: complementaryOut,
     competitors,
@@ -744,7 +838,7 @@ export async function POST(req: Request) {
         .delete()
         .eq("city", city)
         .eq("state", state)
-        .eq("status", "heatmap_v2");
+        .eq("status", cacheStatus);
 
       await supabase.from("city_analyses").insert({
         user_id: user.id,
@@ -756,7 +850,7 @@ export async function POST(req: Request) {
         dc_charger_count: dcCity,
         ev_count: evData.totalEVs,
         points_json: payload,
-        status: "heatmap_v2",
+        status: cacheStatus,
       });
     }
   } catch (err) {
