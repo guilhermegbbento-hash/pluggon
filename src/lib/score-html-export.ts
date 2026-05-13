@@ -26,10 +26,6 @@ interface NearbyPlace {
 
 interface CriticalFactorData {
   name: string;
-  category: string;
-  score: number;
-  weight: number;
-  impact: number;
   justification: string;
   suggestion: string | null;
 }
@@ -261,24 +257,16 @@ export function buildScoreHtml(r: ScoreExportData): string {
     .join("");
 
   const criticalHtml = (r.critical_factors || [])
+    .filter((f) => f.suggestion)
     .map((f) => {
-      const isCritical = f.score <= 4;
-      const accent = isCritical ? "#F44336" : "#FF9800";
-      const suggestionHtml = f.suggestion
-        ? `<p class="cf-sug">💡 ${esc(f.suggestion)}</p>`
-        : "";
+      const accent = "#FF9800";
       return `
         <div class="cf-card" style="border-color:${accent}55;background:${accent}10">
           <div class="cf-head">
-            <div>
-              <span class="cf-icon" style="color:${accent}">⚠</span>
-              <span class="cf-name">${esc(f.name)}</span>
-              <div class="cf-cat">Categoria: ${esc(f.category)}</div>
-            </div>
-            <div class="cf-score" style="color:${accent}">${f.score.toFixed(1)}<small>/10</small></div>
+            <span class="cf-icon" style="color:${accent}">⚠</span>
+            <span class="cf-name">${esc(f.name)}</span>
           </div>
-          <p class="cf-impact">Esta variável está reduzindo seu score em aproximadamente <strong style="color:${accent}">${f.impact.toFixed(1)} pontos</strong>.</p>
-          ${suggestionHtml}
+          ${f.suggestion ? `<p class="cf-sug">${esc(f.suggestion)}</p>` : ""}
         </div>`;
     })
     .join("");
@@ -529,10 +517,9 @@ export function buildScoreHtml(r: ScoreExportData): string {
 
     ${
       criticalHtml
-        ? `<!-- CRITICAL FACTORS -->
+        ? `<!-- PONTOS DE ATENÇÃO -->
     <div class="critical">
-      <h3>⚠ Fatores que mais impactam esta nota</h3>
-      <p class="cf-sub">As 5 variáveis com pior impacto real (nota × peso) no score final.</p>
+      <h3>⚠ Pontos de Atenção</h3>
       <div class="cf-grid">${criticalHtml}</div>
     </div>`
         : ""

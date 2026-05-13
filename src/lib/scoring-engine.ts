@@ -78,10 +78,6 @@ export interface ScoreVariable {
 
 export interface CriticalFactor {
   name: string;
-  category: string;
-  score: number;
-  weight: number;
-  impact: number; // pontos perdidos no score final (0-100) vs nota máxima
   justification: string;
   suggestion: string | null;
 }
@@ -1039,33 +1035,17 @@ export function calculateScore(input: ScoreInput): ScoreResult {
 
   // ============================================================
   // FATORES CRÍTICOS — top 5 variáveis com pior impacto real
+  // (mantemos a ordenação por nota × peso, mas o consumidor só vê
+  // nome/justificativa/sugestão — sem números expostos)
   // ============================================================
-  const categorySumWeights: Record<string, number> = {};
-  for (const cat of Object.keys(CATEGORY_WEIGHTS)) {
-    categorySumWeights[cat] = vars
-      .filter((v) => v.category === cat)
-      .reduce((s, v) => s + v.weight, 0);
-  }
-
   const criticalFactors: CriticalFactor[] = [...vars]
     .sort((a, b) => a.score * a.weight - b.score * b.weight)
     .slice(0, 5)
-    .map((v) => {
-      const catSumW = categorySumWeights[v.category] || 1;
-      const catW = CATEGORY_WEIGHTS[v.category] || 0;
-      // Pontos perdidos no score final (0-100) vs nota máxima (10)
-      const impact =
-        ((10 - v.score) * v.weight * catW) / catSumW / 10 * finalMultiplier;
-      return {
-        name: v.name,
-        category: v.category,
-        score: v.score,
-        weight: v.weight,
-        impact: Math.round(impact * 10) / 10,
-        justification: v.justification,
-        suggestion: getCriticalSuggestion(v),
-      };
-    });
+    .map((v) => ({
+      name: v.name,
+      justification: v.justification,
+      suggestion: getCriticalSuggestion(v),
+    }));
 
   return {
     overallScore,

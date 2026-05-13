@@ -31,10 +31,6 @@ interface NearbyPlace {
 
 interface CriticalFactorData {
   name: string;
-  category: string;
-  score: number;
-  weight: number;
-  impact: number;
   justification: string;
   suggestion: string | null;
 }
@@ -871,41 +867,20 @@ export default function ScorePrintPage() {
 
           {data.critical_factors && data.critical_factors.length > 0 && (
             <div className="box-critical">
-              <h3>⚠ Fatores que mais impactam esta nota</h3>
-              <p className="cf-sub">
-                As 5 variáveis com pior impacto real (nota × peso) no score final.
-              </p>
+              <h3>⚠ Pontos de Atenção</h3>
               <div className="cf-grid-print">
-                {data.critical_factors.map((f, i) => {
-                  const isSevere = f.score <= 4;
-                  const accent = isSevere ? "#F44336" : "#FF9800";
-                  return (
-                    <div
-                      key={i}
-                      className={`cf-card-print${isSevere ? " severe" : ""}`}
-                    >
+                {data.critical_factors
+                  .filter((f) => f.suggestion)
+                  .map((f, i) => (
+                    <div key={i} className="cf-card-print">
                       <div className="cf-head-print">
-                        <div>
-                          <div className="cf-name-print">⚠ {f.name}</div>
-                          <div className="cf-cat-print">Categoria: {f.category}</div>
-                        </div>
-                        <div className="cf-score-print" style={{ color: accent }}>
-                          {f.score.toFixed(1)}
-                        </div>
+                        <div className="cf-name-print">⚠ {f.name}</div>
                       </div>
-                      <p className="cf-impact-print">
-                        Reduz o score em aproximadamente{" "}
-                        <strong style={{ color: accent }}>
-                          {f.impact.toFixed(1)} pontos
-                        </strong>
-                        .
-                      </p>
                       {f.suggestion && (
-                        <p className="cf-sug-print">💡 {f.suggestion}</p>
+                        <p className="cf-sug-print">{f.suggestion}</p>
                       )}
                     </div>
-                  );
-                })}
+                  ))}
               </div>
             </div>
           )}

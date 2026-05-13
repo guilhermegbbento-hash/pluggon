@@ -1955,61 +1955,31 @@ function ScorePageInner() {
             </ul>
           </div>
 
-          {/* Fatores Críticos */}
+          {/* Fatores Críticos / Pontos de Atenção */}
           {result.critical_factors && result.critical_factors.length > 0 && (
             <div className="rounded-xl border border-[#FF9800]/30 bg-[#FF9800]/5 p-5">
-              <h3 className="mb-1 text-base font-semibold text-[#FF9800]">
-                ⚠ Fatores que mais impactam esta nota
+              <h3 className="mb-4 text-base font-semibold text-[#FF9800]">
+                ⚠ Pontos de Atenção
               </h3>
-              <p className="mb-4 text-xs text-[#8B949E]">
-                As 5 variáveis com pior impacto real (nota × peso) no score final.
-              </p>
               <div className="grid gap-3 md:grid-cols-2">
-                {result.critical_factors.map((f, i) => {
-                  const isCritical = f.score <= 4;
-                  const borderColor = isCritical ? "#F44336" : "#FF9800";
-                  const bgColor = isCritical ? "#F4433610" : "#FF980010";
-                  const fgColor = isCritical ? "#F44336" : "#FF9800";
-                  return (
+                {result.critical_factors
+                  .filter((f) => f.suggestion)
+                  .map((f, i) => (
                     <div
                       key={i}
-                      className="rounded-lg border p-4"
-                      style={{ borderColor: borderColor + "55", background: bgColor }}
+                      className="rounded-lg border border-[#FF9800]/30 bg-[#FF980010] p-4"
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-start gap-2">
-                          <span className="mt-0.5 text-lg" style={{ color: fgColor }}>
-                            ⚠
-                          </span>
-                          <div>
-                            <p className="text-sm font-semibold text-white">{f.name}</p>
-                            <p className="text-xs text-[#8B949E]">
-                              Categoria: {f.category}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-xl font-bold" style={{ color: fgColor }}>
-                            {f.score.toFixed(1)}
-                            <span className="text-sm text-[#8B949E]">/10</span>
-                          </p>
+                      <div className="flex items-start gap-2">
+                        <span className="mt-0.5 text-lg text-[#FF9800]">⚠</span>
+                        <div>
+                          <p className="text-sm font-semibold text-white">{f.name}</p>
+                          {f.suggestion && (
+                            <p className="mt-1 text-xs text-[#C9D1D9]">{f.suggestion}</p>
+                          )}
                         </div>
                       </div>
-                      <p className="mt-3 text-xs text-[#C9D1D9]">
-                        Esta variável está reduzindo seu score em aproximadamente{" "}
-                        <strong style={{ color: fgColor }}>
-                          {f.impact.toFixed(1)} pontos
-                        </strong>
-                        .
-                      </p>
-                      {f.suggestion && (
-                        <p className="mt-2 text-xs italic text-[#8B949E]">
-                          💡 {f.suggestion}
-                        </p>
-                      )}
                     </div>
-                  );
-                })}
+                  ))}
               </div>
             </div>
           )}

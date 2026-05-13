@@ -481,10 +481,13 @@ async function handleFinalMode(body: Record<string, unknown>) {
 
   const scoreResult = calculateScore(scoreInput);
 
-  const dcCityForPrompt =
-    (collected.abveDC || 0) > 0
-      ? collected.abveDC
-      : collected.dcInCity || 0;
+  // No modo final, o prompt do Claude DEVE refletir o que o admin acabou de
+  // editar na tela de revisão (collected). Não passamos pelo evDataFinal porque
+  // ele pode cair em cache/ABVE quando o admin zera um campo (hasManualEVs exige > 0).
+  const bevForPrompt = collected.bev ?? 0;
+  const phevForPrompt = collected.phev ?? 0;
+  const evsForPrompt = bevForPrompt + phevForPrompt;
+  const dcCityForPrompt = collected.chargersDC ?? collected.dcInCity ?? 0;
 
   const claudeResult = await generateAnalysisText({
     overallScore: scoreResult.overallScore,
@@ -494,9 +497,9 @@ async function handleFinalMode(body: Record<string, unknown>) {
     population: collected.population || 0,
     gdpPerCapita: collected.gdpPerCapita || 0,
     dcInCity: dcCityForPrompt,
-    evsCity: evDataFinal.bevPlusPHEV,
-    bevCity: evDataFinal.bev,
-    phevCity: evDataFinal.phev,
+    evsCity: evsForPrompt,
+    bevCity: bevForPrompt,
+    phevCity: phevForPrompt,
     evsSource: evDataFinal.source,
     establishmentType: establishment_type,
     distanceKm: collected.distanceToCenter || 0,
