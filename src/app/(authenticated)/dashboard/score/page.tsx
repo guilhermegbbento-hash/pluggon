@@ -293,18 +293,31 @@ function buildScoreInput(
   establishmentType: string,
   observations: string
 ): ScoreInput {
+  // Derivar campos agregados a partir dos campos editáveis (chargersDC,
+   // chargersAC, bev, phev) para que justificativas e preview reflitam
+   // imediatamente o que o admin acabou de editar.
+  const bev = c.bev ?? 0;
+  const phev = c.phev ?? 0;
+  const ac = c.chargersAC ?? 0;
+  const dc = c.chargersDC ?? 0;
+  const dcInCity = dc > 0 ? dc : (c.dcInCity || 0);
+  const totalInCity = dc > 0 || ac > 0 ? dc + ac : (c.totalInCity || 0);
+  const evs = bev + phev;
   return {
     population: c.population || 0,
     gdpPerCapita: c.gdpPerCapita || 0,
-    abveDC: c.abveDC || 0,
-    abveTotal: c.abveTotal || 0,
-    abveEVs: c.abveEVs || 0,
+    abveDC: dcInCity,
+    abveTotal: totalInCity,
+    abveEVs: evs > 0 ? evs : (c.abveEVs || 0),
+    bev,
+    phev,
+    bevPlusPHEV: evs,
     dcIn200m: c.dcIn200m || 0,
     dcIn500m: c.dcIn500m || 0,
     dcIn1km: c.dcIn1km || 0,
     dcIn2km: c.dcIn2km || 0,
-    dcInCity: c.dcInCity || 0,
-    totalInCity: c.totalInCity || 0,
+    dcInCity,
+    totalInCity,
     dcNamesIn200m: c.dcNamesIn200m || [],
     dcNamesIn500m: c.dcNamesIn500m || [],
     dcNamesIn1km: c.dcNamesIn1km || [],

@@ -443,22 +443,36 @@ async function handleFinalMode(body: Record<string, unknown>) {
   console.log("BEV+PHEV (carregam):", evDataFinal.bevPlusPHEV, "| DC:", evDataFinal.dcChargers, "| Ratio:", evDataFinal.ratioEVperDC);
   console.log("Fonte:", evDataFinal.source);
 
+  // As justificativas dependem dos valores EDITADOS pelo admin na tela de
+   // revisão, não dos valores originais coletados. Os campos editáveis são
+   // chargersDC, chargersAC, bev e phev — derivamos abveDC/abveTotal/abveEVs
+   // a partir deles para que as justificativas (V8, V21, etc.) reflitam o que
+   // o admin acabou de informar. dcInCity também passa a refletir chargersDC.
+  const editedBev = collected.bev ?? 0;
+  const editedPhev = collected.phev ?? 0;
+  const editedAC = collected.chargersAC ?? 0;
+  const editedDC = collected.chargersDC ?? 0;
+  const editedDcInCity = editedDC > 0 ? editedDC : (collected.dcInCity || 0);
+  const editedTotalInCity =
+    editedDC > 0 || editedAC > 0 ? editedDC + editedAC : (collected.totalInCity || 0);
+  const editedEvs = editedBev + editedPhev;
+
   const scoreInput: ScoreInput = {
     population: collected.population || 0,
     gdpPerCapita: collected.gdpPerCapita || 0,
-    abveDC: collected.abveDC || 0,
-    abveTotal: collected.abveTotal || 0,
-    abveEVs: collected.abveEVs || 0,
-    bev: evDataFinal.bev,
-    phev: evDataFinal.phev,
-    bevPlusPHEV: evDataFinal.bevPlusPHEV,
+    abveDC: editedDcInCity,
+    abveTotal: editedTotalInCity,
+    abveEVs: editedEvs > 0 ? editedEvs : (collected.abveEVs || 0),
+    bev: editedBev,
+    phev: editedPhev,
+    bevPlusPHEV: editedEvs,
     evsSource: evDataFinal.source,
     dcIn200m: collected.dcIn200m || 0,
     dcIn500m: collected.dcIn500m || 0,
     dcIn1km: collected.dcIn1km || 0,
     dcIn2km: collected.dcIn2km || 0,
-    dcInCity: collected.dcInCity || 0,
-    totalInCity: collected.totalInCity || 0,
+    dcInCity: editedDcInCity,
+    totalInCity: editedTotalInCity,
     dcNamesIn200m: collected.dcNamesIn200m || [],
     dcNamesIn500m: collected.dcNamesIn500m || [],
     dcNamesIn1km: collected.dcNamesIn1km || [],
@@ -478,6 +492,15 @@ async function handleFinalMode(body: Record<string, unknown>) {
     establishmentType: establishment_type,
     observations: establishment_name,
   };
+
+  console.log("=== MODE FINAL — DADOS EDITADOS RECEBIDOS ===");
+  console.log("population:", scoreInput.population);
+  console.log("gdpPerCapita:", scoreInput.gdpPerCapita);
+  console.log("EVs (BEV+PHEV):", scoreInput.bevPlusPHEV, "| BEV:", scoreInput.bev, "| PHEV:", scoreInput.phev);
+  console.log("DC cidade:", scoreInput.dcInCity, "| Total cidade:", scoreInput.totalInCity);
+  console.log("DC 200m:", scoreInput.dcIn200m, "| 500m:", scoreInput.dcIn500m, "| 1km:", scoreInput.dcIn1km, "| 2km:", scoreInput.dcIn2km);
+  console.log("restaurants:", scoreInput.restaurants, "| supermarkets:", scoreInput.supermarkets, "| gasStations:", scoreInput.gasStations);
+  console.log("distCenter:", scoreInput.distanceToCenter);
 
   const scoreResult = calculateScore(scoreInput);
 
