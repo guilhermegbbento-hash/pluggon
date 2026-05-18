@@ -619,6 +619,8 @@ interface ReviewPanelProps {
   onChangeObservations: (o: string) => void;
   onCalculatePreview: () => void;
   onGenerateFinal: () => void;
+  deselectedFactors: string[];
+  onToggleCriticalFactor: (name: string) => void;
   onCancel: () => void;
 }
 
@@ -635,6 +637,8 @@ function ReviewPanel({
   onChangeObservations,
   onCalculatePreview,
   onGenerateFinal,
+  deselectedFactors,
+  onToggleCriticalFactor,
   onCancel,
 }: ReviewPanelProps) {
   const original = collectedRaw.collected;
@@ -1038,6 +1042,64 @@ function ReviewPanel({
         </div>
       </div>
 
+      {/* Card: Ressalvas / Fatores Críticos — admin escolhe quais entram no relatório */}
+      {(() => {
+        const factors = (previewScore?.criticalFactors || []).filter(
+          (f) => f.suggestion
+        );
+        if (factors.length === 0) return null;
+        const selectedCount = factors.filter(
+          (f) => !deselectedFactors.includes(f.name)
+        ).length;
+        return (
+          <div className="rounded-xl border border-[#FF9800]/40 bg-[#161B22] p-5">
+            <h3 className="text-sm font-semibold text-[#FF9800]">
+              ⚠ Ressalvas — Selecione quais aparecem no relatório final
+            </h3>
+            <p className="mt-1 text-[11px] text-[#8B949E]">
+              Variáveis com baixa pontuação e peso relevante. Desmarque as que
+              não devem aparecer no relatório final entregue ao cliente.
+            </p>
+            <div className="mt-3 space-y-2">
+              {factors.map((f) => {
+                const checked = !deselectedFactors.includes(f.name);
+                return (
+                  <label
+                    key={f.name}
+                    className={`flex cursor-pointer items-start gap-3 rounded-lg border bg-[#0D1117] px-3 py-2.5 transition-colors ${
+                      checked
+                        ? "border-[#FF9800]/40"
+                        : "border-[#30363D] opacity-60"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => onToggleCriticalFactor(f.name)}
+                      className="mt-0.5 h-4 w-4 accent-[#FF9800]"
+                    />
+                    <div>
+                      <p className="text-sm font-semibold text-white">
+                        {f.name}
+                      </p>
+                      {f.suggestion && (
+                        <p className="mt-0.5 text-xs text-[#C9D1D9]">
+                          {f.suggestion}
+                        </p>
+                      )}
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+            <p className="mt-3 text-[11px] text-[#484F58]">
+              {selectedCount} de {factors.length} ressalva(s) selecionada(s)
+              para o relatório final.
+            </p>
+          </div>
+        );
+      })()}
+
       {/* Botões de ação */}
       <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
         <button
@@ -1123,6 +1185,8 @@ function ScorePageInner() {
   const [editedObservations, setEditedObservations] = useState("");
   const [previewScore, setPreviewScore] = useState<EngineScoreResult | null>(null);
   const [generatingFinal, setGeneratingFinal] = useState(false);
+  // Ressalvas (fatores críticos) que o admin DESMARCOU — não vão ao relatório final.
+  const [deselectedFactors, setDeselectedFactors] = useState<string[]>([]);
 
   // Dados manuais de frota/carregadores (opcional) — usados nos 3 fluxos
   const [manualData, setManualData] = useState<CityEVManualData>(EMPTY_MANUAL_DATA);
@@ -1226,6 +1290,7 @@ function ScorePageInner() {
     setCollectedRaw(null);
     setEditedData(null);
     setPreviewScore(null);
+    setDeselectedFactors([]);
 
     try {
       const payload: Record<string, unknown> = {
@@ -1311,6 +1376,14 @@ function ScorePageInner() {
     setPreviewScore(result);
   }
 
+  // Marca/desmarca uma ressalva. Rastreamos só as DESMARCADAS: assim a seleção
+  // sobrevive a recálculos da prévia e ressalvas novas entram marcadas por padrão.
+  function toggleCriticalFactor(name: string) {
+    setDeselectedFactors((prev) =>
+      prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]
+    );
+  }
+
   // Prévia em tempo real (zero custo — roda no browser)
   useEffect(() => {
     if (!editedData) return;
@@ -1325,8 +1398,13 @@ function ScorePageInner() {
     setGeneratingFinal(true);
     setError("");
     try {
+      // Ressalvas marcadas pelo admin (potenciais menos as desmarcadas).
+      const selectedCriticalFactors = (previewScore?.criticalFactors || [])
+        .filter((f) => f.suggestion && !deselectedFactors.includes(f.name))
+        .map((f) => f.name);
       const payload = {
         mode: "final",
+        selectedCriticalFactors,
         address: collectedRaw.address,
         lat: collectedRaw.lat,
         lng: collectedRaw.lng,
@@ -1361,6 +1439,7 @@ function ScorePageInner() {
       setCollectedRaw(null);
       setEditedData(null);
       setPreviewScore(null);
+      setDeselectedFactors([]);
     } catch {
       setError("Erro de conexão ao gerar score final.");
     } finally {
@@ -1613,10 +1692,13 @@ function ScorePageInner() {
           onChangeObservations={(o) => setEditedObservations(o)}
           onCalculatePreview={calculatePreview}
           onGenerateFinal={generateFinalScore}
+          deselectedFactors={deselectedFactors}
+          onToggleCriticalFactor={toggleCriticalFactor}
           onCancel={() => {
             setCollectedRaw(null);
             setEditedData(null);
             setPreviewScore(null);
+            setDeselectedFactors([]);
           }}
         />
       )}

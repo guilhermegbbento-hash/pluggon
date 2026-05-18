@@ -727,20 +727,42 @@ export function calculateScore(input: ScoreInput): ScoreResult {
   // ============================================================
 
   // V28 — Distância ao centro (peso 3)
-  const v30 =
-    input.distanceToCenter < 1 ? 10 :
-    input.distanceToCenter < 2 ? 9 :
-    input.distanceToCenter < 3 ? 8 :
-    input.distanceToCenter < 5 ? 7 :
-    input.distanceToCenter < 8 ? 5 :
-    input.distanceToCenter < 12 ? 4 : 2;
-  add(
-    "Distância ao centro",
-    "Localização e Acesso",
-    v30,
-    3,
-    `${input.distanceToCenter.toFixed(1)}km do centro da cidade`
-  );
+  // Em cidades grandes, estar longe do centro geográfico pesa MENOS: a cidade
+  // tem múltiplos polos comerciais (ex: SP — Faria Lima, Paulista, Pinheiros).
+  let v30: number;
+  let v30Just: string;
+  if (input.population > 1_000_000) {
+    // Cidades > 1M: distância ao centro impacta menos.
+    v30 =
+      input.distanceToCenter < 1 ? 10 :
+      input.distanceToCenter < 2 ? 9 :
+      input.distanceToCenter < 4 ? 8 :
+      input.distanceToCenter < 7 ? 7 :
+      input.distanceToCenter < 12 ? 6 : 4;
+    v30Just = `${input.distanceToCenter.toFixed(
+      1
+    )}km do centro da cidade (em cidades acima de 1M de habitantes, múltiplos polos comerciais reduzem a importância da distância ao centro geográfico)`;
+  } else if (input.population > 500_000) {
+    v30 =
+      input.distanceToCenter < 1 ? 10 :
+      input.distanceToCenter < 2 ? 9 :
+      input.distanceToCenter < 3 ? 8 :
+      input.distanceToCenter < 5 ? 7 :
+      input.distanceToCenter < 8 ? 5 :
+      input.distanceToCenter < 12 ? 4 : 2;
+    v30Just = `${input.distanceToCenter.toFixed(1)}km do centro da cidade`;
+  } else {
+    // Cidades menores: distância ao centro importa mais.
+    v30 =
+      input.distanceToCenter < 1 ? 10 :
+      input.distanceToCenter < 2 ? 9 :
+      input.distanceToCenter < 3 ? 8 :
+      input.distanceToCenter < 5 ? 7 :
+      input.distanceToCenter < 8 ? 5 :
+      input.distanceToCenter < 12 ? 4 : 2;
+    v30Just = `${input.distanceToCenter.toFixed(1)}km do centro da cidade`;
+  }
+  add("Distância ao centro", "Localização e Acesso", v30, 3, v30Just);
 
   // V29 — Visibilidade e fluxo (peso 3)
   const v31 =

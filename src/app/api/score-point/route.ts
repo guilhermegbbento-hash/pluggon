@@ -504,6 +504,24 @@ async function handleFinalMode(body: Record<string, unknown>) {
 
   const scoreResult = calculateScore(scoreInput);
 
+  // Ressalvas selecionadas pelo admin na tela de revisão. Quando presente,
+  // o relatório final mostra apenas os fatores críticos que o admin marcou.
+  // Ausente (fluxo não-admin) → mantém todos os fatores como hoje.
+  const selectedCriticalFactors = Array.isArray(body.selectedCriticalFactors)
+    ? (body.selectedCriticalFactors as string[])
+    : null;
+  const criticalFactors = selectedCriticalFactors
+    ? scoreResult.criticalFactors.filter((f) =>
+        selectedCriticalFactors.includes(f.name)
+      )
+    : scoreResult.criticalFactors;
+  console.log(
+    "=== RESSALVAS ===",
+    selectedCriticalFactors
+      ? `${criticalFactors.length} de ${scoreResult.criticalFactors.length} selecionadas pelo admin`
+      : "todas (fluxo sem seleção)"
+  );
+
   // No modo final, o prompt do Claude DEVE refletir o que o admin acabou de
   // editar na tela de revisão (collected). Não passamos pelo evDataFinal porque
   // ele pode cair em cache/ABVE quando o admin zera um campo (hasManualEVs exige > 0).
@@ -579,7 +597,7 @@ async function handleFinalMode(body: Record<string, unknown>) {
     classification: scoreResult.classification,
     category_scores: scoreResult.categoryScores,
     scoring_variables: scoreResult.variables,
-    critical_factors: scoreResult.criticalFactors,
+    critical_factors: criticalFactors,
     strengths: claudeResult.strengths,
     nearby_pois: (body.nearby_pois as unknown[]) || [],
     nearby_chargers: (body.nearby_chargers as unknown[]) || [],
