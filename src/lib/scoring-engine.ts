@@ -1056,11 +1056,16 @@ export function calculateScore(input: ScoreInput): ScoreResult {
     overallScore >= 40 ? "MARGINAL" : "NÃO RECOMENDADO";
 
   // ============================================================
-  // FATORES CRÍTICOS — top 5 variáveis com pior impacto real
-  // (mantemos a ordenação por nota × peso, mas o consumidor só vê
-  // nome/justificativa/sugestão — sem números expostos)
+  // FATORES CRÍTICOS — até 5 variáveis com pior impacto real
+  // Só entram variáveis que de fato são ressalvas: nota <= 5 E peso >= 2.
+  // Esse filtro alinha a SELEÇÃO ao critério da sugestão — garante que toda
+  // ressalva escolhida tenha texto e apareça no relatório final (os 4
+  // consumidores filtram por `suggestion`). Sem o filtro, o slice pegava
+  // variáveis de peso 1 ou nota alta, todas com suggestion null, e a seção
+  // de ressalvas saía vazia.
   // ============================================================
   const criticalFactors: CriticalFactor[] = [...vars]
+    .filter((v) => v.score <= 5 && v.weight >= 2)
     .sort((a, b) => a.score * a.weight - b.score * b.weight)
     .slice(0, 5)
     .map((v) => ({
@@ -1081,17 +1086,29 @@ export function calculateScore(input: ScoreInput): ScoreResult {
   };
 }
 
+// Sugestão de mitigação para uma ressalva. Sempre devolve texto: o critério
+// nota <= 5 / peso >= 2 já é aplicado na seleção de criticalFactors, então o
+// fallback genérico garante que nenhuma ressalva chegue ao relatório sem
+// orientação (os consumidores escondem fatores com `suggestion` vazia).
 function getCriticalSuggestion(v: ScoreVariable): string | null {
   if (v.score > 5 || v.weight < 2) return null;
   const n = v.name;
   if (n === "População do município")
     return "Cidade menor tem demanda limitada. Considere focar em pontos de passagem (rodovias) em vez de pontos urbanos.";
+  if (n === "PIB per capita")
+    return "Poder aquisitivo mais baixo reduz a adoção de veículos elétricos na região.";
+  if (n === "Potencial de motoristas de app")
+    return "Menor concentração de motoristas de app. Foque em outros perfis de cliente (frotas, moradores sem garagem).";
   if (n === "EVs registrados na cidade")
     return "Frota EV ainda pequena. O ponto precisa de outras fontes de demanda (motoristas de app, frotas corporativas).";
   if (n.includes("(200m)"))
     return "Concorrência direta em 200m. Verifique se a demanda do local comporta mais um carregador.";
+  if (n.includes("(500m)"))
+    return "Carregadores concorrentes em 500m. Avalie diferenciação por preço ou serviço.";
   if (n === "Distância ao centro")
     return "Distante do centro. Precisa de compensadores: rodovia, alto fluxo próprio, ou operação 24h.";
+  if (n === "Visibilidade e fluxo")
+    return "Poucos estabelecimentos no entorno indicam menor fluxo de pessoas.";
   if (n === "Adequação do tipo de ponto")
     return "Tipo de estabelecimento não gera fluxo próprio. Depende 100% da localização e entorno.";
   if (n === "Amenidades no entorno 500m")
@@ -1100,5 +1117,9 @@ function getCriticalSuggestion(v: ScoreVariable): string | null {
     return "Longe de aeroporto e rodoviária. Menor chance de captar viajantes.";
   if (n === "Postos de combustível em 500m")
     return "Poucos postos de combustível indicam via de baixo tráfego veicular.";
-  return null;
+  if (n === "Potencial turístico/regional")
+    return "Baixa atividade turística na região.";
+  if (n === "Proximidade a centros corporativos")
+    return "Distante de centros empresariais identificados.";
+  return "Fator com nota abaixo da média. Avalie a possibilidade de mitigação antes de investir.";
 }
