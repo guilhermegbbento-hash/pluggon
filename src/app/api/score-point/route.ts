@@ -504,22 +504,24 @@ async function handleFinalMode(body: Record<string, unknown>) {
 
   const scoreResult = calculateScore(scoreInput);
 
-  // Ressalvas selecionadas pelo admin na tela de revisão. Quando presente,
-  // o relatório final mostra apenas os fatores críticos que o admin marcou.
-  // Ausente (fluxo não-admin) → mantém todos os fatores como hoje.
-  const selectedCriticalFactors = Array.isArray(body.selectedCriticalFactors)
-    ? (body.selectedCriticalFactors as string[])
-    : null;
-  const criticalFactors = selectedCriticalFactors
-    ? scoreResult.criticalFactors.filter((f) =>
-        selectedCriticalFactors.includes(f.name)
-      )
-    : scoreResult.criticalFactors;
+  // Ressalvas DESMARCADAS pelo admin na tela de revisão são removidas do
+  // relatório final. Rastreamos as DESMARCADAS (não as marcadas) de propósito:
+  // lista vazia/ausente → mantém TODOS os fatores críticos. Isso evita que o
+  // relatório final fique sem ressalvas quando a prévia ainda não foi
+  // calculada no cliente — caso em que a lista de "marcadas" chegava vazia e
+  // zerava os fatores, deixando a seção "Vale o Risco?" citando "fatores
+  // acima" inexistentes.
+  const deselectedCriticalFactors = Array.isArray(body.deselectedCriticalFactors)
+    ? (body.deselectedCriticalFactors as string[])
+    : [];
+  const criticalFactors = scoreResult.criticalFactors.filter(
+    (f) => !deselectedCriticalFactors.includes(f.name)
+  );
   console.log(
     "=== RESSALVAS ===",
-    selectedCriticalFactors
-      ? `${criticalFactors.length} de ${scoreResult.criticalFactors.length} selecionadas pelo admin`
-      : "todas (fluxo sem seleção)"
+    deselectedCriticalFactors.length > 0
+      ? `${criticalFactors.length} de ${scoreResult.criticalFactors.length} mantidas (admin removeu ${deselectedCriticalFactors.length})`
+      : "todas mantidas"
   );
 
   // No modo final, o prompt do Claude DEVE refletir o que o admin acabou de

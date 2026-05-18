@@ -1398,13 +1398,12 @@ function ScorePageInner() {
     setGeneratingFinal(true);
     setError("");
     try {
-      // Ressalvas marcadas pelo admin (potenciais menos as desmarcadas).
-      const selectedCriticalFactors = (previewScore?.criticalFactors || [])
-        .filter((f) => f.suggestion && !deselectedFactors.includes(f.name))
-        .map((f) => f.name);
       const payload = {
         mode: "final",
-        selectedCriticalFactors,
+        // Ressalvas que o admin DESMARCOU na revisão — o backend remove só
+        // essas e mantém o resto. Enviar as desmarcadas (em vez das marcadas)
+        // evita depender da prévia já estar calculada para saber o que manter.
+        deselectedCriticalFactors: deselectedFactors,
         address: collectedRaw.address,
         lat: collectedRaw.lat,
         lng: collectedRaw.lng,
@@ -2051,7 +2050,7 @@ function ScorePageInner() {
           </div>
 
           {/* Fatores Críticos / Pontos de Atenção */}
-          {result.critical_factors && result.critical_factors.length > 0 && (
+          {result.critical_factors?.some((f) => f.suggestion) && (
             <div className="rounded-xl border border-[#FF9800]/30 bg-[#FF9800]/5 p-5">
               <h3 className="mb-4 text-base font-semibold text-[#FF9800]">
                 ⚠ Pontos de Atenção
@@ -2082,6 +2081,11 @@ function ScorePageInner() {
           {/* Vale o Risco? */}
           {(() => {
             const s = result.overall_score;
+            // Só citamos "os fatores acima" se a seção Pontos de Atenção foi
+            // de fato renderizada logo acima (há fator crítico com sugestão).
+            const hasFactors = !!result.critical_factors?.some(
+              (f) => f.suggestion
+            );
             let title = "";
             let body = "";
             let color = "#8B949E";
@@ -2091,18 +2095,21 @@ function ScorePageInner() {
               color = "#C9A84C";
             } else if (s >= 70) {
               title = "ESTRATÉGICO";
-              body =
-                "Bom ponto com ressalvas. Os fatores acima merecem atenção mas não impedem a operação.";
+              body = hasFactors
+                ? "Bom ponto com ressalvas. Os fatores acima merecem atenção mas não impedem a operação."
+                : "Bom ponto, com fundamentos sólidos e poucos pontos de atenção relevantes.";
               color = "#2196F3";
             } else if (s >= 55) {
               title = "VIÁVEL";
-              body =
-                "Ponto com potencial mas riscos significativos. Avalie se os fatores negativos podem ser mitigados antes de investir.";
+              body = hasFactors
+                ? "Ponto com potencial mas riscos significativos. Avalie se os fatores acima podem ser mitigados antes de investir."
+                : "Ponto com potencial mas riscos significativos. Avalie bem antes de investir.";
               color = "#FFC107";
             } else if (s >= 40) {
               title = "MARGINAL";
-              body =
-                "Risco alto. Os fatores negativos são difíceis de contornar. Recomendamos buscar alternativas.";
+              body = hasFactors
+                ? "Risco alto. Os fatores acima são difíceis de contornar. Recomendamos buscar alternativas."
+                : "Risco alto. Recomendamos buscar alternativas.";
               color = "#FF9800";
             } else {
               title = "NÃO RECOMENDADO";
