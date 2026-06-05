@@ -159,6 +159,7 @@ interface CollectResponse {
   establishment_name: string;
   ibge_data: ScoreResult["ibge_data"];
   abve_data: ScoreResult["abve_data"];
+  city_ev_data?: ScoreResult["city_ev_data"];
   nearby_pois: NearbyPlace[];
   nearby_chargers: NearbyPlace[];
   collected: CollectedData;
@@ -261,6 +262,29 @@ function getScoreColor(score: number): string {
   if (score >= 5.5) return "#FFC107";
   if (score >= 4) return "#FF9800";
   return "#F44336";
+}
+
+// Dados de cidade salvos há mais de 30 dias são considerados desatualizados.
+const CITY_DATA_STALE_DAYS = 30;
+
+function isCityDataStale(iso?: string | null): boolean {
+  if (!iso) return false;
+  const saved = new Date(iso).getTime();
+  if (!Number.isFinite(saved)) return false;
+  return Date.now() - saved > CITY_DATA_STALE_DAYS * 24 * 60 * 60 * 1000;
+}
+
+function formatSavedDate(iso?: string | null): string {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleDateString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+  } catch {
+    return "";
+  }
 }
 
 // Recompute observation variable client-side (zero API cost) — espelha scoring-engine.ts
@@ -694,6 +718,18 @@ function ReviewPanel({
           </p>
         )}
       </div>
+
+      {/* Aviso: dados da cidade salvos há mais de 30 dias */}
+      {isCityDataStale(collectedRaw.city_ev_data?.cacheUpdatedAt) && (
+        <div className="flex items-start gap-2 rounded-xl border border-[#D29922]/40 bg-[#D29922]/10 px-4 py-3">
+          <span className="text-base leading-none text-[#D29922]">⚠</span>
+          <p className="text-sm text-[#E3B341]">
+            Dados desta cidade foram salvos em{" "}
+            {formatSavedDate(collectedRaw.city_ev_data?.cacheUpdatedAt)}. Verifique se estão
+            atualizados.
+          </p>
+        </div>
+      )}
 
       {/* Card: Cidade e Demografia */}
       <div className={cardClass(anyEditedInCard("population", "gdpPerCapita"))}>
@@ -1192,6 +1228,9 @@ function ScorePageInner() {
   const [manualData, setManualData] = useState<CityEVManualData>(EMPTY_MANUAL_DATA);
   const [cityForManual, setCityForManual] = useState("");
   const [stateForManual, setStateForManual] = useState("");
+  // Usuário editou manualmente algum campo de frota/carregador? Só então o
+  // relatório final regrava o updated_at do cache (confirma que revisou o dado).
+  const [manualEdited, setManualEdited] = useState(false);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -1303,6 +1342,9 @@ function ScorePageInner() {
           chargersAC: manualData.chargersAC,
           chargersDC: manualData.chargersDC,
         },
+        // Só regrava o cache (e o updated_at) se o usuário editou um campo. Dados
+        // apenas pré-carregados e não revisados preservam a data salva original.
+        persistManual: manualEdited,
       };
       if (parsedCoords) {
         payload.lat = parsedCoords.lat;
@@ -1346,6 +1388,9 @@ function ScorePageInner() {
     value: CollectedData[K]
   ) {
     if (!editedData) return;
+    if (field === "dcInCity") {
+      console.log("[dc-debug] admin editou dcInCity (DC na cidade total):", value);
+    }
     const next = { ...editedData, [field]: value } as CollectedData;
     // totalPOIs500m é derivado dos POIs em raio de 500m
     next.totalPOIs500m =
@@ -1423,6 +1468,11 @@ function ScorePageInner() {
         nearby_pois: collectedRaw.nearby_pois,
         nearby_chargers: collectedRaw.nearby_chargers,
       };
+      console.log(
+        "[dc-debug] payload FINAL — collected.dcInCity=", editedData.dcInCity,
+        "| chargersDC=", editedData.chargersDC,
+        "| collected enviado=", JSON.stringify(payload.collected)
+      );
       const res = await fetch("/api/score-point", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1589,6 +1639,7 @@ function ScorePageInner() {
                     setAddress(c && s ? `${c}, ${s}` : "");
                     setCityForManual(c);
                     setStateForManual(s);
+                    setManualEdited(false);
                   }}
                 />
                 {address && (
@@ -1607,6 +1658,7 @@ function ScorePageInner() {
                 state={stateForManual}
                 value={manualData}
                 onChange={setManualData}
+                onEditedChange={setManualEdited}
                 disabled={loading}
               />
             </div>

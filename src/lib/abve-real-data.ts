@@ -201,6 +201,9 @@ export interface CityEVData {
   chargersSource: string; // Origem dos carregadores
   chargersSourceTag: 'manual' | 'cache' | 'abve' | 'none';
   cacheUpdatedAt?: string | null;
+  // "DC na cidade (total)" salvo por cidade (revisão admin). null se nunca salvo —
+  // nesse caso o chamador usa a contagem fresca por proximidade do ev_chargers.
+  cachedDcInCity?: number | null;
 }
 
 export interface ManualCityEVInput {
@@ -208,6 +211,9 @@ export interface ManualCityEVInput {
   phev?: number | null;
   chargersAC?: number | null;
   chargersDC?: number | null;
+  // DC na cidade (total) — escopo cidade, persistido. Opcional pois o formulário
+  // inicial não o informa (só a tela de revisão admin).
+  dcInCity?: number | null;
 }
 
 interface CacheRow {
@@ -215,6 +221,7 @@ interface CacheRow {
   phev: number | null;
   chargers_ac: number | null;
   chargers_dc: number | null;
+  dc_in_city: number | null;
   updated_at: string | null;
 }
 
@@ -232,7 +239,7 @@ type SupabaseLike = {
     upsert: (
       v: Record<string, unknown>,
       opts?: { onConflict?: string }
-    ) => Promise<{ error: unknown }>;
+    ) => Promise<{ data: unknown; error: unknown }>;
   };
 };
 
@@ -273,7 +280,7 @@ export async function getCityEVDataAsync(
     try {
       const { data } = await supabase
         .from('city_ev_data')
-        .select('bev, phev, chargers_ac, chargers_dc, updated_at')
+        .select('bev, phev, chargers_ac, chargers_dc, dc_in_city, updated_at')
         .eq('city', city)
         .eq('state', state)
         .maybeSingle();
@@ -375,6 +382,7 @@ function resolveCityEVData(
     chargersSource: chargersSourceLabel,
     chargersSourceTag,
     cacheUpdatedAt: cache?.updated_at ?? null,
+    cachedDcInCity: cache?.dc_in_city ?? null,
   };
 }
 
@@ -388,18 +396,23 @@ export async function upsertCityEVCache(
   updatedBy?: string | null
 ): Promise<void> {
   if (!city || !state || !manualData) return;
+  console.log('[dc-debug] upsertCityEVCache IN', city, state, 'manualData=', JSON.stringify(manualData));
   const hasAny =
     (manualData.bev !== null && manualData.bev !== undefined && manualData.bev > 0) ||
     (manualData.phev !== null && manualData.phev !== undefined && manualData.phev > 0) ||
     (manualData.chargersAC !== null && manualData.chargersAC !== undefined && manualData.chargersAC > 0) ||
-    (manualData.chargersDC !== null && manualData.chargersDC !== undefined && manualData.chargersDC > 0);
-  if (!hasAny) return;
+    (manualData.chargersDC !== null && manualData.chargersDC !== undefined && manualData.chargersDC > 0) ||
+    (manualData.dcInCity !== null && manualData.dcInCity !== undefined && manualData.dcInCity > 0);
+  if (!hasAny) {
+    console.log('[dc-debug] upsertCityEVCache SKIP — hasAny=false (nenhum campo > 0)');
+    return;
+  }
   try {
     let existing: CacheRow | null = null;
     try {
       const { data } = await supabase
         .from('city_ev_data')
-        .select('bev, phev, chargers_ac, chargers_dc, updated_at')
+        .select('bev, phev, chargers_ac, chargers_dc, dc_in_city, updated_at')
         .eq('city', city)
         .eq('state', state)
         .maybeSingle();
@@ -414,13 +427,32 @@ export async function upsertCityEVCache(
       phev: manualData.phev ?? existing?.phev ?? null,
       chargers_ac: manualData.chargersAC ?? existing?.chargers_ac ?? null,
       chargers_dc: manualData.chargersDC ?? existing?.chargers_dc ?? null,
+      dc_in_city: manualData.dcInCity ?? existing?.dc_in_city ?? null,
       source: 'manual',
       updated_by: updatedBy || 'unknown',
       updated_at: new Date().toISOString(),
     };
-    await supabase
+    console.log('[dc-debug] upsert ROW (dc_in_city=' + row.dc_in_city + ')=', JSON.stringify(row));
+    const { data: upserted, error } = await supabase
       .from('city_ev_data')
       .upsert(row, { onConflict: 'city,state' });
+    if (error) {
+      console.error('[dc-debug] upsert ERROR:', JSON.stringify(error));
+    } else {
+      console.log('[dc-debug] upsert OK, retorno=', JSON.stringify(upserted));
+    }
+    // Re-leitura para confirmar o que ficou gravado na linha.
+    try {
+      const { data: after } = await supabase
+        .from('city_ev_data')
+        .select('bev, phev, chargers_ac, chargers_dc, dc_in_city, updated_at')
+        .eq('city', city)
+        .eq('state', state)
+        .maybeSingle();
+      console.log('[dc-debug] re-leitura pós-upsert dc_in_city=', after?.dc_in_city, 'linha=', JSON.stringify(after));
+    } catch (e) {
+      console.warn('[dc-debug] re-leitura pós-upsert falhou:', e);
+    }
   } catch (err) {
     console.warn('upsertCityEVCache failed:', err);
   }

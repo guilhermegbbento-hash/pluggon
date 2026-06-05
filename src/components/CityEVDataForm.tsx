@@ -22,7 +22,21 @@ interface Props {
   state: string;
   value: CityEVManualData;
   onChange: (v: CityEVManualData) => void;
+  // Avisa o pai quando o usuário editou algum campo manualmente (mesmo mantendo
+  // o valor igual). O pai usa isso para só regravar o updated_at quando o dado
+  // foi de fato revisado — ver persistManual em score/page.tsx.
+  onEditedChange?: (edited: boolean) => void;
   disabled?: boolean;
+}
+
+// Dados salvos há mais de 30 dias são considerados desatualizados.
+const STALE_AFTER_DAYS = 30;
+
+function isStale(iso: string | null): boolean {
+  if (!iso) return false;
+  const saved = new Date(iso).getTime();
+  if (!Number.isFinite(saved)) return false;
+  return Date.now() - saved > STALE_AFTER_DAYS * 24 * 60 * 60 * 1000;
 }
 
 function parseInput(raw: string): number | null {
@@ -46,24 +60,34 @@ function formatDate(iso: string): string {
   }
 }
 
-export default function CityEVDataForm({ city, state, value, onChange, disabled }: Props) {
+export default function CityEVDataForm({ city, state, value, onChange, onEditedChange, disabled }: Props) {
   const [cacheDate, setCacheDate] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // Usuário editou algum campo desde que estes dados foram carregados? Enquanto
+  // false, dados antigos exibem o aviso de desatualizado; após qualquer edição
+  // o aviso some (o dado foi revisado).
+  const [edited, setEdited] = useState(false);
   const onChangeRef = useRef(onChange);
+  const onEditedChangeRef = useRef(onEditedChange);
 
   useEffect(() => {
     onChangeRef.current = onChange;
-  }, [onChange]);
+    onEditedChangeRef.current = onEditedChange;
+  }, [onChange, onEditedChange]);
 
   useEffect(() => {
     if (!city || !state) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setCacheDate(null);
+      setEdited(false);
+      onEditedChangeRef.current?.(false);
       return;
     }
     let cancelled = false;
     setLoading(true);
     setCacheDate(null);
+    setEdited(false);
+    onEditedChangeRef.current?.(false);
     const supabase = createClient();
     supabase
       .from("city_ev_data")
@@ -93,8 +117,15 @@ export default function CityEVDataForm({ city, state, value, onChange, disabled 
 
   const totalEVs = (value.bev ?? 0) + (value.phev ?? 0);
   const totalChargers = (value.chargersAC ?? 0) + (value.chargersDC ?? 0);
+  const stale = isStale(cacheDate);
+  const showStaleWarning = stale && !edited && !loading;
 
   function update<K extends keyof CityEVManualData>(field: K, raw: string) {
+    // Qualquer edição manual confirma que o usuário revisou o dado — limpa o aviso.
+    if (!edited) {
+      setEdited(true);
+      onEditedChangeRef.current?.(true);
+    }
     onChange({ ...value, [field]: parseInput(raw) });
   }
 
@@ -112,7 +143,7 @@ export default function CityEVDataForm({ city, state, value, onChange, disabled 
           <span className="text-xs font-normal text-[#8B949E]">(opcional)</span>
         </h3>
         {loading && <span className="text-[10px] text-[#8B949E]">Buscando dados salvos...</span>}
-        {!loading && cacheDate && (
+        {!loading && cacheDate && !stale && (
           <span className="text-[10px] font-medium text-[#66BB6A]">
             Dados salvos em {formatDate(cacheDate)}
           </span>
@@ -200,6 +231,16 @@ export default function CityEVDataForm({ city, state, value, onChange, disabled 
           </div>
         </div>
       </div>
+
+      {showStaleWarning && (
+        <div className="mt-3 flex items-start gap-2 rounded-md border border-[#D29922]/40 bg-[#D29922]/10 px-3 py-2">
+          <span className="text-sm leading-none text-[#D29922]">⚠</span>
+          <p className="text-[11px] text-[#E3B341]">
+            Dados desta cidade foram salvos em {formatDate(cacheDate!)}. Verifique se estão
+            atualizados antes de gerar o relatório.
+          </p>
+        </div>
+      )}
 
       <p className="mt-3 text-[11px] text-[#8B949E]">
         Fonte recomendada:{" "}

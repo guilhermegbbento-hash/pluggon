@@ -420,13 +420,23 @@ async function handleFinalMode(body: Record<string, unknown>) {
       : null);
 
   // Persiste o que o admin editou (ou os campos manuais originais) no cache.
+  // "DC na cidade (total)" também é escopo cidade — vai junto. Os DC por raio
+  // (200m/500m/1km/2km) NÃO são persistidos (dependem do endereço exato).
+  console.log(
+    '[dc-debug] handleFinalMode ANTES upsert — collected.dcInCity=', collected.dcInCity,
+    '| manualData=', JSON.stringify(manualData)
+  );
   if (manualData) {
     let userEmail: string | null = null;
     try {
       const { data: { user } } = await supabase.auth.getUser();
       userEmail = user?.email ?? null;
     } catch {}
-    await upsertCityEVCache(supabase as never, city, state, manualData, userEmail);
+    const toPersist = { ...manualData, dcInCity: collected.dcInCity ?? null };
+    console.log('[dc-debug] handleFinalMode chamando upsert com=', JSON.stringify(toPersist));
+    await upsertCityEVCache(supabase as never, city, state, toPersist, userEmail);
+  } else {
+    console.log('[dc-debug] handleFinalMode SEM manualData — upsert não chamado');
   }
 
   const evDataFinal = await getCityEVDataAsync(
@@ -700,6 +710,10 @@ export async function POST(request: Request) {
       manualData?: ManualCityEVInput | null;
     };
 
+    // Só persiste o cache quando o cliente confirma que o dado foi revisado/editado.
+    // Ausência do flag → persiste (compatível com chamadas antigas).
+    const persistManual = (body as { persistManual?: boolean }).persistManual !== false;
+
     if (!address && (providedLat == null || providedLng == null)) {
       return Response.json(
         { error: "Endereço ou coordenadas são obrigatórios" },
@@ -748,8 +762,8 @@ export async function POST(request: Request) {
 
     const supabase = await createClient();
 
-    // Se admin/usuário forneceu dados manuais, salvar no cache antes de qualquer cálculo.
-    if (manualData) {
+    // Se admin/usuário forneceu/revisou dados manuais, salvar no cache antes de qualquer cálculo.
+    if (manualData && persistManual) {
       let userEmail: string | null = null;
       try {
         const { data: { user } } = await supabase.auth.getUser();
@@ -1056,6 +1070,11 @@ export async function POST(request: Request) {
         manualData,
         supabase as never
       );
+      console.log(
+        '[dc-debug] MODO COLLECT — cachedDcInCity=', evDataCollect.cachedDcInCity,
+        '| chargersNear.dcInCity=', chargersNear.dcInCity,
+        '=> dcInCity exibido=', evDataCollect.cachedDcInCity ?? chargersNear.dcInCity
+      );
       const evsCityEstimate = evDataCollect.totalEVs || abve?.evsSold || 0;
       const abveSource =
         evDataCollect.evsSourceTag === "manual"
@@ -1114,7 +1133,9 @@ export async function POST(request: Request) {
           phev: evDataCollect.phev,
           chargersAC: evDataCollect.acChargers,
           chargersDC: evDataCollect.dcChargers,
-          dcInCity: chargersNear.dcInCity,
+          // DC na cidade (total): usa o valor revisado/salvo por cidade se existir;
+          // senão, a contagem fresca por proximidade do ev_chargers.
+          dcInCity: evDataCollect.cachedDcInCity ?? chargersNear.dcInCity,
           totalInCity: chargersNear.totalInCity,
           dcIn200m: chargersNear.dcIn200m,
           dcIn500m: chargersNear.dcIn500m,

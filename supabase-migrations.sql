@@ -85,3 +85,8 @@ CREATE TABLE IF NOT EXISTS city_ev_data (
 );
 ALTER TABLE city_ev_data DISABLE ROW LEVEL SECURITY;
 CREATE INDEX IF NOT EXISTS idx_city_ev_data_city_state ON city_ev_data (city, state);
+
+-- DC na cidade (total) revisado na tela de revisão (admin). Escopo cidade, então
+-- persiste aqui; já os DC por raio (200m/500m/1km/2km) são sempre buscados frescos
+-- via ev_chargers por proximidade ao endereço e NÃO são persistidos.
+ALTER TABLE city_ev_data ADD COLUMN IF NOT EXISTS dc_in_city integer;
