@@ -6,6 +6,7 @@ import { buildScoreHtml } from "@/lib/score-html-export";
 import { createClient } from "@/lib/supabase/client";
 import { calculateScore, type ScoreInput, type ScoreResult as EngineScoreResult, type CriticalFactor } from "@/lib/scoring-engine";
 import CityStateSelect from "@/components/CityStateSelect";
+import { DARK_TILES, TILE_OPTIONS, warnIfMissingKey } from "@/lib/basemap";
 import CityEVDataForm, {
   EMPTY_MANUAL_DATA,
   type CityEVManualData,
@@ -514,9 +515,8 @@ function MiniMap({
       attributionControl: false,
     } as Record<string, unknown>);
 
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-      maxZoom: 19,
-    }).addTo(map);
+    warnIfMissingKey();
+    L.tileLayer(DARK_TILES, TILE_OPTIONS).addTo(map);
 
     L.circle([lat, lng], {
       radius: 500,

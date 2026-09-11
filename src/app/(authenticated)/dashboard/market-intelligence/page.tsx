@@ -5,6 +5,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line,
 } from "recharts";
 import CityStateSelect from "@/components/CityStateSelect";
+import { DARK_TILES, TILE_ATTRIBUTION, TILE_OPTIONS, warnIfMissingKey } from "@/lib/basemap";
 import CityEVDataForm, {
   EMPTY_MANUAL_DATA,
   type CityEVManualData,
@@ -164,10 +165,8 @@ function LeafletMap({ id, onInit }: { id: string; onInit: (map: any, L: any) => 
         zoomControl: true,
       });
 
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-        attribution: '&copy; <a href="https://carto.com/">CARTO</a>',
-        maxZoom: 19,
-      }).addTo(map);
+      warnIfMissingKey();
+      L.tileLayer(DARK_TILES, TILE_OPTIONS).addTo(map);
 
       mapRef.current = map;
       onInit(map, L);
@@ -611,7 +610,7 @@ ${p8 ? `<!-- PAINEL 8: RELATÓRIO EXECUTIVO -->
     var el = document.getElementById(id);
     if (!el) return null;
     var m = L.map(el, { center:[DATA.center.lat, DATA.center.lng], zoom: zoom||12 });
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", { maxZoom:19, attribution:"&copy; CARTO" }).addTo(m);
+    L.tileLayer("${DARK_TILES}", { maxZoom:19, attribution:'${TILE_ATTRIBUTION}' }).addTo(m);
     return m;
   }
   // Concorrentes

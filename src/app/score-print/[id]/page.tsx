@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { LIGHT_TILES, TILE_OPTIONS, warnIfMissingKey } from "@/lib/basemap";
 
 // ---------- Types ----------
 
@@ -236,9 +237,8 @@ function MiniMap({
         attributionControl: false,
       });
 
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
-        maxZoom: 19,
-      }).addTo(map);
+      warnIfMissingKey();
+      L.tileLayer(LIGHT_TILES, TILE_OPTIONS).addTo(map);
 
       L.circle([lat, lng], {
         radius: 500,

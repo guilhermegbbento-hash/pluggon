@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { createClient } from "@/lib/supabase/client";
 import CityStateSelect from "@/components/CityStateSelect";
+import { DARK_TILES, TILE_ATTRIBUTION } from "@/lib/basemap";
 import CityEVDataForm, {
   EMPTY_MANUAL_DATA,
   type CityEVManualData,
@@ -366,7 +367,7 @@ const center = ${JSON.stringify(result.center)};
 const ANCHOR_EMOJI = { gas_station: '⛽', bus_station: '🚌', airport: '✈️', shopping_mall: '🏬' };
 
 const map = L.map('map').setView([center.lat, center.lng], ${submittedRegions.length > 0 ? 14 : 12});
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; CARTO', maxZoom: 19 }).addTo(map);
+L.tileLayer('${DARK_TILES}', { attribution: '${TILE_ATTRIBUTION}', maxZoom: 19 }).addTo(map);
 
 const escapeHtml = (s) => (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
