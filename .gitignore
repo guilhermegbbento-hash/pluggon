@@ -12,6 +12,8 @@
 
 # testing
 /coverage
+# saída detalhada da regressão ao vivo (contém dados do Google — não versionar)
+/.heatmap-regression-output
 
 # next.js
 /.next/
