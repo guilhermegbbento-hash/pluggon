@@ -1,3 +1,50 @@
+# PLUGGON
+
+> ## ⚠ HTML exportado para cliente — regras permanentes
+>
+> Os relatórios HTML baixados pela plataforma (Mapa de Calor, score de ponto,
+> inteligência de mercado) são **material comercial**: o cliente abre o arquivo
+> em reunião, às vezes meses depois, de `file://`, sem internet boa ou atrás de
+> firewall corporativo. Por decisão de produto:
+>
+> 1. **O HTML exportado é autocontido.** Nenhuma dependência externa bloqueante:
+>    nada de `<script src>`, `<link rel="stylesheet">`, `@import` ou fonte de CDN.
+>    O Leaflet vai embutido (`src/lib/heatmap/leaflet-vendor.ts`, gerado por
+>    `npm run vendor:leaflet`). **Não reintroduza `<script src>` no `report-html.ts`.**
+> 2. **Os tiles da base cartográfica são a única requisição de rede**, e não
+>    bloqueiam a primeira pintura. Se não carregarem, o mapa degrada: fundo
+>    neutro, pontos e círculos visíveis, e um aviso de que pontos, raios e
+>    contagens continuam válidos. Nunca tela branca.
+> 3. **Listas e contadores não dependem do mapa.** Saem prontos no HTML; o mapa
+>    é uma camada visual sobre um documento que já se sustenta sozinho.
+> 4. A regressão ao vivo (`npm run test:heatmap-live`) abre cada HTML no Chrome
+>    online, sem rede, com firewall pendurado e sem Leaflet, e falha se alguma
+>    dessas regras quebrar.
+>
+> ### 🔒 Chave do CARTO: NÃO restringir por domínio, NÃO rotacionar
+>
+> **A chave do CARTO vai embutida em cada HTML exportado.** Enquanto houver
+> relatório em campo, ela **não pode ser restringida por domínio nem rotacionada
+> ou revogada**: cada arquivo busca os tiles na hora em que é aberto, de
+> `file://`, sem `Referer` — restringir ou trocar a chave quebra a base
+> cartográfica de **todos** os relatórios já entregues, e não há como recolher
+> arquivo que está com cliente.
+>
+> | Variável | Uso |
+> |---|---|
+> | `NEXT_PUBLIC_CARTO_API_KEY` | mapas do app **e**, hoje, a chave gravada nos HTML exportados |
+> | `NEXT_PUBLIC_CARTO_EXPORT_API_KEY` | opcional; se existir, substitui a de cima **só nos HTML exportados** |
+>
+> - Hoje é **uma chave só** (sem `NEXT_PUBLIC_CARTO_EXPORT_API_KEY`), então a
+>   chave do app **também** não pode ser restrita.
+> - **Para separar um dia:** a chave **atual** vira `NEXT_PUBLIC_CARTO_EXPORT_API_KEY`
+>   (continua intocável: está dentro dos relatórios enviados) e uma chave **nova**
+>   vai para `NEXT_PUBLIC_CARTO_API_KEY` — só essa nova pode ser restrita.
+> - Sem **nenhuma** das duas, a exportação falha com erro explícito: nunca sai
+>   HTML sem base cartográfica.
+>
+> Licenciamento da base cartográfica (termos da CARTO gratuita): issue #1.
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started

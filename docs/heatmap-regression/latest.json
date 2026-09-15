@@ -1,0 +1,600 @@
+{
+  "ranAt": "2026-09-15T20:29:06.909Z",
+  "generatorVersion": "3.2.1",
+  "sourceHash": "df52cd8bf97a86de",
+  "allPassed": true,
+  "cases": [
+    {
+      "id": "a",
+      "label": "Morumbi — São Paulo/SP",
+      "purpose": "caso original do relatório contaminado",
+      "error": null,
+      "mode": "bairro",
+      "areas": [
+        {
+          "radiusM": 1757,
+          "radiusSource": "bounds",
+          "radiusClamp": null,
+          "boundsCoveragePct": 96
+        }
+      ],
+      "competitorSearch": {
+        "cells": 3,
+        "maxDepth": 0,
+        "cappedCells": 0
+      },
+      "complementaryWithoutAnchor": 60,
+      "renderViolations": 0,
+      "counts": {
+        "anchors": 28,
+        "complementary": 113,
+        "competitors": 11,
+        "competitorsDC": 2,
+        "competitorsAC": 5,
+        "competitorsUnknown": 4,
+        "anchorsByType": {
+          "gas_station": 22,
+          "shopping_mall": 6
+        }
+      },
+      "maxDistanceM": {
+        "anchors": 1714,
+        "complementary": 1757,
+        "competitors": 1640
+      },
+      "discardsByReason": {
+        "fora_do_raio": 82,
+        "tipo_principal_divergente": 1,
+        "duplicata_nome_contido": 3,
+        "duplicata_place_id": 8,
+        "duplicata_entre_camadas": 4,
+        "complementar_excedente_por_ancora": 63,
+        "complementar_sem_ancora_proxima": 60
+      },
+      "truncatedSearches": 2,
+      "sources": [
+        {
+          "name": "Google Places",
+          "status": "ok"
+        },
+        {
+          "name": "OpenChargeMap",
+          "status": "indisponivel"
+        }
+      ],
+      "fitBoundsIsScope": true,
+      "qaPassed": true,
+      "googleQueries": 29,
+      "invariantViolations": [],
+      "render": {
+        "online": {
+          "violations": 0,
+          "fcpMs": 212,
+          "externalRequests": 20,
+          "externalBeforeFcp": 20
+        },
+        "sem_rede": {
+          "violations": 0,
+          "fcpMs": 176,
+          "externalRequests": 20,
+          "externalBeforeFcp": 20
+        },
+        "firewall_pendurado": {
+          "violations": 0,
+          "fcpMs": 176,
+          "externalRequests": 20,
+          "externalBeforeFcp": 20
+        },
+        "sem_leaflet": {
+          "violations": 0,
+          "fcpMs": 124,
+          "externalRequests": 0,
+          "externalBeforeFcp": 0
+        },
+        "sem_js": {
+          "violations": 0,
+          "fcpMs": 100,
+          "externalRequests": 0,
+          "externalBeforeFcp": 0
+        }
+      }
+    },
+    {
+      "id": "b",
+      "label": "Itaim Bibi — São Paulo/SP",
+      "purpose": "bairro denso com concorrentes reais no raio",
+      "error": null,
+      "mode": "bairro",
+      "areas": [
+        {
+          "radiusM": 1500,
+          "radiusSource": "bounds",
+          "radiusClamp": "piso",
+          "boundsCoveragePct": 99
+        }
+      ],
+      "competitorSearch": {
+        "cells": 42,
+        "maxDepth": 4,
+        "cappedCells": 0
+      },
+      "complementaryWithoutAnchor": 29,
+      "renderViolations": 0,
+      "counts": {
+        "anchors": 36,
+        "complementary": 151,
+        "competitors": 134,
+        "competitorsDC": 4,
+        "competitorsAC": 88,
+        "competitorsUnknown": 42,
+        "anchorsByType": {
+          "gas_station": 26,
+          "shopping_mall": 10
+        }
+      },
+      "maxDistanceM": {
+        "anchors": 1488,
+        "complementary": 1499,
+        "competitors": 1497
+      },
+      "discardsByReason": {
+        "fora_do_raio": 120,
+        "ponto_de_onibus_sem_sinal_de_terminal": 2,
+        "tipo_principal_divergente": 4,
+        "duplicata_place_id": 13,
+        "duplicata_proximidade_nome": 4,
+        "duplicata_nome_contido": 1,
+        "duplicata_entre_camadas": 5,
+        "complementar_excedente_por_ancora": 111,
+        "complementar_sem_ancora_proxima": 29
+      },
+      "truncatedSearches": 2,
+      "sources": [
+        {
+          "name": "Google Places",
+          "status": "ok"
+        },
+        {
+          "name": "OpenChargeMap",
+          "status": "indisponivel"
+        }
+      ],
+      "fitBoundsIsScope": true,
+      "qaPassed": true,
+      "googleQueries": 72,
+      "invariantViolations": [],
+      "render": {
+        "online": {
+          "violations": 0,
+          "fcpMs": 212,
+          "externalRequests": 20,
+          "externalBeforeFcp": 20
+        },
+        "sem_rede": {
+          "violations": 0,
+          "fcpMs": 208,
+          "externalRequests": 40,
+          "externalBeforeFcp": 26
+        },
+        "firewall_pendurado": {
+          "violations": 0,
+          "fcpMs": 280,
+          "externalRequests": 20,
+          "externalBeforeFcp": 20
+        },
+        "sem_leaflet": {
+          "violations": 0,
+          "fcpMs": 132,
+          "externalRequests": 0,
+          "externalBeforeFcp": 0
+        },
+        "sem_js": {
+          "violations": 0,
+          "fcpMs": 116,
+          "externalRequests": 0,
+          "externalBeforeFcp": 0
+        }
+      }
+    },
+    {
+      "id": "c",
+      "label": "Batel — Curitiba/PR",
+      "purpose": "bairro de capital fora de SP",
+      "error": null,
+      "mode": "bairro",
+      "areas": [
+        {
+          "radiusM": 1500,
+          "radiusSource": "bounds",
+          "radiusClamp": "piso",
+          "boundsCoveragePct": 99
+        }
+      ],
+      "competitorSearch": {
+        "cells": 15,
+        "maxDepth": 2,
+        "cappedCells": 0
+      },
+      "complementaryWithoutAnchor": 4,
+      "renderViolations": 0,
+      "counts": {
+        "anchors": 66,
+        "complementary": 284,
+        "competitors": 43,
+        "competitorsDC": 6,
+        "competitorsAC": 20,
+        "competitorsUnknown": 17,
+        "anchorsByType": {
+          "gas_station": 28,
+          "shopping_mall": 38
+        }
+      },
+      "maxDistanceM": {
+        "anchors": 1492,
+        "complementary": 1498,
+        "competitors": 1476
+      },
+      "discardsByReason": {
+        "fora_do_raio": 134,
+        "ponto_de_onibus_sem_sinal_de_terminal": 1,
+        "tipo_principal_divergente": 2,
+        "duplicata_proximidade_nome": 2,
+        "duplicata_nome_contido": 7,
+        "duplicata_place_id": 4,
+        "duplicata_entre_camadas": 6,
+        "complementar_excedente_por_ancora": 46,
+        "complementar_sem_ancora_proxima": 4
+      },
+      "truncatedSearches": 5,
+      "sources": [
+        {
+          "name": "Google Places",
+          "status": "ok"
+        },
+        {
+          "name": "OpenChargeMap",
+          "status": "indisponivel"
+        }
+      ],
+      "fitBoundsIsScope": true,
+      "qaPassed": true,
+      "googleQueries": 48,
+      "invariantViolations": [],
+      "render": {
+        "online": {
+          "violations": 0,
+          "fcpMs": 204,
+          "externalRequests": 24,
+          "externalBeforeFcp": 24
+        },
+        "sem_rede": {
+          "violations": 0,
+          "fcpMs": 296,
+          "externalRequests": 48,
+          "externalBeforeFcp": 32
+        },
+        "firewall_pendurado": {
+          "violations": 0,
+          "fcpMs": 188,
+          "externalRequests": 24,
+          "externalBeforeFcp": 24
+        },
+        "sem_leaflet": {
+          "violations": 0,
+          "fcpMs": 136,
+          "externalRequests": 0,
+          "externalBeforeFcp": 0
+        },
+        "sem_js": {
+          "violations": 0,
+          "fcpMs": 120,
+          "externalRequests": 0,
+          "externalBeforeFcp": 0
+        }
+      }
+    },
+    {
+      "id": "d",
+      "label": "Centro — Florianópolis/SC",
+      "purpose": "nome ambíguo (existe em várias cidades)",
+      "error": null,
+      "mode": "bairro",
+      "areas": [
+        {
+          "radiusM": 5000,
+          "radiusSource": "bounds",
+          "radiusClamp": "teto",
+          "boundsCoveragePct": 56
+        }
+      ],
+      "competitorSearch": {
+        "cells": 27,
+        "maxDepth": 3,
+        "cappedCells": 0
+      },
+      "complementaryWithoutAnchor": 78,
+      "renderViolations": 0,
+      "counts": {
+        "anchors": 110,
+        "complementary": 406,
+        "competitors": 71,
+        "competitorsDC": 11,
+        "competitorsAC": 46,
+        "competitorsUnknown": 14,
+        "anchorsByType": {
+          "gas_station": 57,
+          "shopping_mall": 50,
+          "bus_station": 3
+        }
+      },
+      "maxDistanceM": {
+        "anchors": 4959,
+        "complementary": 4968,
+        "competitors": 4826
+      },
+      "discardsByReason": {
+        "fora_do_raio": 40,
+        "tipo_principal_divergente": 1,
+        "duplicata_nome_contido": 9,
+        "duplicata_proximidade_nome": 3,
+        "duplicata_place_id": 5,
+        "duplicata_entre_camadas": 10,
+        "complementar_excedente_por_ancora": 62,
+        "complementar_sem_ancora_proxima": 78
+      },
+      "truncatedSearches": 10,
+      "sources": [
+        {
+          "name": "Google Places",
+          "status": "ok"
+        },
+        {
+          "name": "OpenChargeMap",
+          "status": "indisponivel"
+        }
+      ],
+      "fitBoundsIsScope": true,
+      "qaPassed": true,
+      "googleQueries": 68,
+      "invariantViolations": [],
+      "render": {
+        "online": {
+          "violations": 0,
+          "fcpMs": 296,
+          "externalRequests": 20,
+          "externalBeforeFcp": 20
+        },
+        "sem_rede": {
+          "violations": 0,
+          "fcpMs": 368,
+          "externalRequests": 20,
+          "externalBeforeFcp": 20
+        },
+        "firewall_pendurado": {
+          "violations": 0,
+          "fcpMs": 372,
+          "externalRequests": 20,
+          "externalBeforeFcp": 20
+        },
+        "sem_leaflet": {
+          "violations": 0,
+          "fcpMs": 148,
+          "externalRequests": 0,
+          "externalBeforeFcp": 0
+        },
+        "sem_js": {
+          "violations": 0,
+          "fcpMs": 136,
+          "externalRequests": 0,
+          "externalBeforeFcp": 0
+        }
+      }
+    },
+    {
+      "id": "e",
+      "label": "Jardim Ângela — São Paulo/SP",
+      "purpose": "periferia: zero concorrente tem que sair como resultado, sem ampliar busca",
+      "error": null,
+      "mode": "bairro",
+      "areas": [
+        {
+          "radiusM": 2000,
+          "radiusSource": "fallback",
+          "radiusClamp": null,
+          "boundsCoveragePct": null
+        }
+      ],
+      "competitorSearch": {
+        "cells": 3,
+        "maxDepth": 0,
+        "cappedCells": 0
+      },
+      "complementaryWithoutAnchor": 75,
+      "renderViolations": 0,
+      "counts": {
+        "anchors": 12,
+        "complementary": 60,
+        "competitors": 0,
+        "competitorsDC": 0,
+        "competitorsAC": 0,
+        "competitorsUnknown": 0,
+        "anchorsByType": {
+          "gas_station": 7,
+          "shopping_mall": 4,
+          "bus_station": 1
+        }
+      },
+      "maxDistanceM": {
+        "anchors": 1703,
+        "complementary": 1884,
+        "competitors": 0
+      },
+      "discardsByReason": {
+        "fora_do_raio": 51,
+        "duplicata_place_id": 3,
+        "complementar_excedente_por_ancora": 33,
+        "complementar_sem_ancora_proxima": 75
+      },
+      "truncatedSearches": 1,
+      "sources": [
+        {
+          "name": "Google Places",
+          "status": "ok"
+        },
+        {
+          "name": "OpenChargeMap",
+          "status": "indisponivel"
+        }
+      ],
+      "fitBoundsIsScope": true,
+      "qaPassed": true,
+      "googleQueries": 24,
+      "invariantViolations": [],
+      "render": {
+        "online": {
+          "violations": 0,
+          "fcpMs": 160,
+          "externalRequests": 20,
+          "externalBeforeFcp": 20
+        },
+        "sem_rede": {
+          "violations": 0,
+          "fcpMs": 168,
+          "externalRequests": 20,
+          "externalBeforeFcp": 20
+        },
+        "firewall_pendurado": {
+          "violations": 0,
+          "fcpMs": 212,
+          "externalRequests": 20,
+          "externalBeforeFcp": 20
+        },
+        "sem_leaflet": {
+          "violations": 0,
+          "fcpMs": 116,
+          "externalRequests": 0,
+          "externalBeforeFcp": 0
+        },
+        "sem_js": {
+          "violations": 0,
+          "fcpMs": 128,
+          "externalRequests": 0,
+          "externalBeforeFcp": 0
+        }
+      }
+    },
+    {
+      "id": "f",
+      "label": "Curitiba/PR (cidade inteira)",
+      "purpose": "modo cidade continua funcionando",
+      "error": null,
+      "mode": "cidade",
+      "areas": [
+        {
+          "radiusM": 19289,
+          "radiusSource": "bounds",
+          "radiusClamp": null,
+          "boundsCoveragePct": 82
+        }
+      ],
+      "competitorSearch": {
+        "cells": 95,
+        "maxDepth": 6,
+        "cappedCells": 0
+      },
+      "complementaryWithoutAnchor": 127,
+      "renderViolations": 0,
+      "counts": {
+        "anchors": 126,
+        "complementary": 373,
+        "competitors": 252,
+        "competitorsDC": 47,
+        "competitorsAC": 113,
+        "competitorsUnknown": 92,
+        "anchorsByType": {
+          "gas_station": 60,
+          "shopping_mall": 57,
+          "bus_station": 6,
+          "airport": 3
+        }
+      },
+      "maxDistanceM": {
+        "anchors": 17977,
+        "complementary": 9811,
+        "competitors": 18440
+      },
+      "discardsByReason": {
+        "ponto_de_onibus_sem_sinal_de_terminal": 7,
+        "tipo_principal_divergente": 1,
+        "fora_do_raio": 3,
+        "duplicata_proximidade_nome": 6,
+        "duplicata_nome_contido": 7,
+        "duplicata_place_id": 4,
+        "duplicata_entre_camadas": 6,
+        "complementar_sem_ancora_proxima": 127,
+        "complementar_excedente_por_ancora": 85
+      },
+      "truncatedSearches": 12,
+      "sources": [
+        {
+          "name": "Google Places",
+          "status": "ok"
+        },
+        {
+          "name": "OpenChargeMap",
+          "status": "indisponivel"
+        }
+      ],
+      "fitBoundsIsScope": true,
+      "qaPassed": true,
+      "googleQueries": 138,
+      "invariantViolations": [],
+      "render": {
+        "online": {
+          "violations": 0,
+          "fcpMs": 292,
+          "externalRequests": 20,
+          "externalBeforeFcp": 20
+        },
+        "sem_rede": {
+          "violations": 0,
+          "fcpMs": 356,
+          "externalRequests": 20,
+          "externalBeforeFcp": 20
+        },
+        "firewall_pendurado": {
+          "violations": 0,
+          "fcpMs": 308,
+          "externalRequests": 20,
+          "externalBeforeFcp": 20
+        },
+        "sem_leaflet": {
+          "violations": 0,
+          "fcpMs": 196,
+          "externalRequests": 0,
+          "externalBeforeFcp": 0
+        },
+        "sem_js": {
+          "violations": 0,
+          "fcpMs": 168,
+          "externalRequests": 0,
+          "externalBeforeFcp": 0
+        }
+      }
+    }
+  ],
+  "abortCases": [
+    {
+      "id": "x1",
+      "label": "Morumbi — Curitiba/PR",
+      "aborted": true,
+      "code": "bairro_nao_encontrado"
+    },
+    {
+      "id": "x2",
+      "label": "Bairro inexistente — Curitiba/PR",
+      "aborted": true,
+      "code": "bairro_nao_encontrado"
+    }
+  ]
+}
