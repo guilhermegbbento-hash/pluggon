@@ -11,6 +11,7 @@ import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { HAS_CARTO_EXPORT_KEY } from "../../src/lib/basemap";
 import { APP_VERSION } from "../../src/lib/version";
 import { loadMunicipalIndicators } from "../../src/lib/heatmap/municipal";
 import type { GenerateDeps } from "../../src/lib/heatmap/generate";
@@ -29,8 +30,8 @@ import {
 const repoRoot = process.cwd();
 const googleApiKey = process.env.GOOGLE_MAPS_API_KEY;
 if (!googleApiKey) throw new Error("GOOGLE_MAPS_API_KEY ausente — a regressão ao vivo não roda sem chave.");
-if (!process.env.NEXT_PUBLIC_CARTO_EXPORT_API_KEY) {
-  throw new Error("NEXT_PUBLIC_CARTO_EXPORT_API_KEY ausente — o HTML exportado não é gerado sem a chave de exportação (ver README).");
+if (!HAS_CARTO_EXPORT_KEY) {
+  throw new Error("Nenhuma chave do CARTO (NEXT_PUBLIC_CARTO_EXPORT_API_KEY ou NEXT_PUBLIC_CARTO_API_KEY) — o HTML exportado não é gerado sem base cartográfica.");
 }
 const chrome = findChrome();
 if (!chrome) throw new Error("Chrome/Edge não encontrado (defina CHROME_PATH) — a regressão abre cada HTML num navegador real.");

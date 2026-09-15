@@ -21,19 +21,27 @@
 >    online, sem rede, com firewall pendurado e sem Leaflet, e falha se alguma
 >    dessas regras quebrar.
 >
-> ### Chaves do CARTO — são duas, e uma delas é intocável
+> ### 🔒 Chave do CARTO: NÃO restringir por domínio, NÃO rotacionar
 >
-> | Variável | Onde vai | Pode restringir por domínio? | Pode rotacionar? |
-> |---|---|---|---|
-> | `NEXT_PUBLIC_CARTO_API_KEY` | mapas dentro do app web | **sim** | sim |
-> | `NEXT_PUBLIC_CARTO_EXPORT_API_KEY` | **gravada em todo HTML entregue a cliente** | **NÃO** | **NÃO** |
+> **A chave do CARTO vai embutida em cada HTML exportado.** Enquanto houver
+> relatório em campo, ela **não pode ser restringida por domínio nem rotacionada
+> ou revogada**: cada arquivo busca os tiles na hora em que é aberto, de
+> `file://`, sem `Referer` — restringir ou trocar a chave quebra a base
+> cartográfica de **todos** os relatórios já entregues, e não há como recolher
+> arquivo que está com cliente.
 >
-> **A chave de exportação NÃO pode ser restrita por domínio nem rotacionada ou
-> revogada.** Cada arquivo já enviado carrega essa chave dentro e busca os tiles
-> na hora em que é aberto; `file://` não envia `Referer`, então uma restrição por
-> domínio deixa todo relatório em campo sem base cartográfica — e não há como
-> recolher arquivo que já está com cliente. Sem essa variável, a exportação é
-> bloqueada com erro explícito (nunca cai na chave do app).
+> | Variável | Uso |
+> |---|---|
+> | `NEXT_PUBLIC_CARTO_API_KEY` | mapas do app **e**, hoje, a chave gravada nos HTML exportados |
+> | `NEXT_PUBLIC_CARTO_EXPORT_API_KEY` | opcional; se existir, substitui a de cima **só nos HTML exportados** |
+>
+> - Hoje é **uma chave só** (sem `NEXT_PUBLIC_CARTO_EXPORT_API_KEY`), então a
+>   chave do app **também** não pode ser restrita.
+> - **Para separar um dia:** a chave **atual** vira `NEXT_PUBLIC_CARTO_EXPORT_API_KEY`
+>   (continua intocável: está dentro dos relatórios enviados) e uma chave **nova**
+>   vai para `NEXT_PUBLIC_CARTO_API_KEY` — só essa nova pode ser restrita.
+> - Sem **nenhuma** das duas, a exportação falha com erro explícito: nunca sai
+>   HTML sem base cartográfica.
 >
 > Licenciamento da base cartográfica (termos da CARTO gratuita): issue #1.
 

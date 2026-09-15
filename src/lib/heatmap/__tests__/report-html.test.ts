@@ -104,8 +104,12 @@ test("módulo do Leaflet embutido é idêntico ao gerado a partir do pacote inst
 });
 
 test(
-  "sem a chave de exportação, o HTML não é gerado (nunca cai na chave do app)",
-  { skip: Boolean(process.env.NEXT_PUBLIC_CARTO_EXPORT_API_KEY) && "chave de exportação definida no ambiente" },
+  "sem nenhuma chave do CARTO, o HTML não é gerado (nunca sai sem base cartográfica)",
+  {
+    skip:
+      Boolean(process.env.NEXT_PUBLIC_CARTO_EXPORT_API_KEY || process.env.NEXT_PUBLIC_CARTO_API_KEY) &&
+      "há chave do CARTO no ambiente",
+  },
   () => {
     assert.throws(() => renderHeatmapHtml(payload()), ExportBasemapKeyError);
   }

@@ -6,11 +6,11 @@
  *
  *   npm run test:heatmap-render
  *   npm run test:heatmap-render -- --casos f --cenarios online,firewall_pendurado --repetir 5
- *   npm run test:heatmap-render -- --chave-do-app-para-teste-local
  */
 
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { exportDarkTiles } from "../../src/lib/basemap";
 import { renderHeatmapHtml } from "../../src/lib/heatmap/report-html";
 import type { HeatmapPayload } from "../../src/lib/heatmap/types";
 import { checkInvariants } from "./lib";
@@ -22,16 +22,8 @@ const argVal = (name: string) => {
   return i >= 0 ? args[i + 1] : undefined;
 };
 
-const exportKey = process.env.NEXT_PUBLIC_CARTO_EXPORT_API_KEY;
-const allowAppKey = args.includes("--chave-do-app-para-teste-local");
-const key = exportKey || (allowAppKey ? process.env.NEXT_PUBLIC_CARTO_API_KEY : undefined);
-if (!key) {
-  throw new Error(
-    "NEXT_PUBLIC_CARTO_EXPORT_API_KEY ausente. Só para este teste local (nunca para relatório), passe --chave-do-app-para-teste-local."
-  );
-}
-if (!exportKey) console.warn("[aviso] teste local usando a chave do APP; relatório real exige NEXT_PUBLIC_CARTO_EXPORT_API_KEY.");
-const tileUrl = `https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?key=${key}`;
+// Mesma regra do relatório real: chave de exportação, ou a do app; nenhuma → erro.
+const tileUrl = exportDarkTiles();
 
 const chrome = findChrome();
 if (!chrome) throw new Error("Chrome/Edge não encontrado (defina CHROME_PATH).");
