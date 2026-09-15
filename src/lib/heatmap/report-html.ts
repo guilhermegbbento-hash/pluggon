@@ -2,9 +2,15 @@
  * HTML exportável do Mapa de Calor. Função pura (roda no browser e no script
  * de regressão). O QA gate roda ANTES de montar o HTML: payload reprovado não
  * vira relatório.
+ *
+ * REGRA PERMANENTE (ver README): o arquivo é autocontido. Nenhum <script src>,
+ * <link rel="stylesheet"> ou recurso externo bloqueante — o Leaflet vai
+ * embutido. Os tiles são a única requisição de rede, e a falta deles degrada
+ * com aviso. Listas e contadores saem prontos no HTML: o documento se sustenta
+ * sem JavaScript e sem mapa; o mapa é uma camada visual por cima.
  */
 
-import { DARK_TILES, TILE_ATTRIBUTION } from "../basemap";
+import { exportDarkTiles, TILE_ATTRIBUTION } from "../basemap";
 import {
   COMPETITOR_OVERLAP_PX,
   COMPETITOR_ZONE_RADIUS_M,
@@ -13,73 +19,107 @@ import {
   specByKey,
   specsForLayer,
 } from "./config";
+import { LEAFLET_CSS, LEAFLET_JS } from "./leaflet-vendor";
 import { assertQaGate } from "./qa-gate";
-import type { HeatmapPayload, ScopeArea, StudyScope } from "./types";
+import { escapeHtml, fmtInt, fmtKm, radiusCapWarnings, reportStamp } from "./report-format";
+import type { AnchorOut, CompetitorOut, ComplementaryOut, HeatmapPayload } from "./types";
 
-const escapeHtml = (s: string | number | null | undefined) =>
-  String(s ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+export {
+  fmtKm,
+  formatGeneratedAt,
+  heatmapFileName,
+  radiusCapWarnings,
+  radiusLabel,
+  reportStamp,
+} from "./report-format";
+
+/** Sem nenhum tile carregado nesse prazo, o aviso de base cartográfica aparece (cobre firewall pendurado). */
+export const BASEMAP_WARNING_TIMEOUT_MS = 8000;
+
+export const BASEMAP_WARNING_TEXT =
+  "Base cartográfica não carregou (sem internet ou bloqueio de rede). Pontos, raios e contagens continuam válidos.";
+
+export const MAP_FALLBACK_TEXT =
+  "Mapa interativo indisponível neste navegador. Todas as contagens e listas ao lado continuam válidas.";
+
+const APP_SCRIPT_ID = "pluggon-map";
 
 /** JSON seguro dentro de <script>. */
 const json = (x: unknown) => JSON.stringify(x).replace(/</g, "\\u003c");
 
-export const fmtKm = (m: number) =>
-  `${(m / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} km`;
-
-const fmtInt = (n: number | null | undefined) =>
-  n === null || n === undefined ? "—" : n.toLocaleString("pt-BR");
-
-export function formatGeneratedAt(iso: string): string {
-  return new Date(iso).toLocaleString("pt-BR", {
-    timeZone: "America/Sao_Paulo",
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+/** Só o script do mapa do PLUGGON (sem o Leaflet embutido) — para testes e invariantes. */
+export function appScriptOf(html: string): string {
+  const m = html.match(new RegExp(`<script id="${APP_SCRIPT_ID}">([\\s\\S]*?)</script>`));
+  return m ? m[1] : "";
 }
 
-export function radiusLabel(a: ScopeArea): string {
-  const coverage = a.boundsCoveragePct === null ? "desconhecida" : `${a.boundsCoveragePct}%`;
-  return `raio ${fmtKm(a.radiusM)} (${a.radiusSource}${a.radiusClamp ? `, ${a.radiusClamp}` : ""}; cobertura ${coverage})`;
-}
+const chargerBadge = (c: CompetitorOut) =>
+  c.charger_type === "DC"
+    ? `<span class="badge dc">DC${c.chargerMaxKw ? ` ${c.chargerMaxKw} kW` : ""}</span>`
+    : c.charger_type === "AC"
+      ? `<span class="badge ac">AC${c.chargerMaxKw ? ` ${c.chargerMaxKw} kW` : ""}</span>`
+      : '<span class="badge unk">n&atilde;o informado</span>';
 
-/** Aviso de topo quando o raio bateu no teto: parte da área pedida ficou de fora. */
-export function radiusCapWarnings(scope: StudyScope): string[] {
-  return scope.areas
-    .filter((a) => a.radiusClamp === "teto")
-    .map((a) => {
-      const coverage = a.boundsCoveragePct === null ? "" : ` (cobertura estimada: ${a.boundsCoveragePct}%)`;
-      return scope.mode === "cidade"
-        ? `Raio limitado a ${fmtKm(a.radiusM)} — parte do município está fora deste estudo${coverage}.`
-        : `Raio limitado a ${fmtKm(a.radiusM)} — parte do bairro ${a.resolvedName} está fora deste estudo${coverage}. Considere gerar no modo cidade.`;
-    });
-}
+const itemAttrs = (p: { lat: number; lng: number }, zoom: number, layer: "anchor" | "competitor" | "complementary") =>
+  `class="item" type="button" data-layer="${layer}" data-lat="${p.lat}" data-lng="${p.lng}" data-zoom="${zoom}"`;
 
-/** Carimbo de rastreabilidade: versão, escopo resolvido, raio, origem do raio, cobertura e data. */
-export function reportStamp(p: Pick<HeatmapPayload, "generatorVersion" | "generatedAt" | "scope">): string {
-  const { scope } = p;
-  const areas = scope.areas
-    .map((a) =>
-      scope.mode === "cidade"
-        ? `${scope.city} · ${scope.state} · ${radiusLabel(a)}`
-        : `${a.resolvedName} · ${scope.city} · ${scope.state} · ${radiusLabel(a)}`
+function anchorsListHtml(anchors: AnchorOut[], emoji: Record<string, string>): string {
+  if (anchors.length === 0) return '<div class="empty">Nenhuma &acirc;ncora no raio.</div>';
+  return PLACE_TYPE_SPECS.map((s) => s.key)
+    .map((t) => anchors.filter((a) => a.type === t))
+    .filter((items) => items.length > 0)
+    .map(
+      (items) =>
+        `<div class="group-head">${emoji[items[0].type] || "📍"} ${escapeHtml(items[0].typeLabel)} (${items.length})</div>` +
+        items
+          .map(
+            (a) =>
+              `<button ${itemAttrs(a, 16, "anchor")}><div class="item-name">${escapeHtml(a.name)}</div>` +
+              `<div class="item-sub">${fmtKm(a.distanceToCenterM)} do centro &middot; ${escapeHtml(a.address)}</div></button>`
+          )
+          .join("")
     )
-    .join(" | ");
-  return `Gerador v${p.generatorVersion} · Escopo: ${areas} · Gerado em ${formatGeneratedAt(p.generatedAt)}`;
+    .join("");
 }
 
-export function heatmapFileName(scope: StudyScope): string {
-  const parts = [scope.city, scope.state, ...(scope.mode === "bairro" ? scope.areas.map((a) => a.resolvedName) : [])];
-  return `Mapa_Calor_PLUGGON_${parts.join("_").replace(/[\\/:*?"<>|\s]+/g, "_")}.html`;
+function competitorsListHtml(competitors: CompetitorOut[], radiusText: string): string {
+  if (competitors.length === 0) return `<div class="empty">0 concorrentes no raio de ${escapeHtml(radiusText)}.</div>`;
+  return competitors
+    .map(
+      (c) =>
+        `<button ${itemAttrs(c, 17, "competitor")}><div class="item-row">${chargerBadge(c)}<span class="item-name" style="flex:1;">${escapeHtml(c.name)}</span></div>` +
+        `<div class="item-sub">${fmtKm(c.distanceToCenterM)} do centro &middot; ${escapeHtml(c.address)}</div></button>`
+    )
+    .join("");
+}
+
+function complementaryListHtml(complementary: ComplementaryOut[]): string {
+  const groups = new Map<string, ComplementaryOut[]>();
+  for (const cp of complementary) {
+    if (!groups.has(cp.nearAnchor)) groups.set(cp.nearAnchor, []);
+    groups.get(cp.nearAnchor)!.push(cp);
+  }
+  if (groups.size === 0) return '<div class="empty">Nenhum ponto potencial pr&oacute;ximo a &acirc;ncoras.</div>';
+  return [...groups.entries()]
+    .sort((a, b) => b[1].length - a[1].length)
+    .map(
+      ([name, items]) =>
+        `<div class="group-head muted">Pr&oacute;ximos a ${escapeHtml(name)} (${items.length})</div>` +
+        items
+          .map(
+            (cp) =>
+              `<button ${itemAttrs(cp, 17, "complementary")}><div class="item-name">${escapeHtml(cp.name)} (${cp.nearAnchorDist} m)</div>` +
+              `<div class="item-sub">${escapeHtml(cp.typeLabel)}</div></button>`
+          )
+          .join("")
+    )
+    .join("");
 }
 
 export function renderHeatmapHtml(payload: HeatmapPayload, opts: { tileUrl?: string } = {}): string {
   assertQaGate(payload);
+  // Chave de exportação (nunca restrita). Sem ela, lança — não cai na chave do app.
+  const tileUrl = opts.tileUrl ?? exportDarkTiles();
 
   const { scope, counters, municipal } = payload;
   const radiusText = scope.areas.map((a) => fmtKm(a.radiusM)).join(" / ");
@@ -88,9 +128,7 @@ export function renderHeatmapHtml(payload: HeatmapPayload, opts: { tileUrl?: str
     (s) => s.truncated && specByKey(s.typeKey)?.completeness !== "obrigatoria"
   );
   const capWarnings = radiusCapWarnings(scope);
-  const unavailable = payload.sources.filter((s) => s.status !== "ok");
   const anchorEmoji = Object.fromEntries(specsForLayer("anchor").map((s) => [s.key, s.emoji]));
-  const typeOrder = PLACE_TYPE_SPECS.map((s) => s.key);
   const stamp = reportStamp(payload);
 
   const competitorSummary =
@@ -124,10 +162,10 @@ export function renderHeatmapHtml(payload: HeatmapPayload, opts: { tileUrl?: str
 <meta name="pluggon-generator-version" content="${escapeHtml(payload.generatorVersion)}">
 <meta name="pluggon-scope-key" content="${escapeHtml(scope.key)}">
 <title>PLUGGON — Mapa de Calor — ${escapeHtml(scope.label)}</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>${LEAFLET_CSS}</style>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
+  [hidden] { display: none !important; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0D1117; color: #C9D1D9; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
   .header { display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; background: #161B22; border-bottom: 1px solid #30363D; }
   .header h1 { font-size: 18px; color: #C9A84C; font-weight: 700; }
@@ -136,8 +174,12 @@ export function renderHeatmapHtml(payload: HeatmapPayload, opts: { tileUrl?: str
   .main { display: flex; flex: 1; overflow: hidden; }
   .sidebar { width: 30%; min-width: 300px; max-width: 440px; display: flex; flex-direction: column; background: #161B22; border-left: 1px solid #30363D; overflow-y: auto; order: 2; }
   .sidebar > * { flex-shrink: 0; }
-  .map-container { flex: 1; position: relative; order: 1; }
-  #map { width: 100%; height: 100%; background: #0D1117; }
+  .map-container { flex: 1; position: relative; order: 1; display: flex; flex-direction: column; min-width: 0; background: #0D1117; }
+  #map { flex: 1; min-height: 0; width: 100%; background: #0D1117; }
+  .map-fallback { position: absolute; inset: 0; z-index: 1100; display: flex; align-items: center; justify-content: center; padding: 24px; background: #0D1117; }
+  .map-fallback div { max-width: 420px; padding: 16px 20px; border: 1px solid #30363D; border-radius: 8px; background: #161B22; color: #E6EDF3; font-size: 14px; line-height: 1.5; text-align: center; }
+  /* Faixa no topo do painel do mapa (não flutua por cima: não pode esconder ponto nenhum). */
+  .basemap-warning { flex-shrink: 0; padding: 12px 18px; background: #FFC107; color: #0D1117; font-size: 15px; font-weight: 700; line-height: 1.4; text-align: center; border-bottom: 2px solid #E0A800; }
   .block-title { padding: 8px 12px 0; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; color: #8B949E; }
   .block-title.gold { color: #C9A84C; }
   .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 8px 10px 10px; border-bottom: 1px solid #30363D; }
@@ -149,13 +191,16 @@ export function renderHeatmapHtml(payload: HeatmapPayload, opts: { tileUrl?: str
   .notice.warn { background: #FFC1071A; border: 1px solid #FFC107; color: #FFE082; }
   .section-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; }
   .section-head.gold { color: #C9A84C; border-bottom: 1px solid #30363D; }
-  .section-head.toggle { cursor: pointer; user-select: none; border-top: 1px solid #30363D; }
+  .section-head.toggle { cursor: pointer; user-select: none; border-top: 1px solid #30363D; list-style: none; }
+  .section-head.toggle::-webkit-details-marker { display: none; }
   .section-head.toggle:hover { color: #fff; }
+  .section-head.toggle .arrow::after { content: "\\25BE"; }
+  details[open] > .section-head.toggle .arrow::after { content: "\\25B4"; }
   .section-head.red { color: #F44336; }
   .section-head.gray { color: #8B949E; }
   .group-head { background: #0D1117; padding: 6px 12px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: #C9A84C; }
   .group-head.muted { color: #8B949E; }
-  .item { display: block; width: 100%; text-align: left; padding: 8px 12px; border: none; background: transparent; color: inherit; cursor: pointer; border-bottom: 1px solid #30363D; transition: background 0.15s; }
+  .item { display: block; width: 100%; text-align: left; padding: 8px 12px; border: none; background: transparent; color: inherit; font: inherit; cursor: pointer; border-bottom: 1px solid #30363D; transition: background 0.15s; }
   .item:hover { background: #21262D; }
   .item-name { font-size: 12px; font-weight: 600; color: #E6EDF3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .item-sub { font-size: 10px; color: #8B949E; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -164,8 +209,7 @@ export function renderHeatmapHtml(payload: HeatmapPayload, opts: { tileUrl?: str
   .badge.dc { background: #FF980030; color: #FF9800; }
   .badge.ac { background: #42A5F530; color: #42A5F5; }
   .badge.unk { background: #21262D; color: #8B949E; }
-  .collapse-body { max-height: 260px; overflow-y: auto; border-top: 1px solid #30363D; display: none; }
-  .collapse-body.open { display: block; }
+  .collapse-body { max-height: 260px; overflow-y: auto; border-top: 1px solid #30363D; }
   .empty { padding: 12px; text-align: center; font-size: 11px; color: #8B949E; }
   .sources { padding: 8px 12px; font-size: 10px; color: #8B949E; border-top: 1px solid #30363D; line-height: 1.5; }
   .sources .bad { color: #FFC107; }
@@ -198,8 +242,10 @@ export function renderHeatmapHtml(payload: HeatmapPayload, opts: { tileUrl?: str
 ${capWarnings.map((w) => `<div class="scope-warning">&#9888; ${escapeHtml(w)}</div>`).join("\n")}
 <div class="main">
   <div class="map-container">
+    <div class="basemap-warning" id="basemapWarning" role="status" hidden>&#9888; ${escapeHtml(BASEMAP_WARNING_TEXT)}</div>
     <div id="map"></div>
-    <div class="legend">
+    <div class="map-fallback" id="mapFallback"><div>${escapeHtml(MAP_FALLBACK_TEXT)}</div></div>
+    <div class="legend" id="legend" hidden>
       <div class="legend-title">Legenda</div>
       <div class="legend-row"><span class="legend-scope"></span> &Aacute;rea de estudo (raio ${escapeHtml(radiusText)})</div>
       <div class="legend-row"><span class="legend-dot" style="background:#C9A84C;box-shadow:0 0 4px #C9A84C;"></span> Ponto &Acirc;ncora</div>
@@ -217,44 +263,43 @@ ${capWarnings.map((w) => `<div class="scope-warning">&#9888; ${escapeHtml(w)}</d
       <div class="stat-card"><div class="label">Concorrentes</div><div class="value" id="cntCompetitors">${counters.competitors}</div></div>
       <div class="stat-card"><div class="label">DC no raio</div><div class="value">${counters.competitorsDC}</div></div>
       <div class="stat-card"><div class="label">AC no raio</div><div class="value">${counters.competitorsAC}</div></div>
-      <div class="stat-card"><div class="label">N&atilde;o informado</div><div class="value">${counters.competitorsUnknown}</div></div>
+      <div class="stat-card"><div class="label">N&atilde;o informado</div><div class="value" id="cntUnknown">${counters.competitorsUnknown}</div></div>
     </div>
     ${competitorSummary}
     ${truncatedNotice}
     ${municipalGrid}
     <div class="section-head gold">Pontos &Acirc;ncora (${counters.anchors})</div>
-    <div id="anchorsList"></div>
-    <div class="section-head toggle red" id="toggleCompetitors">
-      <span>Concorrentes no raio (${counters.competitors})</span><span id="arrowCompetitors">&#9662;</span>
-    </div>
-    <div class="collapse-body" id="competitorsList"></div>
-    <div class="section-head toggle gray" id="toggleComplementary">
-      <span>Pontos Potenciais (${counters.complementary})</span><span id="arrowComplementary">&#9662;</span>
-    </div>
-    <div class="collapse-body" id="complementaryList"></div>
+    <div id="anchorsList">${anchorsListHtml(payload.anchors, anchorEmoji)}</div>
+    <details id="competitorsSection">
+      <summary class="section-head toggle red" id="toggleCompetitors"><span>Concorrentes no raio (${counters.competitors})</span><span class="arrow"></span></summary>
+      <div class="collapse-body" id="competitorsList">${competitorsListHtml(payload.competitors, radiusText)}</div>
+    </details>
+    <details id="complementarySection">
+      <summary class="section-head toggle gray" id="toggleComplementary"><span>Pontos Potenciais (${counters.complementary})</span><span class="arrow"></span></summary>
+      <div class="collapse-body" id="complementaryList">${complementaryListHtml(payload.complementary)}</div>
+    </details>
     <div class="sources">Fontes: ${payload.sources
       .map((s) => `<span class="${s.status === "ok" ? "" : "bad"}">${escapeHtml(s.name)}: ${escapeHtml(s.status === "ok" ? "ok" : s.status)}${s.status === "ok" ? "" : " — " + escapeHtml(s.detail)}</span>`)
-      .join(" · ")}${unavailable.length === 0 ? "" : ""}</div>
+      .join(" · ")}</div>
   </div>
 </div>
 <div class="footer">
   <div>PLUGGON by BLEV Educa&ccedil;&atilde;o</div>
   <div class="stamp">${escapeHtml(stamp)}</div>
 </div>
-<script>
+<script>${LEAFLET_JS}</script>
+<script id="${APP_SCRIPT_ID}">
 const scope = ${json(scope)};
 const anchors = ${json(payload.anchors)};
 const complementary = ${json(payload.complementary)};
 const competitors = ${json(payload.competitors)};
 const ANCHOR_EMOJI = ${json(anchorEmoji)};
-const TYPE_ORDER = ${json(typeOrder)};
 const OUTER_RINGS = ${json(INFLUENCE_RULES.outerRings)};
 const INNER_OPACITY = ${INFLUENCE_RULES.innerOpacity};
 const COMPETITOR_ZONE_M = ${COMPETITOR_ZONE_RADIUS_M};
 const COMPETITOR_OVERLAP_PX = ${COMPETITOR_OVERLAP_PX};
-
-const map = L.map('map');
-L.tileLayer(${json(opts.tileUrl ?? DARK_TILES)}, { attribution: ${json(TILE_ATTRIBUTION)}, maxZoom: 19 }).addTo(map);
+const BASEMAP_WARNING_TIMEOUT_MS = ${BASEMAP_WARNING_TIMEOUT_MS};
+let map = null;
 
 const escapeHtml = (s) => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const km = (m) => (m / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + ' km';
@@ -263,49 +308,13 @@ const chargerBadge = (c) => c.charger_type === 'DC'
   : c.charger_type === 'AC'
     ? '<span class="badge ac">AC' + (c.chargerMaxKw ? ' ' + c.chargerMaxKw + ' kW' : '') + '</span>'
     : '<span class="badge unk">n&atilde;o informado</span>';
-
-// Área de estudo
-scope.areas.forEach(a => {
-  L.circle([a.center.lat, a.center.lng], { radius: a.radiusM, color: '#C9A84C', weight: 2, dashArray: '8 6', fill: false, interactive: false }).addTo(map);
-});
-
-competitors.forEach(c => {
-  L.circle([c.lat, c.lng], { radius: COMPETITOR_ZONE_M, color: 'transparent', fillColor: '#FF4444', fillOpacity: 0.10, weight: 0, interactive: false }).addTo(map);
-});
-
-anchors.forEach(a => {
-  OUTER_RINGS.forEach(r => L.circle([a.lat, a.lng], { radius: r.radiusM, color: 'transparent', fillColor: '#C9A84C', fillOpacity: r.opacity, weight: 0, interactive: false }).addTo(map));
-  L.circle([a.lat, a.lng], { radius: a.influenceInnerRadiusM, color: 'transparent', fillColor: '#C9A84C', fillOpacity: INNER_OPACITY, weight: 0, interactive: false }).addTo(map);
-});
-
-anchors.forEach(a => {
-  const icon = L.divIcon({ html: '<div style="width:14px;height:14px;border-radius:50%;background:#C9A84C;border:2px solid #0D1117;box-shadow:0 0 8px #C9A84C;"></div>', className: '', iconSize: [14,14], iconAnchor: [7,7] });
-  L.marker([a.lat, a.lng], { icon, zIndexOffset: 1000 })
-    .bindPopup('<div style="margin-bottom:6px;"><span style="background:#C9A84C30;color:#C9A84C;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;">&Acirc;NCORA</span></div>' +
-      '<div style="font-weight:700;font-size:13px;margin-bottom:4px;">' + (ANCHOR_EMOJI[a.type] || '📍') + ' ' + escapeHtml(a.name) + '</div>' +
-      '<div style="color:#8B949E;font-size:11px;margin-bottom:6px;">' + escapeHtml(a.address) + '</div>' +
-      '<div style="font-size:11px;">' + escapeHtml(a.typeLabel) + ' &middot; ' + km(a.distanceToCenterM) + ' do centro</div>' +
-      '<div style="font-size:11px;color:#8B949E;">' + a.complementaryWithin300m + ' complementares a 300 m &middot; ' + a.competitorsWithin1km + ' concorrentes a 1 km</div>')
-    .addTo(map);
-});
-
-complementary.forEach(c => {
-  const icon = L.divIcon({ html: '<div style="width:8px;height:8px;border-radius:50%;background:#fff;border:1px solid #0D1117;"></div>', className: '', iconSize: [8,8], iconAnchor: [4,4] });
-  L.marker([c.lat, c.lng], { icon, zIndexOffset: 500 })
-    .bindPopup('<div style="margin-bottom:6px;"><span style="background:#FFFFFF20;color:#fff;border:1px solid #FFFFFF40;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;">POTENCIAL</span></div>' +
-      '<div style="font-weight:700;font-size:12px;">' + escapeHtml(c.name) + '</div>' +
-      '<div style="color:#8B949E;font-size:11px;margin-top:2px;">' + escapeHtml(c.address) + '</div>' +
-      '<div style="margin-top:4px;font-size:11px;">' + escapeHtml(c.typeLabel) + '</div>' +
-      '<div style="color:#8B949E;font-size:11px;margin-top:4px;">Pr&oacute;ximo a ' + escapeHtml(c.nearAnchor) + ' (' + c.nearAnchorDist + ' m)</div>')
-    .addTo(map);
-});
-
-// Concorrentes: pontos sobrepostos no zoom atual viram um ponto com contador — nenhum some.
-const competitorLayer = L.layerGroup().addTo(map);
 const competitorPopup = (c) => '<div style="font-weight:700;font-size:12px;margin-bottom:4px;">' + escapeHtml(c.name) + '</div>' +
   '<div style="margin-bottom:4px;">' + chargerBadge(c) + '</div>' +
   '<div style="color:#8B949E;font-size:11px;">' + escapeHtml(c.address) + '</div>' +
   '<div style="font-size:11px;margin-top:4px;">' + km(c.distanceToCenterM) + ' do centro</div>';
+
+// Concorrentes: pontos sobrepostos no zoom atual viram um ponto com contador — nenhum some.
+let competitorLayer = null;
 function renderCompetitors() {
   competitorLayer.clearLayers();
   const clusters = [];
@@ -325,51 +334,97 @@ function renderCompetitors() {
   });
 }
 
-const byType = {};
-anchors.forEach(a => { (byType[a.type] = byType[a.type] || []).push(a); });
-document.getElementById('anchorsList').innerHTML = anchors.length === 0
-  ? '<div class="empty">Nenhuma &acirc;ncora no raio.</div>'
-  : TYPE_ORDER.filter(t => byType[t]).map(t => {
-      const items = byType[t];
-      return '<div class="group-head">' + (ANCHOR_EMOJI[t] || '📍') + ' ' + escapeHtml(items[0].typeLabel) + ' (' + items.length + ')</div>' +
-        items.map(a => '<button class="item" data-lat="' + a.lat + '" data-lng="' + a.lng + '" data-zoom="16">' +
-          '<div class="item-name">' + escapeHtml(a.name) + '</div>' +
-          '<div class="item-sub">' + km(a.distanceToCenterM) + ' do centro &middot; ' + escapeHtml(a.address) + '</div></button>').join('');
-    }).join('');
-
-document.getElementById('competitorsList').innerHTML = competitors.length === 0
-  ? '<div class="empty">0 concorrentes no raio de ' + escapeHtml(${json(radiusText)}) + '.</div>'
-  : competitors.map(c => '<button class="item" data-lat="' + c.lat + '" data-lng="' + c.lng + '" data-zoom="17">' +
-      '<div class="item-row">' + chargerBadge(c) + '<span class="item-name" style="flex:1;">' + escapeHtml(c.name) + '</span></div>' +
-      '<div class="item-sub">' + km(c.distanceToCenterM) + ' do centro &middot; ' + escapeHtml(c.address) + '</div></button>').join('');
-
-const groups = {};
-complementary.forEach(cp => { (groups[cp.nearAnchor] = groups[cp.nearAnchor] || []).push(cp); });
-const groupNames = Object.keys(groups).sort((a, b) => groups[b].length - groups[a].length);
-document.getElementById('complementaryList').innerHTML = groupNames.length === 0
-  ? '<div class="empty">Nenhum ponto potencial pr&oacute;ximo a &acirc;ncoras.</div>'
-  : groupNames.map(g => '<div class="group-head muted">Pr&oacute;ximos a ' + escapeHtml(g) + ' (' + groups[g].length + ')</div>' +
-      groups[g].map(cp => '<button class="item" data-lat="' + cp.lat + '" data-lng="' + cp.lng + '" data-zoom="17">' +
-        '<div class="item-name">' + escapeHtml(cp.name) + ' (' + cp.nearAnchorDist + ' m)</div>' +
-        '<div class="item-sub">' + escapeHtml(cp.typeLabel) + '</div></button>').join('')).join('');
-
-document.querySelectorAll('.item').forEach(el => {
-  el.addEventListener('click', () => map.flyTo([parseFloat(el.dataset.lat), parseFloat(el.dataset.lng)], parseInt(el.dataset.zoom, 10), { duration: 0.8 }));
-});
-
-function setupToggle(headId, bodyId, arrowId) {
-  document.getElementById(headId).addEventListener('click', () => {
-    const open = document.getElementById(bodyId).classList.toggle('open');
-    document.getElementById(arrowId).innerHTML = open ? '&#9652;' : '&#9662;';
-  });
-}
-setupToggle('toggleCompetitors', 'competitorsList', 'arrowCompetitors');
-setupToggle('toggleComplementary', 'complementaryList', 'arrowComplementary');
-
 // Enquadra o ESCOPO pedido (centro + raio), nunca os pontos.
-map.fitBounds([[scope.bounds.south, scope.bounds.west], [scope.bounds.north, scope.bounds.east]], { padding: [20, 20] });
-renderCompetitors();
-map.on('zoomend', renderCompetitors);
+let userInteracted = false;
+function fitScope() {
+  map.fitBounds([[scope.bounds.south, scope.bounds.west], [scope.bounds.north, scope.bounds.east]], { padding: [20, 20] });
+}
+
+// A faixa de aviso ocupa espaço no painel: o mapa encolhe e, se o cliente ainda
+// não mexeu nele, volta a enquadrar o escopo inteiro.
+function setBasemapWarning(show) {
+  const el = document.getElementById('basemapWarning');
+  if (el.hidden === !show) return;
+  el.hidden = !show;
+  if (!map) return;
+  map.invalidateSize({ pan: false });
+  if (!userInteracted) fitScope();
+}
+
+// O documento (listas, contadores, carimbo) já está pronto acima. Daqui pra baixo
+// é só a camada visual do mapa: se falhar, fica a mensagem e o resto continua legível.
+try {
+  if (typeof L === 'undefined') throw new Error('Leaflet indisponível');
+  map = L.map('map');
+  ['mousedown', 'wheel', 'touchstart', 'keydown'].forEach(ev =>
+    document.getElementById('map').addEventListener(ev, () => { userInteracted = true; }, { passive: true }));
+
+  // Base cartográfica: sem nenhum tile no prazo (ou só erros), aviso visível no painel do mapa.
+  let tilesLoaded = 0;
+  const tiles = L.tileLayer(${json(tileUrl)}, { attribution: ${json(TILE_ATTRIBUTION)}, maxZoom: 19 });
+  tiles.on('tileload', () => { tilesLoaded++; setBasemapWarning(false); });
+  tiles.on('tileerror', () => { if (tilesLoaded === 0) setBasemapWarning(true); });
+  tiles.addTo(map);
+  setTimeout(() => { if (tilesLoaded === 0) setBasemapWarning(true); }, BASEMAP_WARNING_TIMEOUT_MS);
+
+  // Área de estudo
+  scope.areas.forEach(a => {
+    L.circle([a.center.lat, a.center.lng], { radius: a.radiusM, color: '#C9A84C', weight: 2, dashArray: '8 6', fill: false, interactive: false }).addTo(map);
+  });
+
+  competitors.forEach(c => {
+    L.circle([c.lat, c.lng], { radius: COMPETITOR_ZONE_M, color: 'transparent', fillColor: '#FF4444', fillOpacity: 0.10, weight: 0, interactive: false }).addTo(map);
+  });
+
+  anchors.forEach(a => {
+    OUTER_RINGS.forEach(r => L.circle([a.lat, a.lng], { radius: r.radiusM, color: 'transparent', fillColor: '#C9A84C', fillOpacity: r.opacity, weight: 0, interactive: false }).addTo(map));
+    L.circle([a.lat, a.lng], { radius: a.influenceInnerRadiusM, color: 'transparent', fillColor: '#C9A84C', fillOpacity: INNER_OPACITY, weight: 0, interactive: false }).addTo(map);
+  });
+
+  anchors.forEach(a => {
+    const icon = L.divIcon({ html: '<div style="width:14px;height:14px;border-radius:50%;background:#C9A84C;border:2px solid #0D1117;box-shadow:0 0 8px #C9A84C;"></div>', className: '', iconSize: [14,14], iconAnchor: [7,7] });
+    L.marker([a.lat, a.lng], { icon, zIndexOffset: 1000 })
+      .bindPopup('<div style="margin-bottom:6px;"><span style="background:#C9A84C30;color:#C9A84C;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;">&Acirc;NCORA</span></div>' +
+        '<div style="font-weight:700;font-size:13px;margin-bottom:4px;">' + (ANCHOR_EMOJI[a.type] || '📍') + ' ' + escapeHtml(a.name) + '</div>' +
+        '<div style="color:#8B949E;font-size:11px;margin-bottom:6px;">' + escapeHtml(a.address) + '</div>' +
+        '<div style="font-size:11px;">' + escapeHtml(a.typeLabel) + ' &middot; ' + km(a.distanceToCenterM) + ' do centro</div>' +
+        '<div style="font-size:11px;color:#8B949E;">' + a.complementaryWithin300m + ' complementares a 300 m &middot; ' + a.competitorsWithin1km + ' concorrentes a 1 km</div>')
+      .addTo(map);
+  });
+
+  complementary.forEach(c => {
+    const icon = L.divIcon({ html: '<div style="width:8px;height:8px;border-radius:50%;background:#fff;border:1px solid #0D1117;"></div>', className: '', iconSize: [8,8], iconAnchor: [4,4] });
+    L.marker([c.lat, c.lng], { icon, zIndexOffset: 500 })
+      .bindPopup('<div style="margin-bottom:6px;"><span style="background:#FFFFFF20;color:#fff;border:1px solid #FFFFFF40;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;">POTENCIAL</span></div>' +
+        '<div style="font-weight:700;font-size:12px;">' + escapeHtml(c.name) + '</div>' +
+        '<div style="color:#8B949E;font-size:11px;margin-top:2px;">' + escapeHtml(c.address) + '</div>' +
+        '<div style="margin-top:4px;font-size:11px;">' + escapeHtml(c.typeLabel) + '</div>' +
+        '<div style="color:#8B949E;font-size:11px;margin-top:4px;">Pr&oacute;ximo a ' + escapeHtml(c.nearAnchor) + ' (' + c.nearAnchorDist + ' m)</div>')
+      .addTo(map);
+  });
+
+  competitorLayer = L.layerGroup().addTo(map);
+
+  fitScope();
+  renderCompetitors();
+  map.on('zoomend', renderCompetitors);
+
+  document.querySelectorAll('.item').forEach(el => {
+    el.addEventListener('click', () => {
+      userInteracted = true;
+      map.flyTo([parseFloat(el.dataset.lat), parseFloat(el.dataset.lng)], parseInt(el.dataset.zoom, 10), { duration: 0.8 });
+    });
+  });
+
+  document.getElementById('mapFallback').hidden = true;
+  document.getElementById('legend').hidden = false;
+} catch (err) {
+  map = null;
+  document.getElementById('mapFallback').hidden = false;
+  document.getElementById('legend').hidden = true;
+  document.getElementById('basemapWarning').hidden = true;
+  if (window.console) console.error('[PLUGGON] mapa indisponível:', err);
+}
 </script>
 </body>
 </html>`;

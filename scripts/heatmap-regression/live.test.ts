@@ -2,6 +2,9 @@
  * Regressão AO VIVO dos seis escopos (Google Places + Geocoding reais).
  * Custa dinheiro: rode com `npm run test:heatmap-live` antes de deploy que
  * toque src/lib/heatmap/. O build verifica isso (scripts/heatmap-regression/check.ts).
+ *
+ * Cada HTML é aberto no Chrome em cinco cenários (online, sem rede, firewall
+ * pendurado, sem Leaflet, sem JS) — ver render-check.ts.
  */
 
 import { after, test } from "node:test";
@@ -26,6 +29,9 @@ import {
 const repoRoot = process.cwd();
 const googleApiKey = process.env.GOOGLE_MAPS_API_KEY;
 if (!googleApiKey) throw new Error("GOOGLE_MAPS_API_KEY ausente — a regressão ao vivo não roda sem chave.");
+if (!process.env.NEXT_PUBLIC_CARTO_EXPORT_API_KEY) {
+  throw new Error("NEXT_PUBLIC_CARTO_EXPORT_API_KEY ausente — o HTML exportado não é gerado sem a chave de exportação (ver README).");
+}
 const chrome = findChrome();
 if (!chrome) throw new Error("Chrome/Edge não encontrado (defina CHROME_PATH) — a regressão abre cada HTML num navegador real.");
 
@@ -51,15 +57,21 @@ for (const c of REGRESSION_CASES) {
       writeFileSync(path.join(outDir, `${c.id}.payload.json`), JSON.stringify(run.payload, null, 2));
       const htmlFile = path.join(outDir, `${c.id}.html`);
       writeFileSync(htmlFile, run.html);
-      const render = await renderCheck(htmlFile, chrome);
+      const render = await renderCheck(htmlFile, chrome, { outDir, id: c.id });
       writeFileSync(path.join(outDir, `${c.id}.render.json`), JSON.stringify(render, null, 2));
       renderViolations = render.violations;
-      // No histórico versionado só vai a contagem (as mensagens podem citar lugares).
+      // No histórico versionado só vão números (as mensagens podem citar lugares).
       run.metrics.renderViolations = render.violations.length;
+      run.metrics.render = Object.fromEntries(
+        render.scenarios.map((s) => [
+          s.scenario,
+          { violations: s.violations.length, fcpMs: s.fcpMs, externalRequests: s.externalRequests, externalBeforeFcp: s.externalBeforeFcp },
+        ])
+      );
     }
     try {
       assert.equal(run.metrics.error, null, run.metrics.error ?? "");
-      assert.deepEqual(renderViolations, [], "o HTML precisa renderizar corretamente num navegador real");
+      assert.deepEqual(renderViolations, [], "o HTML precisa renderizar corretamente num navegador real, com e sem rede");
       assert.deepEqual(run.metrics.invariantViolations, [], "nenhum ponto fora do raio, nenhum place_id repetido");
       assert.equal(run.metrics.qaPassed, true);
       assert.equal(run.metrics.fitBoundsIsScope, true);

@@ -5,7 +5,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line,
 } from "recharts";
 import CityStateSelect from "@/components/CityStateSelect";
-import { DARK_TILES, TILE_ATTRIBUTION, TILE_OPTIONS, warnIfMissingKey } from "@/lib/basemap";
+import { DARK_TILES, exportDarkTiles, ExportBasemapKeyError, TILE_ATTRIBUTION, TILE_OPTIONS, warnIfMissingKey } from "@/lib/basemap";
 import CityEVDataForm, {
   EMPTY_MANUAL_DATA,
   type CityEVManualData,
@@ -434,6 +434,18 @@ export default function MarketIntelligencePage() {
 
     const scoreColor = p8 ? (p8.cityScore >= 70 ? "#66BB6A" : p8.cityScore >= 40 ? "#FFC107" : "#F44336") : "#C9A84C";
 
+    // HTML entregue a cliente usa a chave de exportação (nunca restrita) — ver README.
+    let exportTiles: string;
+    try {
+      exportTiles = exportDarkTiles();
+    } catch (err) {
+      if (err instanceof ExportBasemapKeyError) {
+        alert(`Exportação bloqueada:\n\n${err.message}`);
+        return;
+      }
+      throw err;
+    }
+
     const html = `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -610,7 +622,7 @@ ${p8 ? `<!-- PAINEL 8: RELATÓRIO EXECUTIVO -->
     var el = document.getElementById(id);
     if (!el) return null;
     var m = L.map(el, { center:[DATA.center.lat, DATA.center.lng], zoom: zoom||12 });
-    L.tileLayer("${DARK_TILES}", { maxZoom:19, attribution:'${TILE_ATTRIBUTION}' }).addTo(m);
+    L.tileLayer("${exportTiles}", { maxZoom:19, attribution:'${TILE_ATTRIBUTION}' }).addTo(m);
     return m;
   }
   // Concorrentes

@@ -6,7 +6,7 @@ import { buildScoreHtml } from "@/lib/score-html-export";
 import { createClient } from "@/lib/supabase/client";
 import { calculateScore, type ScoreInput, type ScoreResult as EngineScoreResult, type CriticalFactor } from "@/lib/scoring-engine";
 import CityStateSelect from "@/components/CityStateSelect";
-import { DARK_TILES, TILE_OPTIONS, warnIfMissingKey } from "@/lib/basemap";
+import { DARK_TILES, ExportBasemapKeyError, TILE_OPTIONS, warnIfMissingKey } from "@/lib/basemap";
 import CityEVDataForm, {
   EMPTY_MANUAL_DATA,
   type CityEVManualData,
@@ -2244,7 +2244,16 @@ function ScorePageInner() {
             <button
               type="button"
               onClick={() => {
-                const html = buildScoreHtml(result);
+                let html: string;
+                try {
+                  html = buildScoreHtml(result);
+                } catch (err) {
+                  if (err instanceof ExportBasemapKeyError) {
+                    alert(`Exportação bloqueada:\n\n${err.message}`);
+                    return;
+                  }
+                  throw err;
+                }
                 const blob = new Blob([html], { type: "text/html;charset=utf-8" });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement("a");

@@ -1,7 +1,7 @@
 // Generates a self-contained dark-theme HTML string from a ScorePoint result.
 // Embeds Leaflet (from CDN) to render a mini map centered on the point.
 
-import { DARK_TILES, TILE_ATTRIBUTION } from "@/lib/basemap";
+import { exportDarkTiles, TILE_ATTRIBUTION } from "@/lib/basemap";
 
 type ScoreSource = "ABVE" | "Google Places" | "IBGE" | "Cálculo" | "Usuário";
 
@@ -543,7 +543,7 @@ export function buildScoreHtml(r: ScoreExportData): string {
       var data = ${mapData};
       if (!window.L) return;
       var map = L.map('map', { zoomControl: true, attributionControl: false }).setView([data.lat, data.lng], 15);
-      L.tileLayer('${DARK_TILES}', { maxZoom: 19, attribution: '${TILE_ATTRIBUTION}' }).addTo(map);
+      L.tileLayer('${exportDarkTiles()}', { maxZoom: 19, attribution: '${TILE_ATTRIBUTION}' }).addTo(map);
       L.circle([data.lat, data.lng], { radius: 500, color: '#C9A84C', fillColor: '#C9A84C', fillOpacity: 0.05, weight: 1, dashArray: '5,5' }).addTo(map);
       var mainIcon = L.divIcon({
         html: '<div style="width:20px;height:20px;background:#C9A84C;border:3px solid white;border-radius:50%;box-shadow:0 0 10px rgba(201,168,76,0.6);"></div>',

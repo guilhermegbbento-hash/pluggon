@@ -10,13 +10,9 @@ import CityEVDataForm, {
 } from "@/components/CityEVDataForm";
 import { specByKey, specsForLayer } from "@/lib/heatmap/config";
 import { DISCARD_REASON_LABELS, QaGateError } from "@/lib/heatmap/qa-gate";
-import {
-  fmtKm,
-  heatmapFileName,
-  radiusCapWarnings,
-  renderHeatmapHtml,
-  reportStamp,
-} from "@/lib/heatmap/report-html";
+import { ExportBasemapKeyError } from "@/lib/basemap";
+// Leve: formatação. O gerador do HTML (com o Leaflet embutido) só carrega no clique de exportar.
+import { fmtKm, heatmapFileName, radiusCapWarnings, reportStamp } from "@/lib/heatmap/report-format";
 import type { AnchorOut, CompetitorOut, ComplementaryOut, DiscardReason, HeatmapPayload } from "@/lib/heatmap/types";
 
 const ADMIN_EMAILS = ['guilhermegbbento@gmail.com', 'marco@bleveducacao.com.br'];
@@ -159,15 +155,20 @@ export default function HeatmapPage() {
     setManualData(EMPTY_MANUAL_DATA);
   };
 
-  const exportHTML = useCallback(() => {
+  const exportHTML = useCallback(async () => {
     if (!result) return;
     let html: string;
     try {
+      const { renderHeatmapHtml } = await import("@/lib/heatmap/report-html");
       // O QA gate roda dentro de renderHeatmapHtml: payload reprovado não vira arquivo.
       html = renderHeatmapHtml(result);
     } catch (err) {
       if (err instanceof QaGateError) {
         alert(`Exportação bloqueada pelo QA gate:\n\n${err.message}`);
+        return;
+      }
+      if (err instanceof ExportBasemapKeyError) {
+        alert(`Exportação bloqueada:\n\n${err.message}`);
         return;
       }
       throw err;

@@ -9,7 +9,10 @@
     "start": "next start",
     "lint": "eslint",
     "test": "node --import tsx --test \"src/**/__tests__/*.test.ts\"",
-    "test:heatmap-live": "node --env-file=.env.local --import tsx --test scripts/heatmap-regression/live.test.ts"
+    "test:heatmap-live": "node --env-file=.env.local --import tsx --test scripts/heatmap-regression/live.test.ts",
+    "test:heatmap-render": "node --env-file=.env.local --import tsx scripts/heatmap-regression/render-saved.ts",
+    "experiment:heatmap-no-subdivision": "node --env-file=.env.local --import tsx scripts/heatmap-regression/experiment-no-subdivision.ts",
+    "vendor:leaflet": "tsx scripts/vendor-leaflet.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.82.0",
@@ -29,6 +32,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.2",
+    "leaflet": "1.9.4",
     "tailwindcss": "^4",
     "tsx": "^4.23.13",
     "typescript": "^5"

@@ -11,7 +11,7 @@ import { SCOPE_RULES } from "../../src/lib/heatmap/config";
 import { generateHeatmap, type GenerateDeps } from "../../src/lib/heatmap/generate";
 import { matchArea, scopeBoundsFor } from "../../src/lib/heatmap/geo";
 import { computeCounters } from "../../src/lib/heatmap/pipeline";
-import { renderHeatmapHtml } from "../../src/lib/heatmap/report-html";
+import { appScriptOf, renderHeatmapHtml } from "../../src/lib/heatmap/report-html";
 import { ScopeError } from "../../src/lib/heatmap/scope";
 import type { DiscardReason, HeatmapPayload, LayerKey } from "../../src/lib/heatmap/types";
 import type { RegressionCase } from "./cases";
@@ -27,8 +27,10 @@ export interface CaseMetrics {
   areas: { radiusM: number; radiusSource: string; radiusClamp: string | null; boundsCoveragePct: number | null }[];
   competitorSearch: { cells: number; maxDepth: number; cappedCells: number } | null;
   complementaryWithoutAnchor: number;
-  /** Problemas encontrados ao abrir o HTML num navegador real; null = não verificado. */
+  /** Problemas encontrados ao abrir o HTML num navegador real (todos os cenários); null = não verificado. */
   renderViolations: number | null;
+  /** Por cenário de rede: violações, primeira pintura e requisições externas (só números). */
+  render?: Record<string, RenderScenarioSummary> | null;
   counts: {
     anchors: number;
     complementary: number;
@@ -47,6 +49,16 @@ export interface CaseMetrics {
   googleQueries: number | null;
   invariantViolations: string[];
 }
+
+export interface RenderScenarioSummary {
+  violations: number;
+  fcpMs: number | null;
+  externalRequests: number;
+  externalBeforeFcp: number;
+}
+
+/** Ordem das colunas de render no histórico. */
+export const RENDER_SCENARIO_ORDER = ["online", "sem_rede", "firewall_pendurado", "sem_leaflet", "sem_js"] as const;
 
 export interface AbortMetrics {
   id: string;
@@ -90,8 +102,10 @@ export function checkInvariants(p: HeatmapPayload, html: string): string[] {
 
   const expected = scopeBoundsFor(p.scope.areas);
   if (JSON.stringify(expected) !== JSON.stringify(p.scope.bounds)) v.push("scope.bounds diferente dos círculos de estudo");
-  const fits = html.match(/fitBounds\(/g) ?? [];
-  if (fits.length !== 1 || !FIT_SCOPE_RE.test(html)) v.push("HTML não enquadra exclusivamente o escopo");
+  // Só o script do PLUGGON: o Leaflet embutido tem fitBounds próprio.
+  const script = appScriptOf(html);
+  const fits = script.match(/fitBounds\(/g) ?? [];
+  if (fits.length !== 1 || !FIT_SCOPE_RE.test(script)) v.push("HTML não enquadra exclusivamente o escopo");
 
   const rule = SCOPE_RULES[p.scope.mode];
   for (const a of p.scope.areas) {
@@ -211,6 +225,11 @@ export function computeHeatmapSourceHash(repoRoot: string): string {
     hash.update(f);
     hash.update(readFileSync(path.join(dir, f), "utf8").replace(/\r\n/g, "\n"));
   }
+  // Fora da pasta, mas decide o que vai gravado no HTML exportado (URL e chave dos tiles).
+  for (const extra of ["src/lib/basemap.ts"]) {
+    hash.update(extra);
+    hash.update(readFileSync(path.join(repoRoot, extra), "utf8").replace(/\r\n/g, "\n"));
+  }
   return hash.digest("hex").slice(0, 16);
 }
 
@@ -226,20 +245,38 @@ const km = (m: number) => (m / 1000).toFixed(2).replace(".", ",");
 
 export function markdownTable(record: RunRecord): string {
   const head =
-    "| Caso | Modo | Raio (origem; cobertura) | Âncoras | Compl. | Conc. (DC/AC/NI) | Busca conc.: células / prof. / no teto | Dist. máx âncora / compl. / conc. | Fora do raio | Tipo inválido | Tipo principal divergente | Duplicata | Ponto de ônibus s/ terminal | Aeroporto s/ porte | Compl. sem âncora ≤ 500 m | Buscas de apoio no teto | fitBounds = escopo | Render no navegador | QA |\n" +
-    "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|";
+    "| Caso | Modo | Raio (origem; cobertura) | Âncoras | Compl. | Conc. (DC/AC/NI) | Busca conc.: células / prof. / no teto | Dist. máx âncora / compl. / conc. | Fora do raio | Tipo inválido | Tipo principal divergente | Duplicata | Ponto de ônibus s/ terminal | Aeroporto s/ porte | Compl. sem âncora ≤ 500 m | Buscas de apoio no teto | fitBounds = escopo | Render: online / sem rede / firewall pendurado / sem Leaflet / sem JS | 1ª pintura máx | QA |\n" +
+    "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|";
+  const renderCell = (c: CaseMetrics) => {
+    if (c.render) {
+      return RENDER_SCENARIO_ORDER.map((s) => {
+        const r = c.render![s];
+        return !r ? "—" : r.violations === 0 ? "ok" : `FALHOU (${r.violations})`;
+      }).join(" / ");
+    }
+    return c.renderViolations === null ? "—" : c.renderViolations === 0 ? "ok" : `FALHOU (${c.renderViolations})`;
+  };
+  const fcpCell = (c: CaseMetrics) => {
+    const values = Object.values(c.render ?? {}).map((r) => r.fcpMs).filter((x): x is number => x !== null);
+    return values.length === 0 ? "—" : `${Math.max(...values)} ms`;
+  };
   const rows = record.cases.map((c) => {
-    if (c.error || !c.counts || !c.maxDistanceM) return `| ${c.id}) ${c.label} | ERRO: ${c.error} ${"|".repeat(18)}`;
+    if (c.error || !c.counts || !c.maxDistanceM) return `| ${c.id}) ${c.label} | ERRO: ${c.error} ${"|".repeat(19)}`;
     const d = c.discardsByReason;
     const radius = c.areas
       .map((a) => `${km(a.radiusM)} km (${a.radiusSource}${a.radiusClamp ? `, ${a.radiusClamp}` : ""}; ${a.boundsCoveragePct === null ? "—" : `${a.boundsCoveragePct}%`})`)
       .join(" + ");
     const cs = c.competitorSearch;
-    return `| ${c.id}) ${c.label} | ${c.mode} | ${radius} | ${c.counts.anchors} | ${c.counts.complementary} | ${c.counts.competitors} (${c.counts.competitorsDC}/${c.counts.competitorsAC}/${c.counts.competitorsUnknown}) | ${cs ? `${cs.cells} / ${cs.maxDepth} / ${cs.cappedCells}` : "—"} | ${km(c.maxDistanceM.anchors)} / ${km(c.maxDistanceM.complementary)} / ${km(c.maxDistanceM.competitors)} km | ${d.fora_do_raio ?? 0} | ${d.tipo_invalido ?? 0} | ${d.tipo_principal_divergente ?? 0} | ${sumDup(d)} | ${d.ponto_de_onibus_sem_sinal_de_terminal ?? 0} | ${d.aeroporto_sem_porte ?? 0} | ${c.complementaryWithoutAnchor} | ${c.truncatedSearches - (cs?.cappedCells ? 1 : 0)} | ${c.fitBoundsIsScope ? "sim" : "NÃO"} | ${c.renderViolations === null ? "—" : c.renderViolations === 0 ? "ok" : `FALHOU (${c.renderViolations})`} | ${c.qaPassed && c.invariantViolations.length === 0 ? "ok" : "FALHOU"} |`;
+    return `| ${c.id}) ${c.label} | ${c.mode} | ${radius} | ${c.counts.anchors} | ${c.counts.complementary} | ${c.counts.competitors} (${c.counts.competitorsDC}/${c.counts.competitorsAC}/${c.counts.competitorsUnknown}) | ${cs ? `${cs.cells} / ${cs.maxDepth} / ${cs.cappedCells}` : "—"} | ${km(c.maxDistanceM.anchors)} / ${km(c.maxDistanceM.complementary)} / ${km(c.maxDistanceM.competitors)} km | ${d.fora_do_raio ?? 0} | ${d.tipo_invalido ?? 0} | ${d.tipo_principal_divergente ?? 0} | ${sumDup(d)} | ${d.ponto_de_onibus_sem_sinal_de_terminal ?? 0} | ${d.aeroporto_sem_porte ?? 0} | ${c.complementaryWithoutAnchor} | ${c.truncatedSearches - (cs?.cappedCells ? 1 : 0)} | ${c.fitBoundsIsScope ? "sim" : "NÃO"} | ${renderCell(c)} | ${fcpCell(c)} | ${c.qaPassed && c.invariantViolations.length === 0 ? "ok" : "FALHOU"} |`;
   });
   const aborts = record.abortCases.map((a) => `- ${a.id}) ${a.label}: ${a.aborted ? `abortou (${a.code})` : "NÃO abortou"}`);
   return [head, ...rows, "", "Desambiguação (têm que abortar):", ...aborts].join("\n");
 }
+
+export const RENDER_TIMING_NOTE =
+  "> **Como ler o tempo:** a prova de tempo é a coluna \"1ª pintura máx\" (first-contentful-paint, medida em tempo real via Chrome DevTools Protocol, HTML aberto de `file://`). " +
+  "Os prints (`.heatmap-regression-output/<caso>.<cenário>.png`) mostram *o que* o cliente vê, não *quando*: com a página travada esperando rede, o Chrome só entrega a captura depois que ela destrava — um print pedido \"aos 5 s\" pode mostrar o estado de 30 s. " +
+  "\"firewall pendurado\" = proxy que aceita a conexão e nunca responde; \"sem Leaflet\" = cópia do HTML sem o Leaflet embutido; \"sem JS\" = JavaScript desligado.";
 
 export function writeRunRecord(repoRoot: string, record: RunRecord): void {
   const dir = path.join(repoRoot, HISTORY_DIR);
@@ -257,7 +294,8 @@ export function writeRunRecord(repoRoot: string, record: RunRecord): void {
   }
   appendFileSync(
     md,
-    `\n## ${record.ranAt} — gerador v${record.generatorVersion} — código ${record.sourceHash} — ${record.allPassed ? "APROVADO" : "REPROVADO"}\n\n${markdownTable(record)}\n`
+    `\n## ${record.ranAt} — gerador v${record.generatorVersion} — código ${record.sourceHash} — ${record.allPassed ? "APROVADO" : "REPROVADO"}\n\n${markdownTable(record)}\n` +
+      (record.cases.some((c) => c.render) ? `\n${RENDER_TIMING_NOTE}\n` : "")
   );
 }
 

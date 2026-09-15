@@ -7,7 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { influenceInnerRadiusM, runPipeline } from "../pipeline";
 import { runQaGate } from "../qa-gate";
-import { renderHeatmapHtml } from "../report-html";
+import { appScriptOf, renderHeatmapHtml } from "../report-html";
 import { scopeBoundsFor } from "../geo";
 import type { Discard, DiscardReason, HeatmapPayload } from "../types";
 import { cand, CENTER, makeScope, offset, place } from "./helpers";
@@ -174,10 +174,11 @@ function payloadOf(): HeatmapPayload {
 }
 
 test("BUG 6 — fitBounds enquadra o escopo (centro + raio), não os pontos", () => {
-  const html = renderHeatmapHtml(payloadOf(), { tileUrl: "about:blank" });
-  const fits = html.match(/fitBounds\(/g) ?? [];
+  // Só o script do PLUGGON: o Leaflet embutido tem fitBounds próprio.
+  const script = appScriptOf(renderHeatmapHtml(payloadOf(), { tileUrl: "about:blank" }));
+  const fits = script.match(/fitBounds\(/g) ?? [];
   assert.equal(fits.length, 1);
-  assert.match(html, /map\.fitBounds\(\[\[scope\.bounds\.south, scope\.bounds\.west\], \[scope\.bounds\.north, scope\.bounds\.east\]\]/);
+  assert.match(script, /map\.fitBounds\(\[\[scope\.bounds\.south, scope\.bounds\.west\], \[scope\.bounds\.north, scope\.bounds\.east\]\]/);
   assert.deepEqual(scope.bounds, scopeBoundsFor(scope.areas));
 });
 
