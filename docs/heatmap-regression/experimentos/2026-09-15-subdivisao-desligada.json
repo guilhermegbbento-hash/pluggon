@@ -1,0 +1,195 @@
+{
+  "ranAt": "2026-09-15T20:29:43.277Z",
+  "generatorVersion": "3.2.1",
+  "sourceHash": "df52cd8bf97a86de",
+  "requests": 206,
+  "beforeRun": "2026-09-14T22:24:12.181Z",
+  "withSubdivisionRun": "2026-09-15T20:29:06.909Z",
+  "rows": [
+    {
+      "id": "a",
+      "label": "Morumbi — São Paulo/SP",
+      "before": {
+        "competitors": 11,
+        "dc": 2,
+        "ac": 5,
+        "ni": 4
+      },
+      "withSubdivision": {
+        "competitors": 11,
+        "dc": 2,
+        "ac": 5,
+        "ni": 4,
+        "cells": 3,
+        "cappedCells": 0
+      },
+      "noSubdivision": {
+        "competitors": 11,
+        "dc": 2,
+        "ac": 5,
+        "ni": 4,
+        "cells": 3,
+        "cappedCells": 0,
+        "returnedRaw": 18,
+        "competitorDiscards": {
+          "fora_do_raio": 2
+        }
+      },
+      "error": null
+    },
+    {
+      "id": "b",
+      "label": "Itaim Bibi — São Paulo/SP",
+      "before": {
+        "competitors": 59,
+        "dc": 1,
+        "ac": 42,
+        "ni": 16
+      },
+      "withSubdivision": {
+        "competitors": 134,
+        "dc": 4,
+        "ac": 88,
+        "ni": 42,
+        "cells": 42,
+        "cappedCells": 0
+      },
+      "noSubdivision": {
+        "competitors": 46,
+        "dc": 1,
+        "ac": 31,
+        "ni": 14,
+        "cells": 3,
+        "cappedCells": 1,
+        "returnedRaw": 59,
+        "competitorDiscards": {
+          "fora_do_raio": 4
+        }
+      },
+      "error": null
+    },
+    {
+      "id": "c",
+      "label": "Batel — Curitiba/PR",
+      "before": {
+        "competitors": 28,
+        "dc": 2,
+        "ac": 16,
+        "ni": 10
+      },
+      "withSubdivision": {
+        "competitors": 43,
+        "dc": 6,
+        "ac": 20,
+        "ni": 17,
+        "cells": 15,
+        "cappedCells": 0
+      },
+      "noSubdivision": {
+        "competitors": 28,
+        "dc": 2,
+        "ac": 16,
+        "ni": 10,
+        "cells": 3,
+        "cappedCells": 1,
+        "returnedRaw": 42,
+        "competitorDiscards": {
+          "fora_do_raio": 3
+        }
+      },
+      "error": null
+    },
+    {
+      "id": "d",
+      "label": "Centro — Florianópolis/SC",
+      "before": {
+        "competitors": 40,
+        "dc": 7,
+        "ac": 28,
+        "ni": 5
+      },
+      "withSubdivision": {
+        "competitors": 71,
+        "dc": 11,
+        "ac": 46,
+        "ni": 14,
+        "cells": 27,
+        "cappedCells": 0
+      },
+      "noSubdivision": {
+        "competitors": 39,
+        "dc": 6,
+        "ac": 28,
+        "ni": 5,
+        "cells": 3,
+        "cappedCells": 1,
+        "returnedRaw": 54,
+        "competitorDiscards": {
+          "fora_do_raio": 2
+        }
+      },
+      "error": null
+    },
+    {
+      "id": "e",
+      "label": "Jardim Ângela — São Paulo/SP",
+      "before": {
+        "competitors": 0,
+        "dc": 0,
+        "ac": 0,
+        "ni": 0
+      },
+      "withSubdivision": {
+        "competitors": 0,
+        "dc": 0,
+        "ac": 0,
+        "ni": 0,
+        "cells": 3,
+        "cappedCells": 0
+      },
+      "noSubdivision": {
+        "competitors": 0,
+        "dc": 0,
+        "ac": 0,
+        "ni": 0,
+        "cells": 3,
+        "cappedCells": 0,
+        "returnedRaw": 0,
+        "competitorDiscards": {}
+      },
+      "error": null
+    },
+    {
+      "id": "f",
+      "label": "Curitiba/PR (cidade inteira)",
+      "before": {
+        "competitors": 88,
+        "dc": 14,
+        "ac": 48,
+        "ni": 26
+      },
+      "withSubdivision": {
+        "competitors": 252,
+        "dc": 47,
+        "ac": 113,
+        "ni": 92,
+        "cells": 95,
+        "cappedCells": 0
+      },
+      "noSubdivision": {
+        "competitors": 91,
+        "dc": 13,
+        "ac": 49,
+        "ni": 29,
+        "cells": 3,
+        "cappedCells": 2,
+        "returnedRaw": 117,
+        "competitorDiscards": {
+          "duplicata_nome_contido": 1,
+          "duplicata_proximidade_nome": 1
+        }
+      },
+      "error": null
+    }
+  ]
+}
