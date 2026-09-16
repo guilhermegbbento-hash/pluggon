@@ -1,7 +1,7 @@
 {
-  "ranAt": "2026-09-15T20:29:06.909Z",
+  "ranAt": "2026-09-16T01:59:14.228Z",
   "generatorVersion": "3.2.1",
-  "sourceHash": "df52cd8bf97a86de",
+  "sourceHash": "3fdc9d62a836ca7a",
   "allPassed": true,
   "cases": [
     {
@@ -12,10 +12,10 @@
       "mode": "bairro",
       "areas": [
         {
-          "radiusM": 1757,
+          "radiusM": 2163,
           "radiusSource": "bounds",
           "radiusClamp": null,
-          "boundsCoveragePct": 96
+          "boundsCoveragePct": 100
         }
       ],
       "competitorSearch": {
@@ -23,33 +23,33 @@
         "maxDepth": 0,
         "cappedCells": 0
       },
-      "complementaryWithoutAnchor": 60,
+      "complementaryWithoutAnchor": 88,
       "renderViolations": 0,
       "counts": {
-        "anchors": 28,
-        "complementary": 113,
-        "competitors": 11,
-        "competitorsDC": 2,
-        "competitorsAC": 5,
-        "competitorsUnknown": 4,
+        "anchors": 36,
+        "complementary": 147,
+        "competitors": 17,
+        "competitorsDC": 3,
+        "competitorsAC": 9,
+        "competitorsUnknown": 5,
         "anchorsByType": {
-          "gas_station": 22,
-          "shopping_mall": 6
+          "gas_station": 29,
+          "shopping_mall": 7
         }
       },
       "maxDistanceM": {
-        "anchors": 1714,
-        "complementary": 1757,
-        "competitors": 1640
+        "anchors": 2157,
+        "complementary": 2160,
+        "competitors": 2119
       },
       "discardsByReason": {
-        "fora_do_raio": 82,
-        "tipo_principal_divergente": 1,
-        "duplicata_nome_contido": 3,
-        "duplicata_place_id": 8,
-        "duplicata_entre_camadas": 4,
-        "complementar_excedente_por_ancora": 63,
-        "complementar_sem_ancora_proxima": 60
+        "fora_do_raio": 122,
+        "tipo_principal_divergente": 3,
+        "duplicata_nome_contido": 2,
+        "duplicata_place_id": 6,
+        "duplicata_entre_camadas": 5,
+        "complementar_sem_ancora_proxima": 88,
+        "complementar_excedente_por_ancora": 72
       },
       "truncatedSearches": 2,
       "sources": [
@@ -64,20 +64,20 @@
       ],
       "fitBoundsIsScope": true,
       "qaPassed": true,
-      "googleQueries": 29,
+      "googleQueries": 34,
       "invariantViolations": [],
       "render": {
         "online": {
           "violations": 0,
-          "fcpMs": 212,
+          "fcpMs": 208,
           "externalRequests": 20,
           "externalBeforeFcp": 20
         },
         "sem_rede": {
           "violations": 0,
           "fcpMs": 176,
-          "externalRequests": 20,
-          "externalBeforeFcp": 20
+          "externalRequests": 40,
+          "externalBeforeFcp": 26
         },
         "firewall_pendurado": {
           "violations": 0,
@@ -87,13 +87,13 @@
         },
         "sem_leaflet": {
           "violations": 0,
-          "fcpMs": 124,
+          "fcpMs": 112,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         },
         "sem_js": {
           "violations": 0,
-          "fcpMs": 100,
+          "fcpMs": 116,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         }
@@ -107,48 +107,48 @@
       "mode": "bairro",
       "areas": [
         {
-          "radiusM": 1500,
+          "radiusM": 1664,
           "radiusSource": "bounds",
-          "radiusClamp": "piso",
-          "boundsCoveragePct": 99
+          "radiusClamp": null,
+          "boundsCoveragePct": 100
         }
       ],
       "competitorSearch": {
-        "cells": 42,
+        "cells": 46,
         "maxDepth": 4,
         "cappedCells": 0
       },
-      "complementaryWithoutAnchor": 29,
+      "complementaryWithoutAnchor": 19,
       "renderViolations": 0,
       "counts": {
-        "anchors": 36,
-        "complementary": 151,
-        "competitors": 134,
+        "anchors": 56,
+        "complementary": 227,
+        "competitors": 155,
         "competitorsDC": 4,
-        "competitorsAC": 88,
-        "competitorsUnknown": 42,
+        "competitorsAC": 104,
+        "competitorsUnknown": 47,
         "anchorsByType": {
-          "gas_station": 26,
-          "shopping_mall": 10
+          "gas_station": 42,
+          "shopping_mall": 14
         }
       },
       "maxDistanceM": {
-        "anchors": 1488,
-        "complementary": 1499,
-        "competitors": 1497
+        "anchors": 1637,
+        "complementary": 1660,
+        "competitors": 1664
       },
       "discardsByReason": {
-        "fora_do_raio": 120,
-        "ponto_de_onibus_sem_sinal_de_terminal": 2,
+        "fora_do_raio": 117,
+        "ponto_de_onibus_sem_sinal_de_terminal": 3,
         "tipo_principal_divergente": 4,
-        "duplicata_place_id": 13,
-        "duplicata_proximidade_nome": 4,
-        "duplicata_nome_contido": 1,
-        "duplicata_entre_camadas": 5,
-        "complementar_excedente_por_ancora": 111,
-        "complementar_sem_ancora_proxima": 29
+        "duplicata_proximidade_nome": 2,
+        "duplicata_place_id": 5,
+        "duplicata_nome_contido": 3,
+        "duplicata_entre_camadas": 4,
+        "complementar_excedente_por_ancora": 55,
+        "complementar_sem_ancora_proxima": 19
       },
-      "truncatedSearches": 2,
+      "truncatedSearches": 3,
       "sources": [
         {
           "name": "Google Places",
@@ -161,30 +161,30 @@
       ],
       "fitBoundsIsScope": true,
       "qaPassed": true,
-      "googleQueries": 72,
+      "googleQueries": 76,
       "invariantViolations": [],
       "render": {
         "online": {
           "violations": 0,
-          "fcpMs": 212,
+          "fcpMs": 268,
           "externalRequests": 20,
           "externalBeforeFcp": 20
         },
         "sem_rede": {
           "violations": 0,
-          "fcpMs": 208,
-          "externalRequests": 40,
-          "externalBeforeFcp": 26
+          "fcpMs": 220,
+          "externalRequests": 20,
+          "externalBeforeFcp": 20
         },
         "firewall_pendurado": {
           "violations": 0,
-          "fcpMs": 280,
+          "fcpMs": 200,
           "externalRequests": 20,
           "externalBeforeFcp": 20
         },
         "sem_leaflet": {
           "violations": 0,
-          "fcpMs": 132,
+          "fcpMs": 112,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         },
@@ -204,10 +204,10 @@
       "mode": "bairro",
       "areas": [
         {
-          "radiusM": 1500,
+          "radiusM": 1700,
           "radiusSource": "bounds",
-          "radiusClamp": "piso",
-          "boundsCoveragePct": 99
+          "radiusClamp": null,
+          "boundsCoveragePct": 100
         }
       ],
       "competitorSearch": {
@@ -215,37 +215,37 @@
         "maxDepth": 2,
         "cappedCells": 0
       },
-      "complementaryWithoutAnchor": 4,
+      "complementaryWithoutAnchor": 2,
       "renderViolations": 0,
       "counts": {
-        "anchors": 66,
-        "complementary": 284,
-        "competitors": 43,
-        "competitorsDC": 6,
-        "competitorsAC": 20,
-        "competitorsUnknown": 17,
+        "anchors": 83,
+        "complementary": 335,
+        "competitors": 50,
+        "competitorsDC": 10,
+        "competitorsAC": 21,
+        "competitorsUnknown": 19,
         "anchorsByType": {
-          "gas_station": 28,
-          "shopping_mall": 38
+          "gas_station": 43,
+          "shopping_mall": 40
         }
       },
       "maxDistanceM": {
-        "anchors": 1492,
-        "complementary": 1498,
-        "competitors": 1476
+        "anchors": 1682,
+        "complementary": 1693,
+        "competitors": 1684
       },
       "discardsByReason": {
-        "fora_do_raio": 134,
+        "fora_do_raio": 163,
         "ponto_de_onibus_sem_sinal_de_terminal": 1,
         "tipo_principal_divergente": 2,
-        "duplicata_proximidade_nome": 2,
-        "duplicata_nome_contido": 7,
-        "duplicata_place_id": 4,
-        "duplicata_entre_camadas": 6,
-        "complementar_excedente_por_ancora": 46,
-        "complementar_sem_ancora_proxima": 4
+        "duplicata_proximidade_nome": 5,
+        "duplicata_nome_contido": 5,
+        "duplicata_place_id": 2,
+        "duplicata_entre_camadas": 8,
+        "complementar_excedente_por_ancora": 34,
+        "complementar_sem_ancora_proxima": 2
       },
-      "truncatedSearches": 5,
+      "truncatedSearches": 8,
       "sources": [
         {
           "name": "Google Places",
@@ -258,36 +258,36 @@
       ],
       "fitBoundsIsScope": true,
       "qaPassed": true,
-      "googleQueries": 48,
+      "googleQueries": 51,
       "invariantViolations": [],
       "render": {
         "online": {
           "violations": 0,
-          "fcpMs": 204,
-          "externalRequests": 24,
-          "externalBeforeFcp": 24
+          "fcpMs": 212,
+          "externalRequests": 20,
+          "externalBeforeFcp": 20
         },
         "sem_rede": {
           "violations": 0,
-          "fcpMs": 296,
-          "externalRequests": 48,
-          "externalBeforeFcp": 32
+          "fcpMs": 232,
+          "externalRequests": 20,
+          "externalBeforeFcp": 20
         },
         "firewall_pendurado": {
           "violations": 0,
-          "fcpMs": 188,
-          "externalRequests": 24,
-          "externalBeforeFcp": 24
+          "fcpMs": 196,
+          "externalRequests": 20,
+          "externalBeforeFcp": 20
         },
         "sem_leaflet": {
           "violations": 0,
-          "fcpMs": 136,
+          "fcpMs": 112,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         },
         "sem_js": {
           "violations": 0,
-          "fcpMs": 120,
+          "fcpMs": 116,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         }
@@ -301,48 +301,49 @@
       "mode": "bairro",
       "areas": [
         {
-          "radiusM": 5000,
+          "radiusM": 9768,
           "radiusSource": "bounds",
-          "radiusClamp": "teto",
-          "boundsCoveragePct": 56
+          "radiusClamp": null,
+          "boundsCoveragePct": 100
         }
       ],
       "competitorSearch": {
-        "cells": 27,
-        "maxDepth": 3,
+        "cells": 47,
+        "maxDepth": 4,
         "cappedCells": 0
       },
-      "complementaryWithoutAnchor": 78,
+      "complementaryWithoutAnchor": 135,
       "renderViolations": 0,
       "counts": {
-        "anchors": 110,
-        "complementary": 406,
-        "competitors": 71,
-        "competitorsDC": 11,
-        "competitorsAC": 46,
-        "competitorsUnknown": 14,
+        "anchors": 113,
+        "complementary": 337,
+        "competitors": 113,
+        "competitorsDC": 23,
+        "competitorsAC": 64,
+        "competitorsUnknown": 26,
         "anchorsByType": {
-          "gas_station": 57,
-          "shopping_mall": 50,
-          "bus_station": 3
+          "gas_station": 56,
+          "shopping_mall": 52,
+          "bus_station": 3,
+          "airport": 2
         }
       },
       "maxDistanceM": {
-        "anchors": 4959,
-        "complementary": 4968,
-        "competitors": 4826
+        "anchors": 9717,
+        "complementary": 9688,
+        "competitors": 9713
       },
       "discardsByReason": {
-        "fora_do_raio": 40,
+        "fora_do_raio": 65,
+        "aeroporto_sem_porte": 2,
         "tipo_principal_divergente": 1,
         "duplicata_nome_contido": 9,
-        "duplicata_proximidade_nome": 3,
-        "duplicata_place_id": 5,
-        "duplicata_entre_camadas": 10,
-        "complementar_excedente_por_ancora": 62,
-        "complementar_sem_ancora_proxima": 78
+        "duplicata_proximidade_nome": 1,
+        "duplicata_entre_camadas": 4,
+        "complementar_excedente_por_ancora": 69,
+        "complementar_sem_ancora_proxima": 135
       },
-      "truncatedSearches": 10,
+      "truncatedSearches": 11,
       "sources": [
         {
           "name": "Google Places",
@@ -355,36 +356,36 @@
       ],
       "fitBoundsIsScope": true,
       "qaPassed": true,
-      "googleQueries": 68,
+      "googleQueries": 89,
       "invariantViolations": [],
       "render": {
         "online": {
           "violations": 0,
-          "fcpMs": 296,
-          "externalRequests": 20,
-          "externalBeforeFcp": 20
+          "fcpMs": 252,
+          "externalRequests": 25,
+          "externalBeforeFcp": 25
         },
         "sem_rede": {
           "violations": 0,
-          "fcpMs": 368,
+          "fcpMs": 232,
           "externalRequests": 20,
           "externalBeforeFcp": 20
         },
         "firewall_pendurado": {
           "violations": 0,
-          "fcpMs": 372,
-          "externalRequests": 20,
-          "externalBeforeFcp": 20
+          "fcpMs": 204,
+          "externalRequests": 25,
+          "externalBeforeFcp": 25
         },
         "sem_leaflet": {
           "violations": 0,
-          "fcpMs": 148,
+          "fcpMs": 124,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         },
         "sem_js": {
           "violations": 0,
-          "fcpMs": 136,
+          "fcpMs": 140,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         }
@@ -409,7 +410,7 @@
         "maxDepth": 0,
         "cappedCells": 0
       },
-      "complementaryWithoutAnchor": 75,
+      "complementaryWithoutAnchor": 81,
       "renderViolations": 0,
       "counts": {
         "anchors": 12,
@@ -426,14 +427,14 @@
       },
       "maxDistanceM": {
         "anchors": 1703,
-        "complementary": 1884,
+        "complementary": 1909,
         "competitors": 0
       },
       "discardsByReason": {
-        "fora_do_raio": 51,
-        "duplicata_place_id": 3,
-        "complementar_excedente_por_ancora": 33,
-        "complementar_sem_ancora_proxima": 75
+        "fora_do_raio": 48,
+        "duplicata_place_id": 2,
+        "complementar_excedente_por_ancora": 29,
+        "complementar_sem_ancora_proxima": 81
       },
       "truncatedSearches": 1,
       "sources": [
@@ -453,31 +454,31 @@
       "render": {
         "online": {
           "violations": 0,
-          "fcpMs": 160,
-          "externalRequests": 20,
-          "externalBeforeFcp": 20
+          "fcpMs": 156,
+          "externalRequests": 24,
+          "externalBeforeFcp": 24
         },
         "sem_rede": {
           "violations": 0,
-          "fcpMs": 168,
-          "externalRequests": 20,
-          "externalBeforeFcp": 20
+          "fcpMs": 164,
+          "externalRequests": 44,
+          "externalBeforeFcp": 33
         },
         "firewall_pendurado": {
           "violations": 0,
-          "fcpMs": 212,
-          "externalRequests": 20,
-          "externalBeforeFcp": 20
+          "fcpMs": 152,
+          "externalRequests": 24,
+          "externalBeforeFcp": 24
         },
         "sem_leaflet": {
           "violations": 0,
-          "fcpMs": 116,
+          "fcpMs": 120,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         },
         "sem_js": {
           "violations": 0,
-          "fcpMs": 128,
+          "fcpMs": 108,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         }
@@ -491,29 +492,29 @@
       "mode": "cidade",
       "areas": [
         {
-          "radiusM": 19289,
+          "radiusM": 20000,
           "radiusSource": "bounds",
-          "radiusClamp": null,
-          "boundsCoveragePct": 82
+          "radiusClamp": "teto",
+          "boundsCoveragePct": 85
         }
       ],
       "competitorSearch": {
-        "cells": 95,
+        "cells": 91,
         "maxDepth": 6,
         "cappedCells": 0
       },
-      "complementaryWithoutAnchor": 127,
+      "complementaryWithoutAnchor": 188,
       "renderViolations": 0,
       "counts": {
-        "anchors": 126,
-        "complementary": 373,
+        "anchors": 125,
+        "complementary": 326,
         "competitors": 252,
         "competitorsDC": 47,
         "competitorsAC": 113,
         "competitorsUnknown": 92,
         "anchorsByType": {
           "gas_station": 60,
-          "shopping_mall": 57,
+          "shopping_mall": 56,
           "bus_station": 6,
           "airport": 3
         }
@@ -526,13 +527,14 @@
       "discardsByReason": {
         "ponto_de_onibus_sem_sinal_de_terminal": 7,
         "tipo_principal_divergente": 1,
+        "aeroporto_sem_porte": 1,
         "fora_do_raio": 3,
+        "duplicata_nome_contido": 5,
         "duplicata_proximidade_nome": 6,
-        "duplicata_nome_contido": 7,
-        "duplicata_place_id": 4,
-        "duplicata_entre_camadas": 6,
-        "complementar_sem_ancora_proxima": 127,
-        "complementar_excedente_por_ancora": 85
+        "duplicata_place_id": 3,
+        "duplicata_entre_camadas": 10,
+        "complementar_sem_ancora_proxima": 188,
+        "complementar_excedente_por_ancora": 71
       },
       "truncatedSearches": 12,
       "sources": [
@@ -547,36 +549,36 @@
       ],
       "fitBoundsIsScope": true,
       "qaPassed": true,
-      "googleQueries": 138,
+      "googleQueries": 133,
       "invariantViolations": [],
       "render": {
         "online": {
           "violations": 0,
-          "fcpMs": 292,
+          "fcpMs": 232,
           "externalRequests": 20,
           "externalBeforeFcp": 20
         },
         "sem_rede": {
           "violations": 0,
-          "fcpMs": 356,
+          "fcpMs": 248,
           "externalRequests": 20,
           "externalBeforeFcp": 20
         },
         "firewall_pendurado": {
           "violations": 0,
-          "fcpMs": 308,
+          "fcpMs": 252,
           "externalRequests": 20,
           "externalBeforeFcp": 20
         },
         "sem_leaflet": {
           "violations": 0,
-          "fcpMs": 196,
+          "fcpMs": 136,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         },
         "sem_js": {
           "violations": 0,
-          "fcpMs": 168,
+          "fcpMs": 152,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         }

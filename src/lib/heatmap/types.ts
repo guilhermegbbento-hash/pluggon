@@ -204,7 +204,8 @@ export interface QaViolation {
     | "contador_divergente"
     | "enquadramento_divergente"
     | "referencia_inexistente"
-    | "camada_incompleta";
+    | "camada_incompleta"
+    | "cobertura_incompleta";
   detail: string;
 }
 

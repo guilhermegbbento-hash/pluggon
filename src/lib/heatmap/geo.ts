@@ -39,9 +39,24 @@ export function scopeBoundsFor(areas: Pick<ScopeArea, "center" | "radiusM">[]): 
   return unionBounds(areas.map((a) => circleBounds(a.center, a.radiusM)));
 }
 
-/** Meia-diagonal do retângulo: raio do círculo que cobre o bairro inteiro. */
+/** Meia-diagonal do retângulo. Usada nas células de busca, NÃO no raio do estudo. */
 export function boundsHalfDiagonalM(b: Bounds): number {
   return haversineM({ lat: b.south, lng: b.west }, { lat: b.north, lng: b.east }) / 2;
+}
+
+/**
+ * Raio que cobre o retângulo INTEIRO a partir do centro dado. O centro do
+ * estudo é o `location` do geocoding, que quase nunca é o meio do retângulo:
+ * usar a meia-diagonal deixaria parte do bairro fora do mapa.
+ */
+export function radiusToCoverBounds(center: LatLng, b: Bounds): number {
+  const corners: LatLng[] = [
+    { lat: b.south, lng: b.west },
+    { lat: b.south, lng: b.east },
+    { lat: b.north, lng: b.west },
+    { lat: b.north, lng: b.east },
+  ];
+  return Math.max(...corners.map((c) => haversineM(center, c)));
 }
 
 export interface AreaMatch {

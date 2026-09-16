@@ -9,7 +9,7 @@
  */
 
 import { GEOCODE_RULES, MAX_AREAS, SCOPE_RULES } from "./config";
-import { boundsHalfDiagonalM, nameSimilarity, normalizeText, rectCoverageByCircle, scopeBoundsFor } from "./geo";
+import { nameSimilarity, normalizeText, radiusToCoverBounds, rectCoverageByCircle, scopeBoundsFor } from "./geo";
 import type { Bounds, LatLng, ScopeArea, ScopeMode, StudyScope } from "./types";
 
 export interface GeocodeComponent {
@@ -44,6 +44,7 @@ export type ScopeErrorCode =
   | "entrada_invalida"
   | "municipio_nao_encontrado"
   | "bairro_nao_encontrado"
+  | "escopo_grande_demais"
   | "geocoding_indisponivel";
 
 export class ScopeError extends Error {
@@ -219,15 +220,21 @@ export function evaluateAreaGeocode(
   );
 }
 
+/**
+ * Raio do estudo: cobre o retângulo do geocoding INTEIRO a partir do centro
+ * (maior distância do centro aos quatro cantos). Piso do modo só aumenta o
+ * raio; o teto do modo bairro nunca corta — quem trata isso é `areaFrom`.
+ */
 export function radiusFor(
   mode: ScopeMode,
-  bounds: Bounds | null
+  bounds: Bounds | null,
+  center: LatLng
 ): Pick<ScopeArea, "radiusM" | "rawRadiusM" | "radiusSource" | "radiusClamp"> {
   const rule = SCOPE_RULES[mode];
   if (!bounds) {
     return { radiusM: rule.fallbackRadiusM, rawRadiusM: null, radiusSource: "fallback", radiusClamp: null };
   }
-  const raw = Math.round(boundsHalfDiagonalM(bounds));
+  const raw = Math.ceil(radiusToCoverBounds(center, bounds));
   return {
     radiusM: Math.min(rule.maxRadiusM, Math.max(rule.minRadiusM, raw)),
     rawRadiusM: raw,
@@ -237,7 +244,18 @@ export function radiusFor(
 }
 
 function areaFrom(mode: ScopeMode, requestedName: string, place: ResolvedPlace): ScopeArea {
-  const radius = radiusFor(mode, place.bounds);
+  const radius = radiusFor(mode, place.bounds, place.center);
+  // Faltar pedaço de bairro no mapa é falha: em vez de cortar no teto, aborta.
+  if (mode === "bairro" && radius.radiusClamp === "teto") {
+    const km = (m: number) => (m / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 });
+    throw new ScopeError(
+      "escopo_grande_demais",
+      `O limite devolvido pelo geocoding para "${place.resolvedName}" exige raio de ${km(radius.rawRadiusM!)} km ` +
+        `para cobrir o bairro inteiro, acima do teto de ${km(SCOPE_RULES.bairro.maxRadiusM)} km. ` +
+        `O mapa não é gerado cobrindo parte do bairro — gere no modo cidade.`,
+      [`raio necessário ${radius.rawRadiusM} m`, `teto do modo bairro ${SCOPE_RULES.bairro.maxRadiusM} m`]
+    );
+  }
   return {
     requestedName,
     resolvedName: place.resolvedName,

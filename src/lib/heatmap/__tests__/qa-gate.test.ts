@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { scopeBoundsFor } from "../geo";
 import { runPipeline } from "../pipeline";
 import { assertQaGate, QaGateError, runQaGate } from "../qa-gate";
 import { renderHeatmapHtml, reportStamp } from "../report-html";
@@ -94,15 +95,29 @@ test("carimbo: versão, escopo resolvido, raio, origem do raio e data", () => {
   assert.ok(html.includes(stamp.replace(/&/g, "&amp;")), "carimbo precisa estar no rodapé do HTML");
 });
 
-test("raio no teto: aviso no TOPO do relatório, com cobertura e sugestão do modo cidade", () => {
+test("modo cidade com raio no teto: aviso no TOPO do relatório, com cobertura", () => {
   const p = clone(basePayload());
+  p.scope.mode = "cidade";
+  p.scope.areas[0].radiusM = 20000;
   p.scope.areas[0].radiusClamp = "teto";
   p.scope.areas[0].boundsCoveragePct = 57;
+  p.scope.bounds = scopeBoundsFor(p.scope.areas);
   const html = renderHeatmapHtml(p, { tileUrl: "about:blank" });
   const warning = html.indexOf('class="scope-warning"');
   assert.ok(warning > 0 && warning < html.indexOf('<div class="main">'), "aviso antes do mapa");
-  assert.match(html, /Raio limitado a 1,5 km — parte do bairro Bairro Teste está fora deste estudo \(cobertura estimada: 57%\)\. Considere gerar no modo cidade\./);
-  assert.match(reportStamp(p), /raio 1,5 km \(bounds, teto; cobertura 57%\)/);
+  assert.match(html, /Raio limitado a 20 km — parte do município está fora deste estudo \(cobertura estimada: 57%\)\./);
+  assert.match(reportStamp(p), /raio 20 km \(bounds, teto; cobertura 57%\)/);
+});
+
+test("modo bairro: cobrir menos que 100% do bairro reprova no gate", () => {
+  const p = clone(basePayload());
+  p.scope.areas[0].boundsCoveragePct = 56;
+  assert.ok(rules(p).includes("cobertura_incompleta"));
+  assert.throws(() => renderHeatmapHtml(p, { tileUrl: "about:blank" }), QaGateError);
+
+  const ok = clone(basePayload());
+  ok.scope.areas[0].boundsCoveragePct = 100;
+  assert.ok(!rules(ok).includes("cobertura_incompleta"));
 });
 
 test("camada obrigatória ainda no teto da API reprova; camada de apoio no teto não", () => {

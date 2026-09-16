@@ -93,3 +93,37 @@ Desambiguação (têm que abortar):
 - x2) Bairro inexistente — Curitiba/PR: abortou (bairro_nao_encontrado)
 
 > **Como ler o tempo:** a prova de tempo é a coluna "1ª pintura máx" (first-contentful-paint, medida em tempo real via Chrome DevTools Protocol, HTML aberto de `file://`). Os prints (`.heatmap-regression-output/<caso>.<cenário>.png`) mostram *o que* o cliente vê, não *quando*: com a página travada esperando rede, o Chrome só entrega a captura depois que ela destrava — um print pedido "aos 5 s" pode mostrar o estado de 30 s. "firewall pendurado" = proxy que aceita a conexão e nunca responde; "sem Leaflet" = cópia do HTML sem o Leaflet embutido; "sem JS" = JavaScript desligado.
+
+## 2026-09-16T00:50:05.848Z — gerador v3.2.1 — código d3d4178759501ced — REPROVADO
+
+| Caso | Modo | Raio (origem; cobertura) | Âncoras | Compl. | Conc. (DC/AC/NI) | Busca conc.: células / prof. / no teto | Dist. máx âncora / compl. / conc. | Fora do raio | Tipo inválido | Tipo principal divergente | Duplicata | Ponto de ônibus s/ terminal | Aeroporto s/ porte | Compl. sem âncora ≤ 500 m | Buscas de apoio no teto | fitBounds = escopo | Render: online / sem rede / firewall pendurado / sem Leaflet / sem JS | 1ª pintura máx | QA |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| a) Morumbi — São Paulo/SP | bairro | 2,16 km (bounds; 100%) | 36 | 145 | 17 (3/9/5) | 3 / 0 / 0 | 2,06 / 2,16 / 2,12 km | 126 | 0 | 3 | 17 | 0 | 0 | 89 | 2 | sim | ok / ok / ok / ok / ok | 320 ms | ok |
+| b) Itaim Bibi — São Paulo/SP | bairro | 1,66 km (bounds; 100%) | 55 | 228 | 155 (4/104/47) | 46 / 4 / 0 | 1,64 / 1,66 / 1,66 km | 119 | 0 | 3 | 25 | 3 | 0 | 18 | 3 | sim | ok / ok / ok / ok / ok | 376 ms | ok |
+| c) Batel — Curitiba/PR | bairro | 1,70 km (bounds; 100%) | 84 | 340 | 50 (10/21/19) | 15 / 2 / 0 | 1,68 / 1,69 / 1,68 km | 160 | 0 | 2 | 21 | 1 | 0 | 2 | 9 | sim | ok / ok / ok / ok / ok | 400 ms | ok |
+| d) Centro — Florianópolis/SC | bairro | 9,77 km (bounds; 100%) | 113 | 351 | 113 (23/64/26) | 47 / 4 / 0 | 9,72 / 9,69 / 9,71 km | 66 | 0 | 1 | 14 | 0 | 2 | 126 | 11 | sim | ok / FALHOU (1) / ok / ok / ok | 384 ms | ok |
+| e) Jardim Ângela — São Paulo/SP | bairro | 2,00 km (fallback; —) | 12 | 60 | 0 (0/0/0) | 3 / 0 / 0 | 1,70 / 1,91 / 0,00 km | 47 | 0 | 0 | 2 | 0 | 0 | 75 | 1 | sim | ok / ok / ok / ok / ok | 284 ms | ok |
+| f) Curitiba/PR (cidade inteira) | cidade | 20,00 km (bounds, teto; 85%) | 125 | 341 | 252 (47/113/92) | 91 / 6 / 0 | 17,98 / 9,81 / 18,44 km | 3 | 0 | 1 | 24 | 7 | 1 | 183 | 12 | sim | — | — | ok |
+
+Desambiguação (têm que abortar):
+- x1) Morumbi — Curitiba/PR: abortou (bairro_nao_encontrado)
+- x2) Bairro inexistente — Curitiba/PR: abortou (bairro_nao_encontrado)
+
+> **Como ler o tempo:** a prova de tempo é a coluna "1ª pintura máx" (first-contentful-paint, medida em tempo real via Chrome DevTools Protocol, HTML aberto de `file://`). Os prints (`.heatmap-regression-output/<caso>.<cenário>.png`) mostram *o que* o cliente vê, não *quando*: com a página travada esperando rede, o Chrome só entrega a captura depois que ela destrava — um print pedido "aos 5 s" pode mostrar o estado de 30 s. "firewall pendurado" = proxy que aceita a conexão e nunca responde; "sem Leaflet" = cópia do HTML sem o Leaflet embutido; "sem JS" = JavaScript desligado.
+
+## 2026-09-16T01:59:14.228Z — gerador v3.2.1 — código 3fdc9d62a836ca7a — APROVADO
+
+| Caso | Modo | Raio (origem; cobertura) | Âncoras | Compl. | Conc. (DC/AC/NI) | Busca conc.: células / prof. / no teto | Dist. máx âncora / compl. / conc. | Fora do raio | Tipo inválido | Tipo principal divergente | Duplicata | Ponto de ônibus s/ terminal | Aeroporto s/ porte | Compl. sem âncora ≤ 500 m | Buscas de apoio no teto | fitBounds = escopo | Render: online / sem rede / firewall pendurado / sem Leaflet / sem JS | 1ª pintura máx | QA |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| a) Morumbi — São Paulo/SP | bairro | 2,16 km (bounds; 100%) | 36 | 147 | 17 (3/9/5) | 3 / 0 / 0 | 2,16 / 2,16 / 2,12 km | 122 | 0 | 3 | 13 | 0 | 0 | 88 | 2 | sim | ok / ok / ok / ok / ok | 208 ms | ok |
+| b) Itaim Bibi — São Paulo/SP | bairro | 1,66 km (bounds; 100%) | 56 | 227 | 155 (4/104/47) | 46 / 4 / 0 | 1,64 / 1,66 / 1,66 km | 117 | 0 | 4 | 14 | 3 | 0 | 19 | 3 | sim | ok / ok / ok / ok / ok | 268 ms | ok |
+| c) Batel — Curitiba/PR | bairro | 1,70 km (bounds; 100%) | 83 | 335 | 50 (10/21/19) | 15 / 2 / 0 | 1,68 / 1,69 / 1,68 km | 163 | 0 | 2 | 20 | 1 | 0 | 2 | 8 | sim | ok / ok / ok / ok / ok | 232 ms | ok |
+| d) Centro — Florianópolis/SC | bairro | 9,77 km (bounds; 100%) | 113 | 337 | 113 (23/64/26) | 47 / 4 / 0 | 9,72 / 9,69 / 9,71 km | 65 | 0 | 1 | 14 | 0 | 2 | 135 | 11 | sim | ok / ok / ok / ok / ok | 252 ms | ok |
+| e) Jardim Ângela — São Paulo/SP | bairro | 2,00 km (fallback; —) | 12 | 60 | 0 (0/0/0) | 3 / 0 / 0 | 1,70 / 1,91 / 0,00 km | 48 | 0 | 0 | 2 | 0 | 0 | 81 | 1 | sim | ok / ok / ok / ok / ok | 164 ms | ok |
+| f) Curitiba/PR (cidade inteira) | cidade | 20,00 km (bounds, teto; 85%) | 125 | 326 | 252 (47/113/92) | 91 / 6 / 0 | 17,98 / 9,81 / 18,44 km | 3 | 0 | 1 | 24 | 7 | 1 | 188 | 12 | sim | ok / ok / ok / ok / ok | 252 ms | ok |
+
+Desambiguação (têm que abortar):
+- x1) Morumbi — Curitiba/PR: abortou (bairro_nao_encontrado)
+- x2) Bairro inexistente — Curitiba/PR: abortou (bairro_nao_encontrado)
+
+> **Como ler o tempo:** a prova de tempo é a coluna "1ª pintura máx" (first-contentful-paint, medida em tempo real via Chrome DevTools Protocol, HTML aberto de `file://`). Os prints (`.heatmap-regression-output/<caso>.<cenário>.png`) mostram *o que* o cliente vê, não *quando*: com a página travada esperando rede, o Chrome só entrega a captura depois que ela destrava — um print pedido "aos 5 s" pode mostrar o estado de 30 s. "firewall pendurado" = proxy que aceita a conexão e nunca responde; "sem Leaflet" = cópia do HTML sem o Leaflet embutido; "sem JS" = JavaScript desligado.
