@@ -98,6 +98,9 @@ export const PLACE_TYPE_SPECS: PlaceTypeSpec[] = [
     validTypes: ["gas_station"],
     largeFootprint: false,
     useNearbySearch: false,
+    // Âncora é o que o mapa promete apontar: escolher as melhores dentro de um
+    // conjunto cortado pelo teto da API esconderia justamente o melhor ponto.
+    completeness: "obrigatoria",
   },
   {
     key: "shopping_mall",
@@ -109,6 +112,7 @@ export const PLACE_TYPE_SPECS: PlaceTypeSpec[] = [
     validTypes: ["shopping_mall"],
     largeFootprint: true,
     useNearbySearch: false,
+    completeness: "obrigatoria",
   },
   {
     key: "bus_station",
@@ -120,6 +124,7 @@ export const PLACE_TYPE_SPECS: PlaceTypeSpec[] = [
     validTypes: ["bus_station"],
     largeFootprint: true,
     useNearbySearch: false,
+    completeness: "obrigatoria",
     // O Google tipa ponto de ônibus de rua como bus_station. Terminal de verdade
     // tem porte (avaliações) ou dados de operação; ponto de rua não tem nenhum.
     facilitySignal: {
@@ -139,6 +144,7 @@ export const PLACE_TYPE_SPECS: PlaceTypeSpec[] = [
     validTypes: ["airport", "international_airport"],
     largeFootprint: true,
     useNearbySearch: false,
+    completeness: "obrigatoria",
     // O Google põe `airport` em types de heliporto, traslado, estacionamento e
     // loja de aeroporto. O tipo principal separa os primeiros; o porte, o resto.
     requirePrimaryType: true,
