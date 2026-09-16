@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { SCOPE_RULES } from "../config";
+import { haversineM } from "../geo";
 import { resolveScope, ScopeError, type GeocodeFn, type GeocodeResponse, type GeocodeResult } from "../scope";
 import type { LatLng } from "../types";
 
@@ -62,7 +63,7 @@ function geocoder(map: Record<string, GeocodeResponse>): GeocodeFn {
   };
 }
 
-test("bairro com bounds: raio = meia-diagonal, origem 'bounds'", async () => {
+test("bairro com bounds: raio cobre o retângulo inteiro a partir do centro, origem 'bounds'", async () => {
   const scope = await resolveScope(
     { city: "Cidade A", state: "AA", regions: ["Bairro Médio"] },
     geocoder({
@@ -82,11 +83,46 @@ test("bairro com bounds: raio = meia-diagonal, origem 'bounds'", async () => {
   );
   assert.equal(scope.mode, "bairro");
   assert.equal(scope.areas[0].radiusSource, "bounds");
-  assert.ok(scope.areas[0].radiusM > 1700 && scope.areas[0].radiusM < 1800, `raio ${scope.areas[0].radiusM}`);
+  // O centro do geocoding não é o meio do retângulo: a meia-diagonal (1757 m)
+  // deixaria cantos de fora; cobrindo os quatro cantos, o raio é ~2163 m.
+  assert.ok(scope.areas[0].radiusM > 2100 && scope.areas[0].radiusM < 2200, `raio ${scope.areas[0].radiusM}`);
+  assert.equal(scope.areas[0].boundsCoveragePct, 100, "o bairro inteiro tem que estar dentro do raio");
   assert.equal(scope.label, "Bairro Médio · Cidade A/AA");
 });
 
-test("bairro pequeno usa o piso; bairro grande usa o teto; sem bounds usa fallback", async () => {
+test("centro deslocado do meio do retângulo: cobertura 100% em todos os cantos", async () => {
+  const center = { lat: -27.5922687, lng: -48.5490266 };
+  const bounds = { ne: { lat: -27.5445594, lng: -48.5079104 }, sw: { lat: -27.6590226, lng: -48.6134675 } };
+  const scope = await resolveScope(
+    { city: "Cidade A", state: "AA", regions: ["Centro Grande"] },
+    geocoder({
+      "Cidade A - AA, Brasil": ok({
+        ...CIDADE_A,
+        geometry: { location: { lat: -27.6, lng: -48.55 }, bounds: { northeast: { lat: -27.3, lng: -48.3 }, southwest: { lat: -27.9, lng: -48.8 } } },
+      }),
+      "Centro Grande, Cidade A - AA, Brasil": ok(
+        result({
+          name: "Centro Grande",
+          types: ["sublocality_level_1", "sublocality", "political"],
+          city: "Cidade A",
+          ufLong: "Estado A",
+          uf: "AA",
+          center,
+          bounds,
+        })
+      ),
+    })
+  );
+  const area = scope.areas[0];
+  assert.equal(area.boundsCoveragePct, 100);
+  assert.equal(area.radiusClamp, null);
+  // Todos os quatro cantos dentro do raio.
+  for (const corner of [bounds.ne, bounds.sw, { lat: bounds.ne.lat, lng: bounds.sw.lng }, { lat: bounds.sw.lat, lng: bounds.ne.lng }]) {
+    assert.ok(haversineM(area.center, corner) <= area.radiusM, `canto ${JSON.stringify(corner)} fora do raio`);
+  }
+});
+
+test("bairro pequeno usa o piso; sem bounds usa fallback; acima do teto ABORTA (nunca cobre só parte)", async () => {
   const mk = (name: string, halfDeg: number | null) =>
     result({
       name,
@@ -102,23 +138,29 @@ test("bairro pequeno usa o piso; bairro grande usa o teto; sem bounds usa fallba
   const geo = geocoder({
     "Cidade A - AA, Brasil": ok(CIDADE_A),
     "Pequeno, Cidade A - AA, Brasil": ok(mk("Pequeno", 0.002)),
-    "Enorme, Cidade A - AA, Brasil": ok(mk("Enorme", 0.08)),
+    "Enorme, Cidade A - AA, Brasil": ok(mk("Enorme", 0.2)),
     "Pontual, Cidade A - AA, Brasil": ok(mk("Pontual", null)),
   });
   const rule = SCOPE_RULES.bairro;
-  const [p, e, f] = await Promise.all(
-    ["Pequeno", "Enorme", "Pontual"].map((r) => resolveScope({ city: "Cidade A", state: "AA", regions: [r] }, geo))
+  const [p, f] = await Promise.all(
+    ["Pequeno", "Pontual"].map((r) => resolveScope({ city: "Cidade A", state: "AA", regions: [r] }, geo))
   );
   assert.equal(p.areas[0].radiusM, rule.minRadiusM);
   assert.equal(p.areas[0].radiusClamp, "piso");
   assert.equal(p.areas[0].boundsCoveragePct, 100);
-  assert.equal(e.areas[0].radiusM, rule.maxRadiusM);
-  assert.equal(e.areas[0].radiusClamp, "teto");
-  assert.ok(e.areas[0].boundsCoveragePct! < 100, "teto deixa parte do bairro de fora");
   assert.equal(f.areas[0].radiusM, rule.fallbackRadiusM);
   assert.equal(f.areas[0].radiusSource, "fallback");
   assert.equal(f.areas[0].radiusClamp, null);
   assert.equal(f.areas[0].boundsCoveragePct, null);
+
+  await assert.rejects(
+    resolveScope({ city: "Cidade A", state: "AA", regions: ["Enorme"] }, geo),
+    (err: unknown) =>
+      err instanceof ScopeError &&
+      err.code === "escopo_grande_demais" &&
+      /modo cidade/.test(err.message) &&
+      /15 km/.test(err.message)
+  );
 });
 
 test("bairro inexistente (resultado parcial de estabelecimento) ABORTA — nunca usa o centro do município", async () => {

@@ -19,7 +19,10 @@ export interface RadiusRule {
 }
 
 export const SCOPE_RULES: Record<ScopeMode, RadiusRule> = {
-  bairro: { minRadiusM: 1500, maxRadiusM: 5000, fallbackRadiusM: 2000 },
+  // maxRadiusM no modo bairro é TETO DE SANIDADE, não corte: o raio cobre o
+  // bairro inteiro (maior distância do centro aos cantos do retângulo) e, se
+  // precisar de mais que isso, a análise aborta sugerindo o modo cidade.
+  bairro: { minRadiusM: 1500, maxRadiusM: 15000, fallbackRadiusM: 2000 },
   cidade: { minRadiusM: 5000, maxRadiusM: 20000, fallbackRadiusM: 15000 },
 };
 

@@ -48,6 +48,14 @@ export function runQaGate(p: Omit<HeatmapPayload, "qa"> & { qa?: QaReport | null
     if (a.radiusM < rule.minRadiusM || a.radiusM > rule.maxRadiusM) {
       v("enquadramento_divergente", `raio de ${a.resolvedName} (${a.radiusM} m) fora de ${rule.minRadiusM}–${rule.maxRadiusM} m`);
     }
+    // No modo bairro o raio cobre o bairro inteiro por construção: menos que
+    // 100% do retângulo do geocoding é defeito, não escolha.
+    if (scope.mode === "bairro" && a.boundsCoveragePct !== null && a.boundsCoveragePct < 100) {
+      v(
+        "cobertura_incompleta",
+        `${a.resolvedName}: o raio de ${a.radiusM} m cobre ${a.boundsCoveragePct}% do limite devolvido pelo geocoding (tem que ser 100%)`
+      );
+    }
   }
 
   // Completude: camada obrigatória não pode ter célula no teto da API
