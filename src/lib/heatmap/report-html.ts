@@ -334,10 +334,19 @@ function renderCompetitors() {
   });
 }
 
-// Enquadra o ESCOPO pedido (centro + raio), nunca os pontos.
+// Enquadra o ESCOPO pedido (centro + raio), nunca os pontos. A legenda e o
+// controle de zoom flutuam sobre o mapa: o espaço deles é RESERVADO no
+// enquadramento, senão um ponto (inclusive concorrente) fica escondido embaixo.
 let userInteracted = false;
 function fitScope() {
-  map.fitBounds([[scope.bounds.south, scope.bounds.west], [scope.bounds.north, scope.bounds.east]], { padding: [20, 20] });
+  const pad = 24;
+  const box = (el) => (el && !el.hidden ? el.getBoundingClientRect() : { width: 0, height: 0 });
+  const zoomCtl = box(document.querySelector('.leaflet-control-zoom'));
+  const legend = box(document.getElementById('legend'));
+  map.fitBounds([[scope.bounds.south, scope.bounds.west], [scope.bounds.north, scope.bounds.east]], {
+    paddingTopLeft: [Math.round(zoomCtl.width) + pad, Math.round(zoomCtl.height) + pad],
+    paddingBottomRight: [Math.round(legend.width) + pad, Math.round(legend.height) + pad],
+  });
 }
 
 // A faixa de aviso ocupa espaço no painel: o mapa encolhe e, se o cliente ainda
@@ -405,6 +414,10 @@ try {
 
   competitorLayer = L.layerGroup().addTo(map);
 
+  // Legenda visível ANTES de enquadrar: o tamanho dela entra no espaço reservado.
+  document.getElementById('mapFallback').hidden = true;
+  document.getElementById('legend').hidden = false;
+
   fitScope();
   renderCompetitors();
   map.on('zoomend', renderCompetitors);
@@ -415,9 +428,6 @@ try {
       map.flyTo([parseFloat(el.dataset.lat), parseFloat(el.dataset.lng)], parseInt(el.dataset.zoom, 10), { duration: 0.8 });
     });
   });
-
-  document.getElementById('mapFallback').hidden = true;
-  document.getElementById('legend').hidden = false;
 } catch (err) {
   map = null;
   document.getElementById('mapFallback').hidden = false;

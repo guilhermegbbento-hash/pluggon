@@ -112,11 +112,18 @@ class Cdp {
     });
   }
 
-  static connect(url: string): Promise<Cdp> {
+  /** Sempre com tempo limite: conexão pendurada já travou uma regressão inteira. */
+  static connect(url: string, timeoutMs = 15000): Promise<Cdp> {
     return new Promise((resolve, reject) => {
       const ws = new WebSocketCtor(url);
-      ws.addEventListener("open", () => resolve(new Cdp(ws)));
-      ws.addEventListener("error", () => reject(new Error(`CDP: falha ao conectar em ${url}`)));
+      const timer = setTimeout(() => {
+        try {
+          ws.close();
+        } catch {}
+        reject(new Error(`CDP: conexão não abriu em ${timeoutMs} ms (${url})`));
+      }, timeoutMs);
+      ws.addEventListener("open", () => (clearTimeout(timer), resolve(new Cdp(ws))));
+      ws.addEventListener("error", () => (clearTimeout(timer), reject(new Error(`CDP: falha ao conectar em ${url}`))));
     });
   }
 
@@ -189,6 +196,8 @@ async function launchChrome(chrome: string, extraArgs: string[], profileDir: str
     ],
     { stdio: "ignore" }
   );
+  // Nunca segurar o encerramento do Node por causa do navegador.
+  proc.unref();
   const portFile = path.join(profileDir, "DevToolsActivePort");
   let port = "";
   await waitFor(() => {
@@ -214,7 +223,14 @@ async function launchChrome(chrome: string, extraArgs: string[], profileDir: str
     proc.kill();
     throw new Error("Chrome sem aba para inspecionar");
   }
-  const cdp = await Cdp.connect(pageWs);
+  // Se a conexão falhar, o Chrome não pode ficar órfão segurando o processo.
+  let cdp: Cdp;
+  try {
+    cdp = await Cdp.connect(pageWs);
+  } catch (err) {
+    proc.kill();
+    throw err;
+  }
   const shutdown = async () => {
     cdp.close();
     if (browserWs) {
@@ -465,7 +481,22 @@ export async function renderCheck(
   mkdirSync(opts.outDir, { recursive: true });
   const scenarios: ScenarioReport[] = [];
   for (const s of opts.scenarios ?? SCENARIOS) {
-    scenarios.push(await runScenario(htmlFile, chrome, s, opts.outDir, opts.id));
+    // Um cenário que quebra vira violação registrada, nunca erro que derruba a
+    // rodada inteira e leva a mensagem embora.
+    try {
+      scenarios.push(await runScenario(htmlFile, chrome, s, opts.outDir, opts.id));
+    } catch (err) {
+      const detail = err instanceof Error ? `${err.message}\n${err.stack ?? ""}` : String(err);
+      console.error(`[render-check][${opts.id}][${s}] ${detail}`);
+      scenarios.push({
+        scenario: s,
+        fcpMs: null,
+        externalRequests: 0,
+        externalBeforeFcp: 0,
+        metrics: { erro: detail },
+        violations: [`cenário não pôde ser verificado: ${err instanceof Error ? err.message : String(err)}`],
+      });
+    }
   }
   return { scenarios, violations: scenarios.flatMap((s) => s.violations.map((v) => `[${s.scenario}] ${v}`)) };
 }

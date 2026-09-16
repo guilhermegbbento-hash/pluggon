@@ -58,8 +58,19 @@ for (const c of REGRESSION_CASES) {
       writeFileSync(path.join(outDir, `${c.id}.payload.json`), JSON.stringify(run.payload, null, 2));
       const htmlFile = path.join(outDir, `${c.id}.html`);
       writeFileSync(htmlFile, run.html);
-      const render = await renderCheck(htmlFile, chrome, { outDir, id: c.id });
+      // Falha na checagem do navegador é resultado do caso, não erro perdido:
+      // grava e imprime na hora, antes que qualquer coisa derrube o processo.
+      let render: Awaited<ReturnType<typeof renderCheck>>;
+      try {
+        render = await renderCheck(htmlFile, chrome, { outDir, id: c.id });
+      } catch (err) {
+        const detail = err instanceof Error ? `${err.message}\n${err.stack ?? ""}` : String(err);
+        console.error(`[${c.id}] checagem no navegador falhou: ${detail}`);
+        writeFileSync(path.join(outDir, `${c.id}.render-error.txt`), detail);
+        render = { scenarios: [], violations: [`checagem no navegador falhou: ${detail.split("\n")[0]}`] };
+      }
       writeFileSync(path.join(outDir, `${c.id}.render.json`), JSON.stringify(render, null, 2));
+      if (render.violations.length > 0) console.error(`[${c.id}] ${render.violations.join("\n[" + c.id + "] ")}`);
       renderViolations = render.violations;
       // No histórico versionado só vão números (as mensagens podem citar lugares).
       run.metrics.renderViolations = render.violations.length;
