@@ -12,7 +12,8 @@
     "test:heatmap-live": "node --env-file=.env.local --import tsx --test scripts/heatmap-regression/live.test.ts",
     "test:heatmap-render": "node --env-file=.env.local --import tsx scripts/heatmap-regression/render-saved.ts",
     "experiment:heatmap-no-subdivision": "node --env-file=.env.local --import tsx scripts/heatmap-regression/experiment-no-subdivision.ts",
-    "vendor:leaflet": "tsx scripts/vendor-leaflet.ts"
+    "vendor:leaflet": "tsx scripts/vendor-leaflet.ts",
+    "ingerir-renda": "node --env-file=.env.local --import tsx scripts/censo/ingerir-renda.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.82.0",

@@ -90,3 +90,83 @@ CREATE INDEX IF NOT EXISTS idx_city_ev_data_city_state ON city_ev_data (city, st
 -- persiste aqui; já os DC por raio (200m/500m/1km/2km) são sempre buscados frescos
 -- via ev_chargers por proximidade ao endereço e NÃO são persistidos.
 ALTER TABLE city_ev_data ADD COLUMN IF NOT EXISTS dc_in_city integer;
+
+-- ============================================================
+-- 6. censo_setores — renda por setor censitário (Censo 2022 do IBGE)
+--
+-- Carregado POR MUNICÍPIO, sob demanda, pelo comando de operação
+--   npm run ingerir-renda -- --municipio <código IBGE de 7 dígitos>
+-- porque o IBGE publica malha por estado (São Paulo tem 170 MB) e ninguém pode
+-- esperar esse download no meio da geração de um mapa.
+--
+-- Tamanho medido (geometria, Censo 2022): São Paulo capital 16,1 MB (27.301
+-- setores) · Florianópolis 2,6 MB · Curitiba 1,4 MB · cidade média ~0,4 MB.
+-- Município mediano do Brasil: ~0,08 MB.
+--
+-- RENDA É DO RESPONSÁVEL PELO DOMICÍLIO (variáveis V06004 média e V06006
+-- mediana), não renda domiciliar total nem per capita — o Censo 2022 só publica
+-- essas por município. Subestima domicílio com mais de uma renda; o viés é
+-- parecido entre regiões, então serve para COMPARAR bairros. Essa ressalva vai
+-- no relatório de execução, nunca no HTML do cliente.
+--
+-- Valores em REAIS DE 2022 (salário mínimo de 2022 = R$ 1.212,00). Faixa é
+-- calculada em múltiplos de salário mínimo do ano do dado, para não envelhecer.
+-- ============================================================
+
+CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA extensions;
+
+CREATE TABLE IF NOT EXISTS censo_setores (
+  cd_setor      text PRIMARY KEY,
+  cd_mun        text NOT NULL,
+  nm_mun        text,
+  uf            text,
+  situacao      text,                    -- Urbana | Rural
+  geom          extensions.geometry(MultiPolygon, 4326) NOT NULL,
+  renda_media   numeric,                 -- V06004, R$ de 2022
+  renda_mediana numeric,                 -- V06006, R$ de 2022
+  responsaveis  integer,                 -- V06001
+  ano_dado      integer NOT NULL DEFAULT 2022,
+  carregado_em  timestamptz DEFAULT now()
+);
+ALTER TABLE censo_setores DISABLE ROW LEVEL SECURITY;
+
+-- Índice espacial: é ele que faz o "em que setor esta coordenada cai" ser rápido.
+CREATE INDEX IF NOT EXISTS idx_censo_setores_geom ON censo_setores USING GIST (geom);
+CREATE INDEX IF NOT EXISTS idx_censo_setores_mun ON censo_setores (cd_mun);
+
+-- Controle do que já foi carregado, para o card do painel de admin e para o
+-- comando saber o que pular.
+CREATE TABLE IF NOT EXISTS censo_municipios_carregados (
+  cd_mun        text PRIMARY KEY,
+  nm_mun        text,
+  uf            text,
+  setores       integer NOT NULL,
+  bytes_geom    bigint,
+  ano_dado      integer NOT NULL DEFAULT 2022,
+  carregado_em  timestamptz DEFAULT now()
+);
+ALTER TABLE censo_municipios_carregados DISABLE ROW LEVEL SECURITY;
+
+-- Função usada pela geração do mapa: coordenada -> setor -> renda.
+-- ST_CoveredBy, não ST_Contains: ponto exatamente na divisa de dois setores
+-- retorna falso nos DOIS com ST_Contains, e o ponto ficaria sem renda.
+CREATE OR REPLACE FUNCTION renda_do_ponto(lat double precision, lng double precision)
+RETURNS TABLE (cd_setor text, cd_mun text, situacao text, renda_media numeric, renda_mediana numeric)
+LANGUAGE sql STABLE AS $$
+  SELECT s.cd_setor, s.cd_mun, s.situacao, s.renda_media, s.renda_mediana
+  FROM censo_setores s
+  WHERE extensions.ST_CoveredBy(
+          extensions.ST_SetSRID(extensions.ST_MakePoint(lng, lat), 4326),
+          s.geom)
+  LIMIT 1;
+$$;
+
+-- Card do painel de admin: quanto ocupa e quanto falta para o limite do plano.
+CREATE OR REPLACE VIEW censo_uso_do_banco AS
+  SELECT
+    (SELECT count(*) FROM censo_municipios_carregados)                AS municipios,
+    (SELECT count(*) FROM censo_setores)                              AS setores,
+    pg_total_relation_size('censo_setores')                           AS bytes_tabela,
+    pg_size_pretty(pg_total_relation_size('censo_setores'))           AS tamanho,
+    pg_database_size(current_database())                              AS bytes_banco,
+    pg_size_pretty(pg_database_size(current_database()))              AS tamanho_banco;

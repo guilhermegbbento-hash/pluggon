@@ -193,6 +193,7 @@ export const DISCARD_REASON_LABELS: Record<DiscardReason, string> = {
   tipo_principal_divergente: "tipo principal divergente",
   ponto_de_onibus_sem_sinal_de_terminal: "ponto de ônibus sem sinal de terminal",
   aeroporto_sem_porte: "aeroporto sem porte",
+  hospital_sem_porte: "hospital sem porte (clínica ou consultório)",
   fechado_permanentemente: "fechado permanentemente",
   sem_nome: "sem nome",
   duplicata_place_id: "duplicata (place_id)",

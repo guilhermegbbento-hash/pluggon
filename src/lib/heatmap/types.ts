@@ -53,6 +53,7 @@ export type DiscardReason =
   | "tipo_principal_divergente"
   | "ponto_de_onibus_sem_sinal_de_terminal"
   | "aeroporto_sem_porte"
+  | "hospital_sem_porte"
   | "fechado_permanentemente"
   | "sem_nome"
   | "duplicata_place_id"

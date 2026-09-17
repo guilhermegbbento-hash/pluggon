@@ -154,6 +154,28 @@ export const PLACE_TYPE_SPECS: PlaceTypeSpec[] = [
       discardReason: "aeroporto_sem_porte",
     },
   },
+  {
+    key: "hospital",
+    layer: "anchor",
+    label: "Hospital",
+    emoji: "🏥",
+    includedType: "hospital",
+    textQueries: ["hospital"],
+    validTypes: ["hospital"],
+    largeFootprint: true,
+    useNearbySearch: false,
+    completeness: "obrigatoria",
+    // O tipo `hospital` do Google engloba clínica, laboratório e consultório, que
+    // aparecem às centenas em bairro denso. Hospital de verdade — carro parado
+    // por horas, acompanhante, plantonista, visita — tem milhares de avaliações;
+    // clínica de rua tem dezenas. Piso mais alto que o de rodoviária e aeroporto
+    // (100) por isso. Número a calibrar com os dados da próxima regressão.
+    facilitySignal: {
+      minUserRatingCount: 200,
+      operatorFields: [],
+      discardReason: "hospital_sem_porte",
+    },
+  },
 
   // Complementares
   { key: "pharmacy", layer: "complementary", label: "Farmácia", emoji: "", includedType: "pharmacy", textQueries: ["farmácia"], validTypes: ["pharmacy", "drugstore"], largeFootprint: false, useNearbySearch: false },
@@ -163,7 +185,6 @@ export const PLACE_TYPE_SPECS: PlaceTypeSpec[] = [
   { key: "restaurant", layer: "complementary", label: "Restaurante", emoji: "", includedType: "restaurant", textQueries: ["restaurante"], validTypes: ["restaurant"], largeFootprint: false, useNearbySearch: false },
   { key: "lodging", layer: "complementary", label: "Hotel", emoji: "", includedType: "lodging", textQueries: ["hotel"], validTypes: ["lodging", "hotel"], largeFootprint: false, useNearbySearch: false },
   { key: "university", layer: "complementary", label: "Universidade", emoji: "", includedType: "university", textQueries: ["universidade"], validTypes: ["university"], largeFootprint: false, useNearbySearch: false },
-  { key: "hospital", layer: "complementary", label: "Hospital", emoji: "", includedType: "hospital", textQueries: ["hospital"], validTypes: ["hospital"], largeFootprint: false, useNearbySearch: false },
   { key: "convenience_store", layer: "complementary", label: "Loja de conveniência", emoji: "", includedType: "convenience_store", textQueries: ["loja de conveniência"], validTypes: ["convenience_store"], largeFootprint: false, useNearbySearch: false },
   { key: "gym", layer: "complementary", label: "Academia", emoji: "", includedType: "gym", textQueries: ["academia"], validTypes: ["gym", "fitness_center"], largeFootprint: false, useNearbySearch: false },
 
