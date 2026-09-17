@@ -5,8 +5,11 @@
  * o IBGE publica a malha por estado (São Paulo tem 170 MB) e nenhum cliente pode
  * esperar esse download. A geração do mapa só lê o que já está no banco.
  *
- *   npm run ingerir-renda -- --municipios 4106902,4205407
- *   npm run ingerir-renda -- --uf SC --lat -27.5923 --lng -48.5490 --raio 9768
+ *   node --env-file=.env.local --import tsx scripts/censo/ingerir-renda.ts --municipios 4106902,4205407
+ *   node --env-file=.env.local --import tsx scripts/censo/ingerir-renda.ts --uf SC --lat -27.5923 --lng -48.5490 --raio 9768
+ *
+ * Chame o node DIRETO, como acima. No PowerShell, `npm run ingerir-renda -- --municipios X`
+ * perde o primeiro `--` e o script recebe só `X`, sem o nome do argumento.
  *
  * A segunda forma carrega TODOS os municípios que o raio de estudo toca, não só
  * o do escopo: se o entorno entra no mapa, ele precisa ser classificado igual.
@@ -202,24 +205,40 @@ async function ingerirMunicipio(uf: string, cdMun: string, renda: Map<string, Re
   const linhas = consultar(arquivo, `select CD_SETOR, NM_MUN, SITUACAO, hex(geom) from "${tabela}" where CD_MUN = '${cdMun}';`);
   if (linhas.length === 0) throw new Error(`nenhum setor para o município ${cdMun} em ${uf}`);
 
+  // A malha do IBGE traz o MESMO setor em várias linhas quando ele tem partes
+  // separadas (ilha, gleba cortada por rio). Juntar as partes num único
+  // MultiPolygon é o certo: descartar linha extra perderia ilha, e mandar duas
+  // linhas com o mesmo cd_setor no mesmo lote quebra o upsert (erro 21000).
   let bytes = 0;
   let semRenda = 0;
-  const registros: Record<string, unknown>[] = [];
+  let setoresComPartes = 0;
   let nomeMun = "";
+  const porSetor = new Map<string, { situacao: string; partes: Anel[][] }>();
   for (const linha of linhas) {
     const [cdSetor, nmMun, situacao, hex] = linha.split("|");
     nomeMun = nmMun;
     const buf = Buffer.from(hex, "hex");
     bytes += buf.length;
+    const existente = porSetor.get(cdSetor);
+    if (existente) {
+      existente.partes.push(...lerPoligonos(buf));
+      setoresComPartes++;
+    } else {
+      porSetor.set(cdSetor, { situacao, partes: lerPoligonos(buf) });
+    }
+  }
+
+  const registros: Record<string, unknown>[] = [];
+  for (const [cdSetor, { situacao, partes }] of porSetor) {
     const r = renda.get(cdSetor) ?? { media: null, mediana: null, responsaveis: null };
     if (r.mediana === null) semRenda++;
     registros.push({
       cd_setor: cdSetor,
       cd_mun: cdMun,
-      nm_mun: nmMun,
+      nm_mun: nomeMun,
       uf,
       situacao,
-      geom: paraWkt(lerPoligonos(buf)),
+      geom: paraWkt(partes),
       renda_media: r.media,
       renda_mediana: r.mediana,
       responsaveis: r.responsaveis,
