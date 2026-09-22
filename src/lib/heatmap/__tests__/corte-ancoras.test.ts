@@ -134,3 +134,55 @@ test("âncora cortada pela régua não deixa complementar órfão (QA gate limpo
   );
   assert.equal(qa.passed, true);
 });
+
+/**
+ * Segundo defeito da mesma família, achado na revisão offline de 22/09/2026 e
+ * que nenhuma checagem pegaria: com o corte aplicado FORA do pipeline, os
+ * candidatos reprovados não eram reprocessados e os descartes de âncora —
+ * porte, duplicata, tipo — sumiam do relatório de execução. O relatório
+ * continuaria bonito, mentindo por omissão.
+ */
+test("descarte de âncora não some do relatório quando há corte", async () => {
+  const comClinica = (async (url: string, init?: { body?: string }) => {
+    const corpo = JSON.parse(String(init?.body ?? "{}"));
+    if (String(url).includes("searchText")) {
+      if (corpo.includedType === "gas_station") {
+        return {
+          ok: true,
+          json: async () => ({
+            places: [
+              lugar("forte", "Posto Movimentado", "gas_station", POSTO_FORTE, 800),
+              lugar("fraco", "Posto Vazio", "gas_station", POSTO_FRACO, 4),
+            ],
+          }),
+        } as unknown as Response;
+      }
+      if (corpo.includedType === "hospital") {
+        // 30 avaliações: cai no piso de porte do hospital (200).
+        return {
+          ok: true,
+          json: async () => ({ places: [lugar("clinica", "Clínica Pequena", "hospital", offset(CENTER, 100, 0), 30)] }),
+        } as unknown as Response;
+      }
+      return { ok: true, json: async () => ({ places: [] }) } as unknown as Response;
+    }
+    return { ok: true, json: async () => ({ places: [] }) } as unknown as Response;
+  }) as unknown as typeof fetch;
+
+  const payload = await generateHeatmap(
+    { city: "Cidade Teste", state: "SP", regions: ["Bairro Teste"] },
+    {
+      googleApiKey: "k",
+      fetchImpl: comClinica,
+      geocode: async (address) => (address.startsWith("Bairro") ? geocodeFake() : cidadeFake()),
+    }
+  );
+
+  const motivos = payload.discards.filter((d) => d.layer === "anchor").map((d) => d.reason);
+  assert.ok(
+    motivos.includes("hospital_sem_porte"),
+    `a clínica de 30 avaliações tem que aparecer como descarte; motivos: ${JSON.stringify(motivos)}`
+  );
+  assert.ok(motivos.includes("ancora_abaixo_do_corte"), "e o posto fraco também, com o motivo do corte");
+  assert.equal(payload.anchors.length, 1, "só o posto movimentado vai ao mapa");
+});

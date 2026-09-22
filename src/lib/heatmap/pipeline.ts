@@ -279,7 +279,24 @@ export interface PipelineResult {
   discards: Discard[];
 }
 
-export function runPipeline(scope: StudyScope, candidates: Candidate[]): PipelineResult {
+export interface PipelineOptions {
+  /**
+   * Âncoras aprovadas pela régua e pela renda. Quando informado, as demais saem
+   * do mapa AQUI — não depois. Cortar por fora quebrava duas coisas: o
+   * complementar era atribuído a uma âncora que sairia do mapa, e os descartes
+   * de âncora (porte, duplicata, tipo) sumiam do relatório de execução, porque
+   * os candidatos cortados nem chegavam a ser reprocessados.
+   */
+  anchorsAprovadas?: Set<string>;
+  /** Descarte a registrar para cada âncora reprovada, por placeId. */
+  discardsDoCorte?: Map<string, Discard>;
+}
+
+export function runPipeline(
+  scope: StudyScope,
+  candidates: Candidate[],
+  options: PipelineOptions = {}
+): PipelineResult {
   const discards: Discard[] = [];
   const accepted = validate(scope, candidates, discards);
 
@@ -289,6 +306,21 @@ export function runPipeline(scope: StudyScope, candidates: Candidate[]): Pipelin
     competitor: dedupeWithinLayer(accepted.filter((a) => a.layer === "competitor"), discards),
   };
   enforceLayerExclusivity(byLayer, discards);
+
+  // Âncoras válidas ANTES do corte: é o "de M encontradas" do relatório.
+  const anchorsFound = byLayer.anchor.length;
+  if (options.anchorsAprovadas) {
+    const aprovadas: Accepted[] = [];
+    for (const a of byLayer.anchor) {
+      if (options.anchorsAprovadas.has(a.place.placeId)) {
+        aprovadas.push(a);
+        continue;
+      }
+      const doCorte = options.discardsDoCorte?.get(a.place.placeId);
+      if (doCorte) discards.push(doCorte);
+    }
+    byLayer.anchor = aprovadas;
+  }
 
   // Complementares: até maxPerAnchor mais próximos de cada âncora, sem repetição.
   const selected = new Map<string, { cp: Accepted; anchor: Accepted; distanceM: number }>();
@@ -367,7 +399,7 @@ export function runPipeline(scope: StudyScope, candidates: Candidate[]): Pipelin
     anchors,
     complementary,
     competitors,
-    counters: computeCounters(anchors, complementary, competitors),
+    counters: computeCounters(anchors, complementary, competitors, anchorsFound),
     discards,
   };
 }

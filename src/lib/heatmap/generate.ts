@@ -176,27 +176,26 @@ export async function generateHeatmap(input: ScopeInput, deps: GenerateDeps): Pr
     );
   }
 
-  // 6. Pipeline final SÓ com os candidatos das âncoras aprovadas. Cortar depois
-  //    não funciona: o pipeline atribui cada complementar à âncora mais próxima
-  //    entre as que recebeu, e remover âncoras em seguida deixaria complementar
-  //    apontando para âncora que não está no mapa (referencia_inexistente).
-  const candidatosFinais = candidates.filter((c) => c.layer !== "anchor" || aprovadasPorId.has(c.place.placeId));
-  const bruto = runPipeline(scope, candidatosFinais);
+  // 6. Pipeline final com TODOS os candidatos e o corte aplicado por DENTRO.
+  //    Filtrar candidatos por fora quebrava duas coisas: o complementar era
+  //    atribuído a uma âncora que sairia do mapa (referencia_inexistente) e os
+  //    descartes de âncora — porte, duplicata, tipo — sumiam do relatório,
+  //    porque os candidatos cortados nem chegavam a ser reprocessados.
+  const bruto = runPipeline(scope, candidates, {
+    anchorsAprovadas: aprovadasPorId,
+    discardsDoCorte: new Map(discardsDoCorte.map((d) => [d.placeId, d])),
+  });
   const porId = new Map(aprovadas.map((a) => [a.placeId, a]));
-  const anchors = bruto.anchors
-    .map((a) => {
-      const aprovada = porId.get(a.placeId);
-      return aprovada
-        ? { ...a, rankScore: aprovada.rankScore, rendaFaixa: aprovada.rendaFaixa, rendaMediana: aprovada.rendaMediana }
-        : a;
-    })
-    .sort((x, y) => y.rankScore - x.rankScore);
   const result = {
-    anchors,
-    complementary: bruto.complementary,
-    competitors: bruto.competitors,
-    counters: computeCounters(anchors, bruto.complementary, bruto.competitors, anchorsFound),
-    discards: [...bruto.discards, ...discardsDoCorte],
+    ...bruto,
+    anchors: bruto.anchors
+      .map((a) => {
+        const aprovada = porId.get(a.placeId);
+        return aprovada
+          ? { ...a, rankScore: aprovada.rankScore, rendaFaixa: aprovada.rendaFaixa, rendaMediana: aprovada.rendaMediana }
+          : a;
+      })
+      .sort((x, y) => y.rankScore - x.rankScore),
   };
   const municipal = deps.loadMunicipal ? await deps.loadMunicipal(scope) : null;
 
