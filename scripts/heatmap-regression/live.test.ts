@@ -38,7 +38,6 @@ if (!chrome) throw new Error("Chrome/Edge nÃ£o encontrado (defina CHROME_PATH) â
 
 const deps: GenerateDeps = {
   googleApiKey,
-  ocmApiKey: process.env.OPENCHARGEMAP_API_KEY ?? null,
   loadMunicipal: (scope) => loadMunicipalIndicators(scope.city, scope.state),
 };
 

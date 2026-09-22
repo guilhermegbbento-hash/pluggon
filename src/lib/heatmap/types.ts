@@ -84,7 +84,7 @@ export interface Discard {
   detail?: string;
 }
 
-export type ChargerKwSource = "google_ev_options" | "openchargemap";
+export type ChargerKwSource = "google_ev_options";
 
 /** Lugar normalizado, independente da API de origem. */
 export interface CandidatePlace {
@@ -102,7 +102,7 @@ export interface CandidatePlace {
   hasOpeningHours: boolean;
   chargerMaxKw: number | null;
   chargerKwSource: ChargerKwSource | null;
-  source: "google_places" | "openchargemap";
+  source: "google_places";
 }
 
 export interface Candidate {
@@ -111,7 +111,7 @@ export interface Candidate {
   place: CandidatePlace;
 }
 
-export type ValidatedBy = "google_types" | "openchargemap_source";
+export type ValidatedBy = "google_types";
 
 interface PointOutBase {
   placeId: string;

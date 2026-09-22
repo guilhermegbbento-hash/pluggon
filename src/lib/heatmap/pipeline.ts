@@ -143,19 +143,15 @@ function validate(scope: StudyScope, candidates: Candidate[], discards: Discard[
       );
     }
 
-    let validatedBy: ValidatedBy;
-    if (p.source === "openchargemap") {
-      if (spec.layer !== "competitor") return reject("tipo_invalido", "OpenChargeMap só valida eletroposto");
-      validatedBy = "openchargemap_source";
-    } else {
-      if (!spec.validTypes.some((t) => p.types.includes(t))) {
-        return reject("tipo_invalido", `esperado ${spec.validTypes.join("|")}; types=[${p.types.join(", ")}]`);
-      }
-      if (spec.requirePrimaryType && !(p.primaryType && spec.validTypes.includes(p.primaryType))) {
-        return reject("tipo_principal_divergente", `primaryType=${p.primaryType ?? "ausente"}; esperado ${spec.validTypes.join("|")}`);
-      }
-      validatedBy = "google_types";
+    // Origem única desde 22/09/2026: todo candidato vem do Google e é validado
+    // por tipo. Não existe mais atalho de validação por origem da fonte.
+    if (!spec.validTypes.some((t) => p.types.includes(t))) {
+      return reject("tipo_invalido", `esperado ${spec.validTypes.join("|")}; types=[${p.types.join(", ")}]`);
     }
+    if (spec.requirePrimaryType && !(p.primaryType && spec.validTypes.includes(p.primaryType))) {
+      return reject("tipo_principal_divergente", `primaryType=${p.primaryType ?? "ausente"}; esperado ${spec.validTypes.join("|")}`);
+    }
+    const validatedBy: ValidatedBy = "google_types";
 
     if (spec.facilitySignal && !hasFacilitySignal(p, spec.facilitySignal)) {
       const fields = spec.facilitySignal.operatorFields.length > 0 ? ", sem site, telefone ou horário" : "";
