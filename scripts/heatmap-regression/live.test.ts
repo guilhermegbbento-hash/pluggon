@@ -45,11 +45,23 @@ const deps: GenerateDeps = {
 const outDir = path.join(repoRoot, ".heatmap-regression-output");
 mkdirSync(outDir, { recursive: true });
 
+/**
+ * Rodada parcial declarada: HEATMAP_CASES=a,b,c,d,e roda só esses casos.
+ * O registro sai marcado como parcial, com a lista do que ficou de fora — uma
+ * rodada que não cobriu tudo não pode passar por completa no histórico.
+ */
+const filtro = (process.env.HEATMAP_CASES ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+const casosParaRodar = filtro.length > 0 ? REGRESSION_CASES.filter((c) => filtro.includes(c.id)) : REGRESSION_CASES;
+const pulados = REGRESSION_CASES.filter((c) => !casosParaRodar.includes(c)).map((c) => `${c.id}) ${c.label}`);
+if (filtro.length > 0) {
+  console.log(`[regressão] rodada PARCIAL: ${casosParaRodar.map((c) => c.id).join(", ")} | fora: ${pulados.join(", ") || "—"}`);
+}
+
 const cases: CaseMetrics[] = [];
 const aborts: AbortMetrics[] = [];
 let failures = 0;
 
-for (const c of REGRESSION_CASES) {
+for (const c of casosParaRodar) {
   test(`${c.id}) ${c.label} — ${c.purpose}`, async () => {
     const run = await runCase(c, deps);
     cases.push(run.metrics);
@@ -113,10 +125,13 @@ after(() => {
     ranAt: new Date().toISOString(),
     generatorVersion: APP_VERSION,
     sourceHash: computeHeatmapSourceHash(repoRoot),
+    // "Aprovado" vale para o que rodou: numa rodada parcial, a comparação é
+    // com os casos escolhidos, e o registro diz quais ficaram de fora.
     allPassed:
-      failures === 0 && cases.length === REGRESSION_CASES.length && aborts.length === ABORT_CASES.length,
+      failures === 0 && cases.length === casosParaRodar.length && aborts.length === ABORT_CASES.length,
     cases,
     abortCases: aborts,
+    ...(pulados.length > 0 ? { partial: true, skipped: pulados } : {}),
   };
   writeRunRecord(repoRoot, record);
   console.log(`\n${markdownTable(record)}\n`);

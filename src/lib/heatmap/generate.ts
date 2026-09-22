@@ -176,14 +176,19 @@ export async function generateHeatmap(input: ScopeInput, deps: GenerateDeps): Pr
     );
   }
 
-  // 6. Pipeline final com tudo. As âncoras reprovadas saem AQUI: sem esse
-  //    filtro, o pipeline as recalcularia do zero e elas voltariam ao mapa.
-  const bruto = runPipeline(scope, candidates);
+  // 6. Pipeline final SÓ com os candidatos das âncoras aprovadas. Cortar depois
+  //    não funciona: o pipeline atribui cada complementar à âncora mais próxima
+  //    entre as que recebeu, e remover âncoras em seguida deixaria complementar
+  //    apontando para âncora que não está no mapa (referencia_inexistente).
+  const candidatosFinais = candidates.filter((c) => c.layer !== "anchor" || aprovadasPorId.has(c.place.placeId));
+  const bruto = runPipeline(scope, candidatosFinais);
+  const porId = new Map(aprovadas.map((a) => [a.placeId, a]));
   const anchors = bruto.anchors
-    .filter((a) => aprovadasPorId.has(a.placeId))
     .map((a) => {
-      const aprovada = aprovadas.find((x) => x.placeId === a.placeId)!;
-      return { ...a, rankScore: aprovada.rankScore, rendaFaixa: aprovada.rendaFaixa, rendaMediana: aprovada.rendaMediana };
+      const aprovada = porId.get(a.placeId);
+      return aprovada
+        ? { ...a, rankScore: aprovada.rankScore, rendaFaixa: aprovada.rendaFaixa, rendaMediana: aprovada.rendaMediana }
+        : a;
     })
     .sort((x, y) => y.rankScore - x.rankScore);
   const result = {

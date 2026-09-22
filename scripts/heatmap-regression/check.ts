@@ -23,4 +23,13 @@ if (latest.sourceHash !== current) {
 }
 if (!latest.allPassed) fail(`A última regressão ao vivo (${latest.ranAt}) REPROVOU.`);
 
+// Rodada parcial não bloqueia o build, mas não passa calada: o "aprovado" dela
+// não cobre os casos que ficaram de fora.
+if (latest.partial) {
+  console.warn(
+    `[heatmap-regression] ATENÇÃO: a última regressão foi PARCIAL — ${latest.cases.length} caso(s) rodaram e ` +
+      `ficaram de fora: ${(latest.skipped ?? []).join(", ") || "—"}.`
+  );
+}
+
 console.log(`[heatmap-regression] ok — regressão ao vivo de ${latest.ranAt} cobre o código atual (${current}).`);

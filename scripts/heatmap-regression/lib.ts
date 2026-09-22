@@ -74,6 +74,10 @@ export interface RunRecord {
   allPassed: boolean;
   cases: CaseMetrics[];
   abortCases: AbortMetrics[];
+  /** Rodada PARCIAL: nem todos os casos foram executados (HEATMAP_CASES). */
+  partial?: boolean;
+  /** Casos deixados de fora numa rodada parcial. */
+  skipped?: string[];
 }
 
 const FIT_SCOPE_RE =
@@ -294,7 +298,13 @@ export function writeRunRecord(repoRoot: string, record: RunRecord): void {
   }
   appendFileSync(
     md,
-    `\n## ${record.ranAt} — gerador v${record.generatorVersion} — código ${record.sourceHash} — ${record.allPassed ? "APROVADO" : "REPROVADO"}\n\n${markdownTable(record)}\n` +
+    `\n## ${record.ranAt} — gerador v${record.generatorVersion} — código ${record.sourceHash} — ` +
+      `${record.allPassed ? "APROVADO" : "REPROVADO"}${record.partial ? " (PARCIAL)" : ""}\n\n` +
+      (record.partial
+        ? `> ⚠ **Rodada parcial**: só ${record.cases.length} caso(s) rodaram. Ficaram de fora: ${(record.skipped ?? []).join(", ") || "—"}. ` +
+          `"Aprovado" aqui NÃO cobre os casos que não rodaram.\n\n`
+        : "") +
+      `${markdownTable(record)}\n` +
       (record.cases.some((c) => c.render) ? `\n${RENDER_TIMING_NOTE}\n` : "")
   );
 }
