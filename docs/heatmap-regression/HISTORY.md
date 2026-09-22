@@ -127,3 +127,99 @@ Desambiguação (têm que abortar):
 - x2) Bairro inexistente — Curitiba/PR: abortou (bairro_nao_encontrado)
 
 > **Como ler o tempo:** a prova de tempo é a coluna "1ª pintura máx" (first-contentful-paint, medida em tempo real via Chrome DevTools Protocol, HTML aberto de `file://`). Os prints (`.heatmap-regression-output/<caso>.<cenário>.png`) mostram *o que* o cliente vê, não *quando*: com a página travada esperando rede, o Chrome só entrega a captura depois que ela destrava — um print pedido "aos 5 s" pode mostrar o estado de 30 s. "firewall pendurado" = proxy que aceita a conexão e nunca responde; "sem Leaflet" = cópia do HTML sem o Leaflet embutido; "sem JS" = JavaScript desligado.
+
+## 2026-09-22T17:51:01.537Z — gerador v3.2.1 — código 70d86f16847af395 — REPROVADO (PARCIAL)
+
+> ⚠ **Rodada parcial**: só 5 caso(s) rodaram. Ficaram de fora: f) Curitiba/PR (cidade inteira). "Aprovado" aqui NÃO cobre os casos que não rodaram.
+
+| Caso | Modo | Raio (origem; cobertura) | Âncoras | Compl. | Conc. (DC/AC/NI) | Busca conc.: células / prof. / no teto | Dist. máx âncora / compl. / conc. | Fora do raio | Tipo inválido | Tipo principal divergente | Duplicata | Sem porte (ônibus/aero/hosp/shop/posto) | Abaixo do corte (régua/renda) | Compl. sem âncora ≤ 500 m | Buscas de apoio no teto | fitBounds = escopo | Render: online / sem rede / firewall pendurado / sem Leaflet / sem JS | 1ª pintura máx | QA |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| a) Morumbi — São Paulo/SP | bairro | 2,16 km (bounds; 100%) | 31 | 155 | 17 (3/9/5) | 3 / 0 / 0 | 2,12 / 2,15 / 2,12 km | 54 | 0 | 3 | 20 | 0/0/12/5/7 | 0/0 | 0 | 0 | sim | ok / ok / ok / ok / ok | 192 ms | ok |
+| b) Itaim Bibi — São Paulo/SP | ERRO: QaGateError: QA gate reprovou o relatório (15 violação(ões)):
+- [referencia_inexistente] complementar "Estapar Estacionamentos" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "ACTION 360° - ESPORTE CLUBE PINHEIROS" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Itau-Faria Lima" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Mania de Churrasco| Prime Steak & Burger" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Varanda Faria Lima" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Charming 1-bedroom apartment in superb Vila Olímpia São Paulo with AC, WiFi" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Rac-Coon Smoke House" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Amazonense - Lanchonete e Restaurante" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Restaurante Sabores da Vida" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Just CT" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Tecnipark Estacionamentos" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "R. Dr. Alceu de Campos Rodrigues, 275 Garage" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Alojamento" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Tradição Lanchonete & Restaurante" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Cachoeira Grill" aponta para âncora ausente do mapa ||||||||||||||||||||
+| c) Batel — Curitiba/PR | ERRO: QaGateError: QA gate reprovou o relatório (25 violação(ões)):
+- [referencia_inexistente] complementar "Uoki Thai - Restaurante Tailandês" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Auto Park Silva Jardim" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Dassette Pharma" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "EROS - Confeitaria Artesanal" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Farmácia Massala Manipulação & Bem Estar" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Vgm Estacionamento" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Empório Madero Empanadas Batel" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Espaço Pamela Propst" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Madero Steak House Batel" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Burger King" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Trattoria Bella Italia Batel" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Park Me Estacionamento" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Garage Ñanderu Tattoo" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Bento Gastronomia" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "GFarma (Galênica) | Batel" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Estacio Park" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "saferunners" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Hotel Moov Curitiba" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Pizza em Casa Batel" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Saúde Animal na Dose Certa" aponta para âncora ausente do mapa ||||||||||||||||||||
+| d) Centro — Florianópolis/SC | ERRO: QaGateError: QA gate reprovou o relatório (133 violação(ões)):
+- [referencia_inexistente] complementar "PULSE Funcional e Práticas Corporais" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Kiosque da cana" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Suites Trindade" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Espaço aconchegante próximo a UFSC - One-Bedroom Apartment" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Assado Alemão" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Faculdade Católica de Santa Catarina - FACASC" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Studio Euthymia - Pilates" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Pantanal Lanches" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Padaria e Restaurante Bela Ilha" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "McDonald's" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Valdo Lanches" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Supermercado É de Casa" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Cambirela Hotel" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Restaurante Origens" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Camarão Manezinho" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "FNP São José - O Melhor Delivery de Frango Frito" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Gela Boca - São José" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Restaurante La Nonna - Almoço, Buffet Livre, Churrasco e Eventos" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Aos Sábados Feijoada" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Studio em prédio no Centro c/ Vista DIL0103" aponta para âncora ausente do mapa ||||||||||||||||||||
+| e) Jardim Ângela — São Paulo/SP | ERRO: QaGateError: QA gate reprovou o relatório (5 violação(ões)):
+- [referencia_inexistente] complementar "Mercearia Santana sikva" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Nossas Delícias" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Salgados fada" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "Jd Angela" aponta para âncora ausente do mapa
+- [referencia_inexistente] complementar "PADARIA TURQUESA" aponta para âncora ausente do mapa ||||||||||||||||||||
+
+Desambiguação (têm que abortar):
+- x1) Morumbi — Curitiba/PR: abortou (bairro_nao_encontrado)
+- x2) Bairro inexistente — Curitiba/PR: abortou (bairro_nao_encontrado)
+
+> **Como ler o tempo:** a prova de tempo é a coluna "1ª pintura máx" (first-contentful-paint, medida em tempo real via Chrome DevTools Protocol, HTML aberto de `file://`). Os prints (`.heatmap-regression-output/<caso>.<cenário>.png`) mostram *o que* o cliente vê, não *quando*: com a página travada esperando rede, o Chrome só entrega a captura depois que ela destrava — um print pedido "aos 5 s" pode mostrar o estado de 30 s. "firewall pendurado" = proxy que aceita a conexão e nunca responde; "sem Leaflet" = cópia do HTML sem o Leaflet embutido; "sem JS" = JavaScript desligado.
+
+## 2026-09-22T19:00:41.569Z — gerador v3.2.1 — código 26de123eef3c5ab1 — APROVADO (PARCIAL)
+
+> ⚠ **Rodada parcial**: só 5 caso(s) rodaram. Ficaram de fora: f) Curitiba/PR (cidade inteira). "Aprovado" aqui NÃO cobre os casos que não rodaram.
+
+| Caso | Modo | Raio (origem; cobertura) | Âncoras | Compl. | Conc. (DC/AC/NI) | Busca conc.: células / prof. / no teto | Dist. máx âncora / compl. / conc. | Fora do raio | Tipo inválido | Tipo principal divergente | Duplicata | Sem porte (ônibus/aero/hosp/shop/posto) | Abaixo do corte (régua/renda) | Compl. sem âncora ≤ 500 m | Buscas de apoio no teto | fitBounds = escopo | Render: online / sem rede / firewall pendurado / sem Leaflet / sem JS | 1ª pintura máx | QA |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| a) Morumbi — São Paulo/SP | bairro | 2,16 km (bounds; 100%) | 31 | 155 | 17 (3/9/5) | 3 / 0 / 0 | 2,12 / 2,15 / 2,12 km | 55 | 0 | 3 | 20 | 0/0/17/5/6 | 0/0 | 0 | 0 | sim | ok / ok / ok / ok / ok | 216 ms | ok |
+| b) Itaim Bibi — São Paulo/SP | bairro | 1,66 km (bounds; 100%) | 44 | 220 | 158 (4/107/47) | 46 / 4 / 0 | 1,64 / 1,64 / 1,66 km | 76 | 0 | 2 | 32 | 3/0/8/7/12 | 3/0 | 0 | 0 | sim | ok / ok / ok / ok / ok | 224 ms | ok |
+| c) Batel — Curitiba/PR | bairro | 1,70 km (bounds; 100%) | 64 | 320 | 50 (10/21/19) | 15 / 2 / 0 | 1,68 / 1,68 / 1,68 km | 66 | 0 | 2 | 50 | 1/0/13/26/7 | 5/0 | 0 | 0 | sim | ok / ok / ok / ok / ok | 216 ms | ok |
+| d) Centro — Florianópolis/SC | bairro | 9,77 km (bounds; 100%) | 181 | 903 | 113 (23/64/26) | 47 / 4 / 0 | 9,72 / 9,76 / 9,71 km | 49 | 0 | 1 | 207 | 0/3/34/44/67 | 29/0 | 0 | 0 | sim | ok / ok / ok / ok / ok | 336 ms | ok |
+| e) Jardim Ângela — São Paulo/SP | bairro | 2,00 km (fallback; —) | 8 | 40 | 0 (0/0/0) | 3 / 0 / 0 | 1,89 / 1,93 / 0,00 km | 8 | 0 | 0 | 1 | 0/0/3/4/1 | 1/0 | 0 | 0 | sim | ok / ok / ok / ok / ok | 188 ms | ok |
+
+Desambiguação (têm que abortar):
+- x1) Morumbi — Curitiba/PR: abortou (bairro_nao_encontrado)
+- x2) Bairro inexistente — Curitiba/PR: abortou (bairro_nao_encontrado)
+
+> **Como ler o tempo:** a prova de tempo é a coluna "1ª pintura máx" (first-contentful-paint, medida em tempo real via Chrome DevTools Protocol, HTML aberto de `file://`). Os prints (`.heatmap-regression-output/<caso>.<cenário>.png`) mostram *o que* o cliente vê, não *quando*: com a página travada esperando rede, o Chrome só entrega a captura depois que ela destrava — um print pedido "aos 5 s" pode mostrar o estado de 30 s. "firewall pendurado" = proxy que aceita a conexão e nunca responde; "sem Leaflet" = cópia do HTML sem o Leaflet embutido; "sem JS" = JavaScript desligado.

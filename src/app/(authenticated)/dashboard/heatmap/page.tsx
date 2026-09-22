@@ -361,8 +361,17 @@ export default function HeatmapPage() {
   const capWarnings = radiusCapWarnings(scope);
   const withoutAnchor = result.qa?.discardsByReason.complementar_sem_ancora_proxima ?? 0;
 
+  // "N de M": M é o que existe no raio depois da validação; N é o que passou na
+  // régua de qualidade e no corte por renda. Fica na tela e no relatório de
+  // execução — o HTML do cliente não traz número de operação.
+  const cortadas = Math.max(0, counters.anchorsFound - counters.anchors);
+
   const scopeCards = [
-    { label: "Âncoras no raio", value: formatNumber(counters.anchors), color: "text-[#C9A84C]" },
+    {
+      label: cortadas > 0 ? `Âncoras no raio (de ${formatNumber(counters.anchorsFound)} encontradas)` : "Âncoras no raio",
+      value: formatNumber(counters.anchors),
+      color: "text-[#C9A84C]",
+    },
     { label: "Pontos potenciais", value: formatNumber(counters.complementary), color: "text-white" },
     { label: "Concorrentes no raio", value: formatNumber(counters.competitors), color: "text-[#F44336]" },
     { label: "DC no raio", value: formatNumber(counters.competitorsDC), color: "text-[#FF8800]" },

@@ -9,7 +9,7 @@
  * de distância acontece no pipeline.
  */
 
-import { SEARCH_RULES, type PlaceTypeSpec } from "./config";
+import { COMPLEMENTARY_SELECTION, SEARCH_RULES, specsForLayer, type PlaceTypeSpec } from "./config";
 import { boundsCenter, boundsHalfDiagonalM, boundsIntersectCircle, circleBounds, splitBounds } from "./geo";
 import type { Bounds, CandidatePlace, ScopeArea, SearchSummary } from "./types";
 
@@ -250,4 +250,101 @@ export async function searchSpecInArea(
   }
 
   return { places: [...byId.values()], summaries, requests: counter.requests };
+}
+
+// ---------- Complementares: em volta de cada âncora, não no círculo inteiro ----------
+
+export interface AnchorForComplementary {
+  placeId: string;
+  lat: number;
+  lng: number;
+  areaName: string;
+}
+
+export interface ComplementarySearchResult {
+  candidates: { typeKey: string; place: CandidatePlace }[];
+  summaries: SearchSummary[];
+  requests: number;
+}
+
+/**
+ * O relatório promete "até N complementares por âncora, a no máximo X metros":
+ * esse é o escopo da busca. Uma requisição por âncora, com TODOS os tipos
+ * complementares de uma vez e ordenação por DISTÂNCIA — os mais próximos vêm
+ * primeiro, que é exatamente o critério da seleção. Varrer o círculo inteiro
+ * custava mais e batia no teto da API justamente nos bairros densos.
+ */
+export async function searchComplementaryAroundAnchors(
+  anchors: AnchorForComplementary[],
+  deps: SearchDeps
+): Promise<ComplementarySearchResult> {
+  const counter = { requests: 0 };
+  const specs = specsForLayer("complementary");
+  const includedTypes = specs.map((s) => s.includedType);
+  const fields = [...SEARCH_RULES.baseFields, ...specs.flatMap((s) => s.extraFields ?? [])];
+  const radiusM = COMPLEMENTARY_SELECTION.maxDistanceToAnchorM;
+  const byId = new Map<string, { typeKey: string; place: CandidatePlace }>();
+  const byArea = new Map<string, SearchSummary>();
+
+  for (const anchor of anchors) {
+    let summary = byArea.get(anchor.areaName);
+    if (!summary) {
+      summary = {
+        layer: "complementary",
+        typeKey: "complementares_por_ancora",
+        areaName: anchor.areaName,
+        method: "searchNearby",
+        query: `${includedTypes.length} tipos a até ${radiusM} m de cada âncora`,
+        pages: 0,
+        returned: 0,
+        truncated: false,
+        error: null,
+        cells: 0,
+        maxDepth: 0,
+        cappedCells: 0,
+      };
+      byArea.set(anchor.areaName, summary);
+    }
+    summary.cells++;
+
+    const r = await postPlaces(
+      "searchNearby",
+      {
+        includedTypes,
+        maxResultCount: SEARCH_RULES.nearbyMaxResults,
+        rankPreference: "DISTANCE",
+        languageCode: SEARCH_RULES.languageCode,
+        regionCode: SEARCH_RULES.regionCode,
+        locationRestriction: { circle: { center: { latitude: anchor.lat, longitude: anchor.lng }, radius: radiusM } },
+      },
+      fields.join(","),
+      deps,
+      counter
+    );
+    if (!r.ok) {
+      summary.error = summary.error ?? r.error;
+      continue;
+    }
+    summary.pages++;
+    const places = r.data.places ?? [];
+    summary.returned += places.length;
+
+    let validos = 0;
+    for (const raw of places) {
+      const p = toCandidatePlace(raw);
+      if (!p) continue;
+      const spec = specs.find((s) => s.validTypes.some((t) => p.types.includes(t)));
+      if (!spec) continue; // tipo fora da nossa taxonomia: o pipeline descartaria do mesmo jeito
+      validos++;
+      if (!byId.has(p.placeId)) byId.set(p.placeId, { typeKey: spec.key, place: p });
+    }
+    // Ordenado por distância, o teto de resultados só corta o que importa se
+    // sobrar menos que a cota por âncora depois da validação de tipo.
+    if (places.length >= SEARCH_RULES.nearbyMaxResults && validos < COMPLEMENTARY_SELECTION.maxPerAnchor) {
+      summary.cappedCells++;
+      summary.truncated = true;
+    }
+  }
+
+  return { candidates: [...byId.values()], summaries: [...byArea.values()], requests: counter.requests };
 }

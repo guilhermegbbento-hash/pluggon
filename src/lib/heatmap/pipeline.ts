@@ -17,6 +17,7 @@ import {
 } from "./config";
 import { chargerTypeFor } from "./competitors";
 import { haversineM, matchArea, nameContained, nameSimilarity } from "./geo";
+import { notaAncora } from "./ranking";
 import type {
   AnchorOut,
   Candidate,
@@ -26,6 +27,7 @@ import type {
   Discard,
   DiscardReason,
   LayerKey,
+  RendaFaixa,
   ScopeCounters,
   StudyScope,
   ValidatedBy,
@@ -102,12 +104,17 @@ export function influenceInnerRadiusM(complementaryNear: number, competitorsNear
 export function computeCounters(
   anchors: AnchorOut[],
   complementary: ComplementaryOut[],
-  competitors: CompetitorOut[]
+  competitors: CompetitorOut[],
+  /** Âncoras válidas antes do corte da régua. Omitido = ninguém cortou. */
+  anchorsFound?: number
 ): ScopeCounters {
   const anchorsByType: Record<string, number> = {};
   for (const a of anchors) anchorsByType[a.type] = (anchorsByType[a.type] ?? 0) + 1;
   return {
     anchors: anchors.length,
+    // Sem corte aplicado, encontradas e mostradas são a mesma coisa; quem corta
+    // (generate.ts, depois da renda) recalcula os contadores informando o total.
+    anchorsFound: anchorsFound ?? anchors.length,
     anchorsByType,
     complementary: complementary.length,
     competitors: competitors.length,
@@ -252,6 +259,9 @@ const baseOut = (a: Accepted) => ({
   placeId: a.place.placeId,
   name: a.place.name,
   lat: a.place.lat,
+  // userRatingCount vem da API e era jogado fora aqui: é o sinal de movimento
+  // que a régua usa para separar posto com fila de posto vazio.
+  userRatingCount: a.place.userRatingCount,
   lng: a.place.lng,
   address: a.place.address,
   type: a.spec.key,
@@ -269,7 +279,24 @@ export interface PipelineResult {
   discards: Discard[];
 }
 
-export function runPipeline(scope: StudyScope, candidates: Candidate[]): PipelineResult {
+export interface PipelineOptions {
+  /**
+   * Âncoras aprovadas pela régua e pela renda. Quando informado, as demais saem
+   * do mapa AQUI — não depois. Cortar por fora quebrava duas coisas: o
+   * complementar era atribuído a uma âncora que sairia do mapa, e os descartes
+   * de âncora (porte, duplicata, tipo) sumiam do relatório de execução, porque
+   * os candidatos cortados nem chegavam a ser reprocessados.
+   */
+  anchorsAprovadas?: Set<string>;
+  /** Descarte a registrar para cada âncora reprovada, por placeId. */
+  discardsDoCorte?: Map<string, Discard>;
+}
+
+export function runPipeline(
+  scope: StudyScope,
+  candidates: Candidate[],
+  options: PipelineOptions = {}
+): PipelineResult {
   const discards: Discard[] = [];
   const accepted = validate(scope, candidates, discards);
 
@@ -279,6 +306,21 @@ export function runPipeline(scope: StudyScope, candidates: Candidate[]): Pipelin
     competitor: dedupeWithinLayer(accepted.filter((a) => a.layer === "competitor"), discards),
   };
   enforceLayerExclusivity(byLayer, discards);
+
+  // Âncoras válidas ANTES do corte: é o "de M encontradas" do relatório.
+  const anchorsFound = byLayer.anchor.length;
+  if (options.anchorsAprovadas) {
+    const aprovadas: Accepted[] = [];
+    for (const a of byLayer.anchor) {
+      if (options.anchorsAprovadas.has(a.place.placeId)) {
+        aprovadas.push(a);
+        continue;
+      }
+      const doCorte = options.discardsDoCorte?.get(a.place.placeId);
+      if (doCorte) discards.push(doCorte);
+    }
+    byLayer.anchor = aprovadas;
+  }
 
   // Complementares: até maxPerAnchor mais próximos de cada âncora, sem repetição.
   const selected = new Map<string, { cp: Accepted; anchor: Accepted; distanceM: number }>();
@@ -343,6 +385,12 @@ export function runPipeline(scope: StudyScope, candidates: Candidate[]): Pipelin
         complementaryWithin300m,
         competitorsWithin1km,
         influenceInnerRadiusM: influenceInnerRadiusM(complementaryWithin300m, competitorsWithin1km),
+        // A nota já sai calculada aqui (depende só do lugar). A renda chega
+        // depois, em generate.ts, porque vem do banco: até lá, "sem dado",
+        // que por decisão do produto não penaliza.
+        rankScore: notaAncora(a.spec.key, a.place.userRatingCount),
+        rendaFaixa: "sem dado" as RendaFaixa,
+        rendaMediana: null,
       };
     })
     .sort((x, y) => specOrder(x.type) - specOrder(y.type) || x.distanceToCenterM - y.distanceToCenterM);
@@ -351,7 +399,7 @@ export function runPipeline(scope: StudyScope, candidates: Candidate[]): Pipelin
     anchors,
     complementary,
     competitors,
-    counters: computeCounters(anchors, complementary, competitors),
+    counters: computeCounters(anchors, complementary, competitors, anchorsFound),
     discards,
   };
 }

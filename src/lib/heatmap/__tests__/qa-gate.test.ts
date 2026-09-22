@@ -11,7 +11,8 @@ function basePayload(): HeatmapPayload {
   const scope = makeScope({ radiusM: 1500 });
   const out = runPipeline(scope, [
     cand("anchor", "gas_station", place("a1", "Posto Um", offset(CENTER, 100, 0), { types: ["gas_station"] })),
-    cand("anchor", "shopping_mall", place("a2", "Shopping Dois", offset(CENTER, -500, 0), { types: ["shopping_mall"] })),
+    // 1.200 avaliações: shopping de verdade passa no piso de porte (≥100).
+    cand("anchor", "shopping_mall", place("a2", "Shopping Dois", offset(CENTER, -500, 0), { types: ["shopping_mall"], userRatingCount: 1200 })),
     cand("complementary", "pharmacy", place("c1", "Farmácia Três", offset(CENTER, 150, 0), { types: ["pharmacy"] })),
     cand("competitor", "electric_vehicle_charging_station", place("k1", "Eletroposto Quatro", offset(CENTER, 0, 300), { types: ["electric_vehicle_charging_station"], chargerMaxKw: 60, chargerKwSource: "google_ev_options" })),
   ]);

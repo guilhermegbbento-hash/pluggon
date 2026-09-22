@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { upsertCityEVCache, type ManualCityEVInput } from "@/lib/abve-real-data";
 import { logUsage } from "@/lib/usage-logger";
 import { APP_VERSION } from "@/lib/version";
-import { generateHeatmap, HeatmapGenerationError } from "@/lib/heatmap/generate";
+import { generateHeatmap, HeatmapGenerationError, type RendaDoPonto } from "@/lib/heatmap/generate";
 import { normalizeText } from "@/lib/heatmap/geo";
 import { loadMunicipalIndicators } from "@/lib/heatmap/municipal";
 import { formatQaReport, QaGateError, runQaGate } from "@/lib/heatmap/qa-gate";
@@ -19,6 +19,35 @@ export const maxDuration = 300;
 function cacheStatusFor(city: string, state: string, regions: string[]): string {
   const regionsKey = regions.map(normalizeText).filter(Boolean).sort().join("+");
   return `heatmap:v${APP_VERSION}:${normalizeText(city)}|${state}|${regionsKey}`;
+}
+
+/**
+ * Renda do setor censitário de cada âncora (censo_setores, Censo 2022).
+ * Município não ingerido devolve vazio: a renda simplesmente não entra no
+ * corte, e isso aparece no relatório de execução. Nunca é inventada.
+ */
+async function carregarRenda(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  anchors: { placeId: string; lat: number; lng: number }[]
+): Promise<Map<string, RendaDoPonto>> {
+  const mapa = new Map<string, RendaDoPonto>();
+  const LOTE = 25;
+  for (let i = 0; i < anchors.length; i += LOTE) {
+    const lote = anchors.slice(i, i + LOTE);
+    const respostas = await Promise.all(
+      lote.map(async (a) => {
+        const { data, error } = await supabase.rpc("renda_do_ponto", { lat: a.lat, lng: a.lng });
+        if (error) {
+          console.warn(`renda_do_ponto falhou para ${a.placeId}: ${error.message}`);
+          return null;
+        }
+        const linha = Array.isArray(data) ? data[0] : null;
+        return { placeId: a.placeId, rendaMediana: linha?.renda_mediana ?? null };
+      })
+    );
+    for (const r of respostas) if (r) mapa.set(r.placeId, { rendaMediana: r.rendaMediana });
+  }
+  return mapa;
 }
 
 export async function POST(req: Request) {
@@ -114,6 +143,7 @@ export async function POST(req: Request) {
         ocmApiKey: process.env.OPENCHARGEMAP_API_KEY ?? null,
         loadMunicipal: (scope) =>
           loadMunicipalIndicators(scope.city, scope.state, { manualData, supabase: supabase as never }),
+        loadRenda: (anchors) => carregarRenda(supabase, anchors),
       }
     );
   } catch (err) {

@@ -98,6 +98,17 @@ export const PLACE_TYPE_SPECS: PlaceTypeSpec[] = [
     validTypes: ["gas_station"],
     largeFootprint: false,
     useNearbySearch: false,
+    // Âncora é o que o mapa promete apontar: escolher as melhores dentro de um
+    // conjunto cortado pelo teto da API esconderia justamente o melhor ponto.
+    completeness: "obrigatoria",
+    // Piso baixo de propósito: quem derruba posto vazio é a régua, não ele.
+    // Serve só para tirar registro fantasma — "Branca", "Raizen" sem nenhuma
+    // avaliação, que na calibração apareceram às dezenas.
+    facilitySignal: {
+      minUserRatingCount: 3,
+      operatorFields: [],
+      discardReason: "posto_sem_porte",
+    },
   },
   {
     key: "shopping_mall",
@@ -109,6 +120,16 @@ export const PLACE_TYPE_SPECS: PlaceTypeSpec[] = [
     validTypes: ["shopping_mall"],
     largeFootprint: true,
     useNearbySearch: false,
+    completeness: "obrigatoria",
+    // O Google tipa como shopping_mall qualquer galeria de rua, sala comercial
+    // e quiosque. Shopping de verdade tem milhares de avaliações; a menor
+    // galeria observada na calibração tinha 97. Com 100, nenhum shopping real
+    // chegou perto de cair — o menor deles tinha mais de mil.
+    facilitySignal: {
+      minUserRatingCount: 100,
+      operatorFields: [],
+      discardReason: "shopping_sem_porte",
+    },
   },
   {
     key: "bus_station",
@@ -120,6 +141,7 @@ export const PLACE_TYPE_SPECS: PlaceTypeSpec[] = [
     validTypes: ["bus_station"],
     largeFootprint: true,
     useNearbySearch: false,
+    completeness: "obrigatoria",
     // O Google tipa ponto de ônibus de rua como bus_station. Terminal de verdade
     // tem porte (avaliações) ou dados de operação; ponto de rua não tem nenhum.
     facilitySignal: {
@@ -139,6 +161,7 @@ export const PLACE_TYPE_SPECS: PlaceTypeSpec[] = [
     validTypes: ["airport", "international_airport"],
     largeFootprint: true,
     useNearbySearch: false,
+    completeness: "obrigatoria",
     // O Google põe `airport` em types de heliporto, traslado, estacionamento e
     // loja de aeroporto. O tipo principal separa os primeiros; o porte, o resto.
     requirePrimaryType: true,
@@ -146,6 +169,28 @@ export const PLACE_TYPE_SPECS: PlaceTypeSpec[] = [
       minUserRatingCount: 100,
       operatorFields: [],
       discardReason: "aeroporto_sem_porte",
+    },
+  },
+  {
+    key: "hospital",
+    layer: "anchor",
+    label: "Hospital",
+    emoji: "🏥",
+    includedType: "hospital",
+    textQueries: ["hospital"],
+    validTypes: ["hospital"],
+    largeFootprint: true,
+    useNearbySearch: false,
+    completeness: "obrigatoria",
+    // O tipo `hospital` do Google engloba clínica, laboratório e consultório, que
+    // aparecem às centenas em bairro denso. Hospital de verdade — carro parado
+    // por horas, acompanhante, plantonista, visita — tem milhares de avaliações;
+    // clínica de rua tem dezenas. Piso mais alto que o de rodoviária e aeroporto
+    // (100) por isso. Número a calibrar com os dados da próxima regressão.
+    facilitySignal: {
+      minUserRatingCount: 200,
+      operatorFields: [],
+      discardReason: "hospital_sem_porte",
     },
   },
 
@@ -157,7 +202,6 @@ export const PLACE_TYPE_SPECS: PlaceTypeSpec[] = [
   { key: "restaurant", layer: "complementary", label: "Restaurante", emoji: "", includedType: "restaurant", textQueries: ["restaurante"], validTypes: ["restaurant"], largeFootprint: false, useNearbySearch: false },
   { key: "lodging", layer: "complementary", label: "Hotel", emoji: "", includedType: "lodging", textQueries: ["hotel"], validTypes: ["lodging", "hotel"], largeFootprint: false, useNearbySearch: false },
   { key: "university", layer: "complementary", label: "Universidade", emoji: "", includedType: "university", textQueries: ["universidade"], validTypes: ["university"], largeFootprint: false, useNearbySearch: false },
-  { key: "hospital", layer: "complementary", label: "Hospital", emoji: "", includedType: "hospital", textQueries: ["hospital"], validTypes: ["hospital"], largeFootprint: false, useNearbySearch: false },
   { key: "convenience_store", layer: "complementary", label: "Loja de conveniência", emoji: "", includedType: "convenience_store", textQueries: ["loja de conveniência"], validTypes: ["convenience_store"], largeFootprint: false, useNearbySearch: false },
   { key: "gym", layer: "complementary", label: "Academia", emoji: "", includedType: "gym", textQueries: ["academia"], validTypes: ["gym", "fitness_center"], largeFootprint: false, useNearbySearch: false },
 
@@ -264,6 +308,59 @@ export const INFLUENCE_RULES = {
   maxCompetitorPenaltyM: 100,
   minInnerM: 150,
   maxInnerM: 350,
+};
+
+// ---------- Régua de qualidade das âncoras ----------
+
+/**
+ * A régua julga o LUGAR EM SI: tipo e volume de avaliações. Complementar saiu
+ * (é consequência, não critério — e buscá-lo antes de cortar custaria caro),
+ * concorrente tem peso zero e proximidade do centro saiu de vez: aeroporto e
+ * rodoviária são longe por definição e isso não os torna piores.
+ *
+ * Calibrada em 22/09/2026 sobre 1.728 âncoras completas de quatro escopos
+ * (Morumbi, Batel, Centro/Florianópolis, Curitiba cidade), conferindo nome a
+ * nome. Com estes números, aeroporto, rodoviária, shopping e hospital com mais
+ * de mil avaliações ficam em TODOS os casos, e galeria de bairro chamada
+ * "shopping" cai.
+ */
+export const RANKING_RULES = {
+  /** Média de V32 (adequação), V33 (operação contínua) e V34 (permanência) do motor de score. */
+  tipoScore: { airport: 10, bus_station: 10, hospital: 9, shopping_mall: 9, gas_station: 8 } as Record<string, number>,
+  tipoScorePadrao: 5,
+  pesoTipo: 3,
+  pesoAvaliacoes: 3,
+  /** log10(1+avaliações)/3 × 10: mil avaliações = nota 10. */
+  divisorLogAvaliacoes: 3,
+  /** Nota mínima em região de renda alta, média-alta, média ou sem dado. */
+  corteNormal: 6.0,
+  /**
+   * Nota mínima em região de renda baixa. Mais alto que o normal porque ali a
+   * frota elétrica é menor — mas não 8,0, que derrubava posto de avenida de
+   * passagem com 200+ avaliações. Carga rápida é sobre passagem, não sobre
+   * quem mora no quarteirão.
+   */
+  corteRendaBaixa: 7.0,
+};
+
+// ---------- Renda por setor censitário (Censo 2022) ----------
+
+export type RendaFaixa = "alta" | "média-alta" | "média" | "baixa" | "sem dado";
+
+export const RENDA_RULES = {
+  /**
+   * Os valores do Censo 2022 estão em REAIS DE 2022: a faixa é calculada em
+   * múltiplos do salário mínimo DO ANO DO DADO, senão toda região desce de
+   * faixa sozinha conforme o mínimo sobe.
+   */
+  salarioMinimoDoDado: 1212,
+  /** Piso de cada faixa, em salários mínimos do ano do dado. */
+  faixas: [
+    { nome: "alta" as const, minSM: 4 },
+    { nome: "média-alta" as const, minSM: 2.5 },
+    { nome: "média" as const, minSM: 1.7 },
+    { nome: "baixa" as const, minSM: 0 },
+  ],
 };
 
 export const COMPETITOR_ZONE_RADIUS_M = 300;

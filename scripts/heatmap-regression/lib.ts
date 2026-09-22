@@ -74,6 +74,10 @@ export interface RunRecord {
   allPassed: boolean;
   cases: CaseMetrics[];
   abortCases: AbortMetrics[];
+  /** Rodada PARCIAL: nem todos os casos foram executados (HEATMAP_CASES). */
+  partial?: boolean;
+  /** Casos deixados de fora numa rodada parcial. */
+  skipped?: string[];
 }
 
 const FIT_SCOPE_RE =
@@ -245,8 +249,8 @@ const km = (m: number) => (m / 1000).toFixed(2).replace(".", ",");
 
 export function markdownTable(record: RunRecord): string {
   const head =
-    "| Caso | Modo | Raio (origem; cobertura) | Âncoras | Compl. | Conc. (DC/AC/NI) | Busca conc.: células / prof. / no teto | Dist. máx âncora / compl. / conc. | Fora do raio | Tipo inválido | Tipo principal divergente | Duplicata | Ponto de ônibus s/ terminal | Aeroporto s/ porte | Compl. sem âncora ≤ 500 m | Buscas de apoio no teto | fitBounds = escopo | Render: online / sem rede / firewall pendurado / sem Leaflet / sem JS | 1ª pintura máx | QA |\n" +
-    "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|";
+    "| Caso | Modo | Raio (origem; cobertura) | Âncoras | Compl. | Conc. (DC/AC/NI) | Busca conc.: células / prof. / no teto | Dist. máx âncora / compl. / conc. | Fora do raio | Tipo inválido | Tipo principal divergente | Duplicata | Sem porte (ônibus/aero/hosp/shop/posto) | Abaixo do corte (régua/renda) | Compl. sem âncora ≤ 500 m | Buscas de apoio no teto | fitBounds = escopo | Render: online / sem rede / firewall pendurado / sem Leaflet / sem JS | 1ª pintura máx | QA |\n" +
+    "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|";
   const renderCell = (c: CaseMetrics) => {
     if (c.render) {
       return RENDER_SCENARIO_ORDER.map((s) => {
@@ -261,13 +265,13 @@ export function markdownTable(record: RunRecord): string {
     return values.length === 0 ? "—" : `${Math.max(...values)} ms`;
   };
   const rows = record.cases.map((c) => {
-    if (c.error || !c.counts || !c.maxDistanceM) return `| ${c.id}) ${c.label} | ERRO: ${c.error} ${"|".repeat(19)}`;
+    if (c.error || !c.counts || !c.maxDistanceM) return `| ${c.id}) ${c.label} | ERRO: ${c.error} ${"|".repeat(20)}`;
     const d = c.discardsByReason;
     const radius = c.areas
       .map((a) => `${km(a.radiusM)} km (${a.radiusSource}${a.radiusClamp ? `, ${a.radiusClamp}` : ""}; ${a.boundsCoveragePct === null ? "—" : `${a.boundsCoveragePct}%`})`)
       .join(" + ");
     const cs = c.competitorSearch;
-    return `| ${c.id}) ${c.label} | ${c.mode} | ${radius} | ${c.counts.anchors} | ${c.counts.complementary} | ${c.counts.competitors} (${c.counts.competitorsDC}/${c.counts.competitorsAC}/${c.counts.competitorsUnknown}) | ${cs ? `${cs.cells} / ${cs.maxDepth} / ${cs.cappedCells}` : "—"} | ${km(c.maxDistanceM.anchors)} / ${km(c.maxDistanceM.complementary)} / ${km(c.maxDistanceM.competitors)} km | ${d.fora_do_raio ?? 0} | ${d.tipo_invalido ?? 0} | ${d.tipo_principal_divergente ?? 0} | ${sumDup(d)} | ${d.ponto_de_onibus_sem_sinal_de_terminal ?? 0} | ${d.aeroporto_sem_porte ?? 0} | ${c.complementaryWithoutAnchor} | ${c.truncatedSearches - (cs?.cappedCells ? 1 : 0)} | ${c.fitBoundsIsScope ? "sim" : "NÃO"} | ${renderCell(c)} | ${fcpCell(c)} | ${c.qaPassed && c.invariantViolations.length === 0 ? "ok" : "FALHOU"} |`;
+    return `| ${c.id}) ${c.label} | ${c.mode} | ${radius} | ${c.counts.anchors} | ${c.counts.complementary} | ${c.counts.competitors} (${c.counts.competitorsDC}/${c.counts.competitorsAC}/${c.counts.competitorsUnknown}) | ${cs ? `${cs.cells} / ${cs.maxDepth} / ${cs.cappedCells}` : "—"} | ${km(c.maxDistanceM.anchors)} / ${km(c.maxDistanceM.complementary)} / ${km(c.maxDistanceM.competitors)} km | ${d.fora_do_raio ?? 0} | ${d.tipo_invalido ?? 0} | ${d.tipo_principal_divergente ?? 0} | ${sumDup(d)} | ${d.ponto_de_onibus_sem_sinal_de_terminal ?? 0}/${d.aeroporto_sem_porte ?? 0}/${d.hospital_sem_porte ?? 0}/${d.shopping_sem_porte ?? 0}/${d.posto_sem_porte ?? 0} | ${d.ancora_abaixo_do_corte ?? 0}/${d.ancora_abaixo_do_corte_renda_baixa ?? 0} | ${c.complementaryWithoutAnchor} | ${c.truncatedSearches - (cs?.cappedCells ? 1 : 0)} | ${c.fitBoundsIsScope ? "sim" : "NÃO"} | ${renderCell(c)} | ${fcpCell(c)} | ${c.qaPassed && c.invariantViolations.length === 0 ? "ok" : "FALHOU"} |`;
   });
   const aborts = record.abortCases.map((a) => `- ${a.id}) ${a.label}: ${a.aborted ? `abortou (${a.code})` : "NÃO abortou"}`);
   return [head, ...rows, "", "Desambiguação (têm que abortar):", ...aborts].join("\n");
@@ -294,7 +298,13 @@ export function writeRunRecord(repoRoot: string, record: RunRecord): void {
   }
   appendFileSync(
     md,
-    `\n## ${record.ranAt} — gerador v${record.generatorVersion} — código ${record.sourceHash} — ${record.allPassed ? "APROVADO" : "REPROVADO"}\n\n${markdownTable(record)}\n` +
+    `\n## ${record.ranAt} — gerador v${record.generatorVersion} — código ${record.sourceHash} — ` +
+      `${record.allPassed ? "APROVADO" : "REPROVADO"}${record.partial ? " (PARCIAL)" : ""}\n\n` +
+      (record.partial
+        ? `> ⚠ **Rodada parcial**: só ${record.cases.length} caso(s) rodaram. Ficaram de fora: ${(record.skipped ?? []).join(", ") || "—"}. ` +
+          `"Aprovado" aqui NÃO cobre os casos que não rodaram.\n\n`
+        : "") +
+      `${markdownTable(record)}\n` +
       (record.cases.some((c) => c.render) ? `\n${RENDER_TIMING_NOTE}\n` : "")
   );
 }

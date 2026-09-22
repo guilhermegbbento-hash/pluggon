@@ -3,6 +3,10 @@
  * de regressão). O QA gate roda ANTES de montar o HTML: payload reprovado não
  * vira relatório.
  *
+ * O HTML do cliente não traz aviso técnico de busca (camada no teto da API):
+ * isso é informação de operação e fica no relatório de execução, na tela do
+ * app e no histórico da regressão.
+ *
  * REGRA PERMANENTE (ver README): o arquivo é autocontido. Nenhum <script src>,
  * <link rel="stylesheet"> ou recurso externo bloqueante — o Leaflet vai
  * embutido. Os tiles são a única requisição de rede, e a falta deles degrada
@@ -16,7 +20,6 @@ import {
   COMPETITOR_ZONE_RADIUS_M,
   INFLUENCE_RULES,
   PLACE_TYPE_SPECS,
-  specByKey,
   specsForLayer,
 } from "./config";
 import { LEAFLET_CSS, LEAFLET_JS } from "./leaflet-vendor";
@@ -123,10 +126,6 @@ export function renderHeatmapHtml(payload: HeatmapPayload, opts: { tileUrl?: str
 
   const { scope, counters, municipal } = payload;
   const radiusText = scope.areas.map((a) => fmtKm(a.radiusM)).join(" / ");
-  // Camadas obrigatórias no teto nem chegam aqui (o gate aborta); só as de apoio podem aparecer.
-  const truncated = payload.searches.filter(
-    (s) => s.truncated && specByKey(s.typeKey)?.completeness !== "obrigatoria"
-  );
   const capWarnings = radiusCapWarnings(scope);
   const anchorEmoji = Object.fromEntries(specsForLayer("anchor").map((s) => [s.key, s.emoji]));
   const stamp = reportStamp(payload);
@@ -134,13 +133,6 @@ export function renderHeatmapHtml(payload: HeatmapPayload, opts: { tileUrl?: str
   const competitorSummary =
     counters.competitors === 0
       ? `<div class="notice opportunity"><strong>0 concorrentes no raio de ${escapeHtml(radiusText)}</strong><br>Pra&ccedil;a sem concorr&ecirc;ncia mapeada &mdash; oportunidade a validar em campo.</div>`
-      : "";
-
-  const truncatedNotice =
-    truncated.length > 0
-      ? `<div class="notice warn">Camadas de apoio no limite de resultados da API (${escapeHtml(
-          [...new Set(truncated.map((s) => s.typeKey))].join(", ")
-        )}): podem estar incompletas. A camada de concorrentes é sempre buscada até completar.</div>`
       : "";
 
   const municipalGrid = municipal
@@ -266,7 +258,6 @@ ${capWarnings.map((w) => `<div class="scope-warning">&#9888; ${escapeHtml(w)}</d
       <div class="stat-card"><div class="label">N&atilde;o informado</div><div class="value" id="cntUnknown">${counters.competitorsUnknown}</div></div>
     </div>
     ${competitorSummary}
-    ${truncatedNotice}
     ${municipalGrid}
     <div class="section-head gold">Pontos &Acirc;ncora (${counters.anchors})</div>
     <div id="anchorsList">${anchorsListHtml(payload.anchors, anchorEmoji)}</div>
