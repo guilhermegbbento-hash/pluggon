@@ -5,6 +5,10 @@
  * HTML exportado), então nada de classes nem funções.
  */
 
+import type { RendaFaixa } from "./config";
+
+export type { RendaFaixa };
+
 export type LatLng = { lat: number; lng: number };
 
 export type Bounds = { south: number; west: number; north: number; east: number };
@@ -54,6 +58,10 @@ export type DiscardReason =
   | "ponto_de_onibus_sem_sinal_de_terminal"
   | "aeroporto_sem_porte"
   | "hospital_sem_porte"
+  | "shopping_sem_porte"
+  | "posto_sem_porte"
+  | "ancora_abaixo_do_corte"
+  | "ancora_abaixo_do_corte_renda_baixa"
   | "fechado_permanentemente"
   | "sem_nome"
   | "duplicata_place_id"
@@ -124,6 +132,14 @@ export interface AnchorOut extends PointOutBase {
   /** Concorrentes renderizados a até INFLUENCE_RULES.competitorRadiusM. Diminui a zona. */
   competitorsWithin1km: number;
   influenceInnerRadiusM: number;
+  /** Volume de avaliações no Google: o sinal de movimento da régua. */
+  userRatingCount: number;
+  /** Nota da régua (0 a 10): tipo + volume de avaliações. */
+  rankScore: number;
+  /** Faixa de renda do setor censitário onde a âncora caiu. */
+  rendaFaixa: RendaFaixa;
+  /** Renda mediana do responsável no setor, em reais do ano do dado; null sem dado. */
+  rendaMediana: number | null;
 }
 
 export interface ComplementaryOut extends PointOutBase {
@@ -143,6 +159,8 @@ export interface CompetitorOut extends PointOutBase {
 
 export interface ScopeCounters {
   anchors: number;
+  /** Âncoras válidas ANTES do corte da régua — o "de M encontradas". */
+  anchorsFound: number;
   anchorsByType: Record<string, number>;
   complementary: number;
   competitors: number;

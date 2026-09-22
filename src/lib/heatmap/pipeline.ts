@@ -17,6 +17,7 @@ import {
 } from "./config";
 import { chargerTypeFor } from "./competitors";
 import { haversineM, matchArea, nameContained, nameSimilarity } from "./geo";
+import { notaAncora } from "./ranking";
 import type {
   AnchorOut,
   Candidate,
@@ -26,6 +27,7 @@ import type {
   Discard,
   DiscardReason,
   LayerKey,
+  RendaFaixa,
   ScopeCounters,
   StudyScope,
   ValidatedBy,
@@ -102,12 +104,17 @@ export function influenceInnerRadiusM(complementaryNear: number, competitorsNear
 export function computeCounters(
   anchors: AnchorOut[],
   complementary: ComplementaryOut[],
-  competitors: CompetitorOut[]
+  competitors: CompetitorOut[],
+  /** Âncoras válidas antes do corte da régua. Omitido = ninguém cortou. */
+  anchorsFound?: number
 ): ScopeCounters {
   const anchorsByType: Record<string, number> = {};
   for (const a of anchors) anchorsByType[a.type] = (anchorsByType[a.type] ?? 0) + 1;
   return {
     anchors: anchors.length,
+    // Sem corte aplicado, encontradas e mostradas são a mesma coisa; quem corta
+    // (generate.ts, depois da renda) recalcula os contadores informando o total.
+    anchorsFound: anchorsFound ?? anchors.length,
     anchorsByType,
     complementary: complementary.length,
     competitors: competitors.length,
@@ -252,6 +259,9 @@ const baseOut = (a: Accepted) => ({
   placeId: a.place.placeId,
   name: a.place.name,
   lat: a.place.lat,
+  // userRatingCount vem da API e era jogado fora aqui: é o sinal de movimento
+  // que a régua usa para separar posto com fila de posto vazio.
+  userRatingCount: a.place.userRatingCount,
   lng: a.place.lng,
   address: a.place.address,
   type: a.spec.key,
@@ -343,6 +353,12 @@ export function runPipeline(scope: StudyScope, candidates: Candidate[]): Pipelin
         complementaryWithin300m,
         competitorsWithin1km,
         influenceInnerRadiusM: influenceInnerRadiusM(complementaryWithin300m, competitorsWithin1km),
+        // A nota já sai calculada aqui (depende só do lugar). A renda chega
+        // depois, em generate.ts, porque vem do banco: até lá, "sem dado",
+        // que por decisão do produto não penaliza.
+        rankScore: notaAncora(a.spec.key, a.place.userRatingCount),
+        rendaFaixa: "sem dado" as RendaFaixa,
+        rendaMediana: null,
       };
     })
     .sort((x, y) => specOrder(x.type) - specOrder(y.type) || x.distanceToCenterM - y.distanceToCenterM);
