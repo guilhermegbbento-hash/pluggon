@@ -5,7 +5,6 @@
 
 import { APP_VERSION } from "../version";
 import { PLACE_TYPE_SPECS } from "./config";
-import { fetchOpenChargeMapInArea, mergeOpenChargeMap } from "./competitors";
 import { searchComplementaryAroundAnchors, searchSpecInArea, type FetchFn } from "./places";
 import { computeCounters, runPipeline } from "./pipeline";
 import { assertQaGate } from "./qa-gate";
@@ -36,7 +35,6 @@ export class HeatmapGenerationError extends Error {
 
 export interface GenerateDeps {
   googleApiKey: string;
-  ocmApiKey?: string | null;
   fetchImpl?: FetchFn;
   geocode?: GeocodeFn;
   loadMunicipal?: (scope: StudyScope) => Promise<MunicipalIndicators | null>;
@@ -70,27 +68,17 @@ export async function generateHeatmap(input: ScopeInput, deps: GenerateDeps): Pr
   //    buscados depois, em volta das âncoras que sobreviverem à validação.
   const scopeSpecs = PLACE_TYPE_SPECS.filter((s) => s.layer !== "complementary");
   for (const area of scope.areas) {
-    const [results, ocm] = await Promise.all([
-      Promise.all(
-        scopeSpecs.map(async (spec) => ({
-          spec,
-          result: await searchSpecInArea(spec, area, { apiKey: deps.googleApiKey, fetchImpl: deps.fetchImpl }),
-        }))
-      ),
-      fetchOpenChargeMapInArea(area, { ocmApiKey: deps.ocmApiKey, fetchImpl: deps.fetchImpl }),
-    ]);
-    sources.push(ocm.status);
+    const results = await Promise.all(
+      scopeSpecs.map(async (spec) => ({
+        spec,
+        result: await searchSpecInArea(spec, area, { apiKey: deps.googleApiKey, fetchImpl: deps.fetchImpl }),
+      }))
+    );
 
-    let ocmMerged = false;
     for (const { spec, result } of results) {
       placesRequests += result.requests;
       searches.push(...result.summaries);
-      let places = result.places;
-      if (spec.layer === "competitor" && !ocmMerged) {
-        places = mergeOpenChargeMap(places, ocm.places);
-        ocmMerged = true;
-      }
-      for (const place of places) candidates.push({ layer: spec.layer, typeKey: spec.key, place });
+      for (const place of result.places) candidates.push({ layer: spec.layer, typeKey: spec.key, place });
     }
   }
 

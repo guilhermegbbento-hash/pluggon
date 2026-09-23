@@ -20,7 +20,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { PLACE_TYPE_SPECS, SEARCH_RULES } from "../../src/lib/heatmap/config";
-import { fetchOpenChargeMapInArea, mergeOpenChargeMap } from "../../src/lib/heatmap/competitors";
 import { runPipeline } from "../../src/lib/heatmap/pipeline";
 import { searchSpecInArea } from "../../src/lib/heatmap/places";
 import { googleGeocoder, resolveScope } from "../../src/lib/heatmap/scope";
@@ -93,20 +92,13 @@ for (const c of REGRESSION_CASES) {
     const candidates: Candidate[] = [];
     const searches: SearchSummary[] = [];
     for (const area of scope.areas) {
-      const [results, ocm] = await Promise.all([
-        Promise.all(PLACE_TYPE_SPECS.map(async (spec) => ({ spec, result: await searchSpecInArea(spec, area, { apiKey }) }))),
-        fetchOpenChargeMapInArea(area, { ocmApiKey: process.env.OPENCHARGEMAP_API_KEY ?? null }),
-      ]);
-      let ocmMerged = false;
+      const results = await Promise.all(
+        PLACE_TYPE_SPECS.map(async (spec) => ({ spec, result: await searchSpecInArea(spec, area, { apiKey }) }))
+      );
       for (const { spec, result } of results) {
         requests += result.requests;
         searches.push(...result.summaries);
-        let places = result.places;
-        if (spec.layer === "competitor" && !ocmMerged) {
-          places = mergeOpenChargeMap(places, ocm.places);
-          ocmMerged = true;
-        }
-        for (const place of places) candidates.push({ layer: spec.layer, typeKey: spec.key, place });
+        for (const place of result.places) candidates.push({ layer: spec.layer, typeKey: spec.key, place });
       }
     }
     const failed = searches.filter((s) => s.error);

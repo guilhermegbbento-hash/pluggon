@@ -93,9 +93,7 @@ export function runQaGate(p: Omit<HeatmapPayload, "qa"> & { qa?: QaReport | null
       const spec = specByKey(pt.type);
       if (!spec || spec.layer !== layer) {
         v("tipo_nao_validado", `${where} com tipo "${pt.type}" não pertence à camada`);
-      } else if (
-        !(pt.validatedBy === "google_types" || (pt.validatedBy === "openchargemap_source" && layer === "competitor"))
-      ) {
+      } else if (pt.validatedBy !== "google_types") {
         v("tipo_nao_validado", `${where} sem validação de tipo (${String(pt.validatedBy)})`);
       }
 

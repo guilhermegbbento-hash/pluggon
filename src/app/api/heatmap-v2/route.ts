@@ -140,7 +140,6 @@ export async function POST(req: Request) {
       { city, state, regions },
       {
         googleApiKey: apiKey,
-        ocmApiKey: process.env.OPENCHARGEMAP_API_KEY ?? null,
         loadMunicipal: (scope) =>
           loadMunicipalIndicators(scope.city, scope.state, { manualData, supabase: supabase as never }),
         loadRenda: (anchors) => carregarRenda(supabase, anchors),

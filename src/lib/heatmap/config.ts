@@ -370,6 +370,4 @@ export const COMPETITOR_OVERLAP_PX = 14;
 
 export const CHARGER_RULES = {
   dcMinKw: 40,
-  /** Distância para casar um ponto do OpenChargeMap com um eletroposto do Google. */
-  ocmMatchDistanceM: 50,
 };

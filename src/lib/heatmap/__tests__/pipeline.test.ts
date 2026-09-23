@@ -71,7 +71,7 @@ const candidates = [
   cand("competitor", "electric_vehicle_charging_station", place("k-dc", "Eletroposto Rápido", offset(CENTER, -800, 0), { types: ["electric_vehicle_charging_station"], chargerMaxKw: 150, chargerKwSource: "google_ev_options" })),
   // BUG 7: sem potência → não informado, nunca DC
   cand("competitor", "electric_vehicle_charging_station", place("k-unk", "Carregador Ultra Fast DC", offset(CENTER, 0, 400), { types: ["electric_vehicle_charging_station"] })),
-  cand("competitor", "electric_vehicle_charging_station", place("ocm:1", "Estação OCM", offset(CENTER, 0, -300), { types: ["electric_vehicle_charging_station"], source: "openchargemap", chargerMaxKw: 7, chargerKwSource: "openchargemap" })),
+  cand("competitor", "electric_vehicle_charging_station", place("k-ac-lento", "Eletroposto Garagem", offset(CENTER, 0, -300), { types: ["electric_vehicle_charging_station"], chargerMaxKw: 7, chargerKwSource: "google_ev_options" })),
 ];
 
 const out = runPipeline(scope, candidates);
@@ -166,7 +166,7 @@ function payloadOf(): HeatmapPayload {
     scope,
     ...out,
     searches: [],
-    sources: [{ name: "OpenChargeMap (Bairro Teste)", status: "indisponivel", detail: "OPENCHARGEMAP_API_KEY ausente" }],
+    sources: [{ name: "Google Places (New)", status: "ok", detail: "fixture de teste" }],
     municipal: null,
     qa: null,
     googleQueries: 0,
