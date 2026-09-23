@@ -1,7 +1,7 @@
 {
-  "ranAt": "2026-09-22T19:00:41.569Z",
+  "ranAt": "2026-09-23T00:00:15.882Z",
   "generatorVersion": "3.2.1",
-  "sourceHash": "26de123eef3c5ab1",
+  "sourceHash": "7e550f321891fb30",
   "allPassed": true,
   "cases": [
     {
@@ -44,25 +44,21 @@
         "competitors": 2119
       },
       "discardsByReason": {
-        "fora_do_raio": 55,
-        "posto_sem_porte": 6,
-        "shopping_sem_porte": 5,
+        "fora_do_raio": 56,
+        "posto_sem_porte": 7,
+        "shopping_sem_porte": 4,
         "tipo_principal_divergente": 3,
         "hospital_sem_porte": 17,
         "duplicata_nome_contido": 7,
-        "duplicata_proximidade_nome": 7,
+        "duplicata_proximidade_nome": 6,
         "duplicata_entre_camadas": 6,
-        "complementar_excedente_por_ancora": 202
+        "complementar_excedente_por_ancora": 200
       },
       "truncatedSearches": 0,
       "sources": [
         {
           "name": "Google Places",
           "status": "ok"
-        },
-        {
-          "name": "OpenChargeMap",
-          "status": "indisponivel"
         }
       ],
       "fitBoundsIsScope": true,
@@ -72,31 +68,31 @@
       "render": {
         "online": {
           "violations": 0,
-          "fcpMs": 216,
+          "fcpMs": 304,
           "externalRequests": 20,
           "externalBeforeFcp": 20
         },
         "sem_rede": {
           "violations": 0,
-          "fcpMs": 180,
+          "fcpMs": 276,
           "externalRequests": 40,
           "externalBeforeFcp": 26
         },
         "firewall_pendurado": {
           "violations": 0,
-          "fcpMs": 164,
+          "fcpMs": 248,
           "externalRequests": 20,
           "externalBeforeFcp": 20
         },
         "sem_leaflet": {
           "violations": 0,
-          "fcpMs": 100,
+          "fcpMs": 136,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         },
         "sem_js": {
           "violations": 0,
-          "fcpMs": 108,
+          "fcpMs": 156,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         }
@@ -124,14 +120,14 @@
       "complementaryWithoutAnchor": 0,
       "renderViolations": 0,
       "counts": {
-        "anchors": 44,
-        "complementary": 220,
+        "anchors": 43,
+        "complementary": 215,
         "competitors": 158,
         "competitorsDC": 4,
         "competitorsAC": 107,
         "competitorsUnknown": 47,
         "anchorsByType": {
-          "gas_station": 29,
+          "gas_station": 28,
           "shopping_mall": 8,
           "hospital": 7
         }
@@ -142,61 +138,57 @@
         "competitors": 1664
       },
       "discardsByReason": {
-        "fora_do_raio": 76,
-        "posto_sem_porte": 12,
+        "fora_do_raio": 74,
+        "posto_sem_porte": 10,
         "shopping_sem_porte": 7,
         "ponto_de_onibus_sem_sinal_de_terminal": 3,
-        "tipo_principal_divergente": 2,
+        "tipo_principal_divergente": 1,
         "hospital_sem_porte": 8,
-        "duplicata_proximidade_nome": 15,
+        "duplicata_proximidade_nome": 13,
         "duplicata_nome_contido": 10,
         "duplicata_entre_camadas": 7,
         "ancora_abaixo_do_corte": 3,
-        "complementar_excedente_por_ancora": 335
+        "complementar_excedente_por_ancora": 321
       },
       "truncatedSearches": 0,
       "sources": [
         {
           "name": "Google Places",
           "status": "ok"
-        },
-        {
-          "name": "OpenChargeMap",
-          "status": "indisponivel"
         }
       ],
       "fitBoundsIsScope": true,
       "qaPassed": true,
-      "googleQueries": 100,
+      "googleQueries": 99,
       "invariantViolations": [],
       "render": {
         "online": {
           "violations": 0,
-          "fcpMs": 208,
+          "fcpMs": 308,
           "externalRequests": 20,
           "externalBeforeFcp": 20
         },
         "sem_rede": {
           "violations": 0,
-          "fcpMs": 224,
+          "fcpMs": 300,
           "externalRequests": 20,
           "externalBeforeFcp": 20
         },
         "firewall_pendurado": {
           "violations": 0,
-          "fcpMs": 180,
+          "fcpMs": 288,
           "externalRequests": 20,
           "externalBeforeFcp": 20
         },
         "sem_leaflet": {
           "violations": 0,
-          "fcpMs": 120,
+          "fcpMs": 164,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         },
         "sem_js": {
           "violations": 0,
-          "fcpMs": 120,
+          "fcpMs": 172,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         }
@@ -224,15 +216,15 @@
       "complementaryWithoutAnchor": 0,
       "renderViolations": 0,
       "counts": {
-        "anchors": 64,
-        "complementary": 320,
+        "anchors": 61,
+        "complementary": 305,
         "competitors": 50,
         "competitorsDC": 10,
         "competitorsAC": 21,
         "competitorsUnknown": 19,
         "anchorsByType": {
-          "gas_station": 32,
-          "shopping_mall": 17,
+          "gas_station": 30,
+          "shopping_mall": 16,
           "hospital": 15
         }
       },
@@ -242,61 +234,57 @@
         "competitors": 1684
       },
       "discardsByReason": {
-        "fora_do_raio": 66,
-        "posto_sem_porte": 7,
-        "shopping_sem_porte": 26,
+        "fora_do_raio": 67,
+        "posto_sem_porte": 4,
+        "shopping_sem_porte": 23,
         "ponto_de_onibus_sem_sinal_de_terminal": 1,
         "tipo_principal_divergente": 2,
-        "hospital_sem_porte": 13,
-        "duplicata_proximidade_nome": 21,
-        "duplicata_nome_contido": 18,
+        "hospital_sem_porte": 12,
+        "duplicata_proximidade_nome": 20,
+        "duplicata_nome_contido": 16,
         "duplicata_entre_camadas": 11,
         "ancora_abaixo_do_corte": 5,
-        "complementar_excedente_por_ancora": 550
+        "complementar_excedente_por_ancora": 523
       },
       "truncatedSearches": 0,
       "sources": [
         {
           "name": "Google Places",
           "status": "ok"
-        },
-        {
-          "name": "OpenChargeMap",
-          "status": "indisponivel"
         }
       ],
       "fitBoundsIsScope": true,
       "qaPassed": true,
-      "googleQueries": 91,
+      "googleQueries": 88,
       "invariantViolations": [],
       "render": {
         "online": {
           "violations": 0,
-          "fcpMs": 196,
+          "fcpMs": 292,
           "externalRequests": 20,
           "externalBeforeFcp": 20
         },
         "sem_rede": {
           "violations": 0,
-          "fcpMs": 216,
+          "fcpMs": 300,
           "externalRequests": 20,
           "externalBeforeFcp": 20
         },
         "firewall_pendurado": {
           "violations": 0,
-          "fcpMs": 184,
+          "fcpMs": 300,
           "externalRequests": 20,
           "externalBeforeFcp": 20
         },
         "sem_leaflet": {
           "violations": 0,
-          "fcpMs": 108,
+          "fcpMs": 144,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         },
         "sem_js": {
           "violations": 0,
-          "fcpMs": 108,
+          "fcpMs": 148,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         }
@@ -324,15 +312,15 @@
       "complementaryWithoutAnchor": 0,
       "renderViolations": 0,
       "counts": {
-        "anchors": 181,
-        "complementary": 903,
+        "anchors": 179,
+        "complementary": 893,
         "competitors": 113,
         "competitorsDC": 23,
         "competitorsAC": 64,
         "competitorsUnknown": 26,
         "anchorsByType": {
           "gas_station": 132,
-          "shopping_mall": 22,
+          "shopping_mall": 20,
           "bus_station": 3,
           "airport": 2,
           "hospital": 22
@@ -345,60 +333,56 @@
       },
       "discardsByReason": {
         "fora_do_raio": 49,
-        "posto_sem_porte": 67,
-        "shopping_sem_porte": 44,
-        "aeroporto_sem_porte": 3,
+        "posto_sem_porte": 68,
+        "shopping_sem_porte": 46,
+        "aeroporto_sem_porte": 2,
         "tipo_principal_divergente": 1,
-        "hospital_sem_porte": 34,
-        "duplicata_nome_contido": 54,
-        "duplicata_proximidade_nome": 107,
-        "duplicata_entre_camadas": 46,
+        "hospital_sem_porte": 35,
+        "duplicata_nome_contido": 52,
+        "duplicata_proximidade_nome": 102,
+        "duplicata_entre_camadas": 45,
         "ancora_abaixo_do_corte": 29,
-        "complementar_excedente_por_ancora": 1439
+        "complementar_excedente_por_ancora": 1415
       },
       "truncatedSearches": 0,
       "sources": [
         {
           "name": "Google Places",
           "status": "ok"
-        },
-        {
-          "name": "OpenChargeMap",
-          "status": "indisponivel"
         }
       ],
       "fitBoundsIsScope": true,
       "qaPassed": true,
-      "googleQueries": 273,
+      "googleQueries": 271,
       "invariantViolations": [],
       "render": {
         "online": {
           "violations": 0,
-          "fcpMs": 312,
+          "fcpMs": 208,
           "externalRequests": 25,
-          "externalBeforeFcp": 25
+          "externalBeforeFcp": 0
         },
         "sem_rede": {
           "violations": 0,
-          "fcpMs": 336,
+          "fcpMs": 444,
           "externalRequests": 20,
           "externalBeforeFcp": 20
         },
         "firewall_pendurado": {
           "violations": 0,
-          "fcpMs": 272,
+          "fcpMs": 180,
           "externalRequests": 25,
-          "externalBeforeFcp": 25
+          "externalBeforeFcp": 0
         },
         "sem_leaflet": {
           "violations": 0,
-          "fcpMs": 132,
+          "fcpMs": 188,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         },
         "sem_js": {
           "violations": 0,
-          "fcpMs": 124,
+          "fcpMs": 176,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         }
@@ -457,10 +441,6 @@
         {
           "name": "Google Places",
           "status": "ok"
-        },
-        {
-          "name": "OpenChargeMap",
-          "status": "indisponivel"
         }
       ],
       "fitBoundsIsScope": true,
@@ -470,31 +450,31 @@
       "render": {
         "online": {
           "violations": 0,
-          "fcpMs": 152,
+          "fcpMs": 204,
           "externalRequests": 24,
           "externalBeforeFcp": 24
         },
         "sem_rede": {
           "violations": 0,
-          "fcpMs": 188,
+          "fcpMs": 208,
           "externalRequests": 44,
           "externalBeforeFcp": 33
         },
         "firewall_pendurado": {
           "violations": 0,
-          "fcpMs": 140,
+          "fcpMs": 228,
           "externalRequests": 24,
           "externalBeforeFcp": 24
         },
         "sem_leaflet": {
           "violations": 0,
-          "fcpMs": 92,
+          "fcpMs": 128,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         },
         "sem_js": {
           "violations": 0,
-          "fcpMs": 104,
+          "fcpMs": 152,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         }
