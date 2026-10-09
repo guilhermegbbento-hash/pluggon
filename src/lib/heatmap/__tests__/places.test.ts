@@ -113,3 +113,77 @@ test("camada obrigatória que continua no teto após subdividir aborta o relató
     (err: unknown) => err instanceof QaGateError && err.report.violations.some((v) => v.rule === "camada_incompleta")
   );
 });
+
+const cidadeTeste: GeocodeFn = async () => ({
+  status: "OK",
+  results: [
+    {
+      types: ["locality", "political"],
+      address_components: [
+        { long_name: "Cidade Teste", short_name: "Cidade Teste", types: ["administrative_area_level_2", "political"] },
+        { long_name: "Estado", short_name: "SP", types: ["administrative_area_level_1", "political"] },
+      ],
+      geometry: {
+        location: CENTER,
+        bounds: { northeast: offset(CENTER, 5000, 5000), southwest: offset(CENTER, -5000, -5000) },
+      },
+    },
+  ],
+});
+
+/** Conta as requisições por tipo buscado, para provar o que NÃO foi pago. */
+function counting(inner: typeof fetch) {
+  const byType = new Map<string, number>();
+  const f = (async (url: string | URL | Request, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body ?? "{}"));
+    const types: string[] = body.includedType ? [body.includedType] : body.includedTypes ?? [];
+    const k = types.length > 1 ? "complementares" : types[0];
+    byType.set(k, (byType.get(k) ?? 0) + 1);
+    return inner(url, init);
+  }) as typeof fetch;
+  return { f, byType };
+}
+
+test("âncora que continua no teto após subdividir GERA o mapa, com aviso no relatório de execução", async () => {
+  // 70 hospitais no mesmo ponto: nenhuma subdivisão separa, mas âncora não aborta
+  const stack: Pt[] = Array.from({ length: 70 }, (_, i) => ({ id: `hosp-${i}`, ...offset(CENTER, 100, 100), types: ["hospital"] }));
+  const payload = await generateHeatmap(
+    { city: "Cidade Teste", state: "SP", regions: [] },
+    { googleApiKey: "x", fetchImpl: fakePlacesApi(stack), geocode: cidadeTeste }
+  );
+  assert.equal(payload.qa!.passed, true);
+  assert.equal(payload.qa!.violations.length, 0);
+  assert.equal(payload.qa!.warnings.length, 1);
+  assert.equal(payload.qa!.warnings[0].rule, "ancora_incompleta");
+  assert.match(payload.qa!.warnings[0].detail, /Cidade Teste/);
+  assert.match(payload.qa!.warnings[0].detail, /1 célula\(s\)/);
+});
+
+test("concorrente no teto reprova ANTES de pagar âncoras, renda e complementares", async () => {
+  const stack: Pt[] = [
+    ...Array.from({ length: 30 }, (_, i) => ({ id: `ev-${i}`, ...offset(CENTER, 100, 100), types: [EV] })),
+    { id: "posto-1", ...offset(CENTER, 300, 0), types: ["gas_station"] },
+  ];
+  const { f, byType } = counting(fakePlacesApi(stack));
+  let rendaChamada = false;
+  await assert.rejects(
+    generateHeatmap(
+      { city: "Cidade Teste", state: "SP", regions: [] },
+      {
+        googleApiKey: "x",
+        fetchImpl: f,
+        geocode: cidadeTeste,
+        loadRenda: async () => {
+          rendaChamada = true;
+          return new Map();
+        },
+      }
+    ),
+    (err: unknown) => err instanceof QaGateError && err.report.violations.some((v) => v.rule === "camada_incompleta")
+  );
+  assert.ok((byType.get(EV) ?? 0) > 0);
+  for (const t of ["gas_station", "shopping_mall", "bus_station", "airport", "hospital", "complementares"]) {
+    assert.equal(byType.get(t) ?? 0, 0, `${t} não podia ter sido buscado`);
+  }
+  assert.equal(rendaChamada, false);
+});

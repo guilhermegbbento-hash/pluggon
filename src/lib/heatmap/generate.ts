@@ -1,13 +1,14 @@
 /**
- * Orquestração do gerador: escopo → buscas restritas → pipeline → QA gate.
+ * Orquestração do gerador: escopo → gate de escopo → concorrentes → gate de
+ * completude → âncoras → renda e corte → complementares → pipeline → QA gate.
  * Usado pela rota da API, pelo script de regressão e pelo teste ao vivo.
  */
 
 import { APP_VERSION } from "../version";
-import { PLACE_TYPE_SPECS } from "./config";
+import { specsForLayer } from "./config";
 import { searchComplementaryAroundAnchors, searchSpecInArea, type FetchFn } from "./places";
 import { computeCounters, runPipeline } from "./pipeline";
-import { assertQaGate } from "./qa-gate";
+import { assertEarlyQaGate, assertQaGate, checkCompleteness, checkScope } from "./qa-gate";
 import { decidirAncora, faixaDeRenda } from "./ranking";
 import { googleGeocoder, resolveScope, type GeocodeFn, type ScopeInput } from "./scope";
 import type {
@@ -56,6 +57,11 @@ export async function generateHeatmap(input: ScopeInput, deps: GenerateDeps): Pr
 
   const scope = await resolveScope(input, geocode);
 
+  // O que dá para reprovar cedo reprova antes de pagar o resto. O gate final
+  // refaz estas checagens sobre o payload pronto.
+  // 0. Escopo: só geocoding até aqui, nenhuma busca paga.
+  assertEarlyQaGate(checkScope(scope));
+
   const candidates: Candidate[] = [];
   const searches: SearchSummary[] = [];
   const sources: SourceStatus[] = [];
@@ -63,33 +69,42 @@ export async function generateHeatmap(input: ScopeInput, deps: GenerateDeps): Pr
   const discardsDoCorte: Discard[] = [];
   let placesRequests = 0;
 
-  // 1. Âncoras e concorrentes são buscados no escopo inteiro, cada um até
-  //    completar. Complementares NÃO: eles só valem perto de âncora, então são
-  //    buscados depois, em volta das âncoras que sobreviverem à validação.
-  const scopeSpecs = PLACE_TYPE_SPECS.filter((s) => s.layer !== "complementary");
-  for (const area of scope.areas) {
-    const results = await Promise.all(
-      scopeSpecs.map(async (spec) => ({
-        spec,
-        result: await searchSpecInArea(spec, area, { apiKey: deps.googleApiKey, fetchImpl: deps.fetchImpl }),
-      }))
-    );
-
-    for (const { spec, result } of results) {
-      placesRequests += result.requests;
-      searches.push(...result.summaries);
-      for (const place of result.places) candidates.push({ layer: spec.layer, typeKey: spec.key, place });
+  // Âncoras e concorrentes são buscados no escopo inteiro, cada um até
+  // completar. Complementares NÃO: eles só valem perto de âncora, então são
+  // buscados depois, em volta das âncoras que sobreviverem à validação.
+  const searchLayer = async (layer: "competitor" | "anchor") => {
+    const layerSearches: SearchSummary[] = [];
+    for (const area of scope.areas) {
+      const results = await Promise.all(
+        specsForLayer(layer).map(async (spec) => ({
+          spec,
+          result: await searchSpecInArea(spec, area, { apiKey: deps.googleApiKey, fetchImpl: deps.fetchImpl }),
+        }))
+      );
+      for (const { spec, result } of results) {
+        placesRequests += result.requests;
+        layerSearches.push(...result.summaries);
+        for (const place of result.places) candidates.push({ layer: spec.layer, typeKey: spec.key, place });
+      }
     }
-  }
+    searches.push(...layerSearches);
+    // Busca quebrada aborta ANTES de gastar com as etapas seguintes.
+    const failed = layerSearches.filter((s) => s.error !== null);
+    if (failed.length > 0) {
+      throw new HeatmapGenerationError(
+        `Falha em ${failed.length} busca(s) do Google Places. O relatório não foi gerado para não sair com camada falsamente vazia.`,
+        failed.map((s) => `${s.layer}/${s.typeKey} ${s.method} "${s.query}" em ${s.areaName}: ${s.error}`)
+      );
+    }
+    // Completude: concorrente no teto reprova aqui; âncora no teto só vira
+    // aviso, que o gate final recalcula e leva para o relatório.
+    assertEarlyQaGate(checkCompleteness(layerSearches).violations);
+  };
 
-  // Busca quebrada aborta ANTES de gastar com os complementares.
-  const failedScope = searches.filter((s) => s.error !== null);
-  if (failedScope.length > 0) {
-    throw new HeatmapGenerationError(
-      `Falha em ${failedScope.length} busca(s) do Google Places. O relatório não foi gerado para não sair com camada falsamente vazia.`,
-      failedScope.map((s) => `${s.layer}/${s.typeKey} ${s.method} "${s.query}" em ${s.areaName}: ${s.error}`)
-    );
-  }
+  // 1. Concorrentes PRIMEIRO: é a única camada cujo teto aborta o relatório.
+  //    Reprovar aqui não paga âncoras, renda nem complementares.
+  await searchLayer("competitor");
+  await searchLayer("anchor");
 
   // 2. Âncoras validadas (sem duplicata, sem colisão com concorrente e já sem
   //    o que não tem porte). O piso de porte roda no pipeline; a régua e a

@@ -359,6 +359,7 @@ export default function HeatmapPage() {
     (s) => s.truncated && specByKey(s.typeKey)?.completeness !== "obrigatoria"
   );
   const capWarnings = radiusCapWarnings(scope);
+  const anchorWarnings = result.qa?.warnings ?? [];
   const withoutAnchor = result.qa?.discardsByReason.complementar_sem_ancora_proxima ?? 0;
 
   // "N de M": M é o que existe no raio depois da validação; N é o que passou na
@@ -455,6 +456,17 @@ export default function HeatmapPage() {
         <div className="mt-2 rounded-lg border border-[#66BB6A] bg-[#66BB6A1A] px-3 py-2 text-xs text-[#A5D6A7]">
           <strong>0 concorrentes no raio de {radiusText}</strong> — praça sem concorrência mapeada, oportunidade a
           validar em campo.
+        </div>
+      )}
+      {anchorWarnings.length > 0 && (
+        <div className="mt-2 rounded-lg border border-[#FFC107] bg-[#FFC1071A] px-3 py-2 text-xs text-[#FFE082]">
+          <strong>Âncoras incompletas</strong> — o mapa foi gerado, mas a busca destas camadas ficou no limite de
+          resultados da API mesmo depois de subdividir. A camada de concorrentes está completa.
+          {anchorWarnings.map((w) => (
+            <div key={w.detail} className="mt-1">
+              • {w.detail}
+            </div>
+          ))}
         </div>
       )}
       {truncatedSearches.length > 0 && (

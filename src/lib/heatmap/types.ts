@@ -228,10 +228,17 @@ export interface QaViolation {
   detail: string;
 }
 
+/** Não reprova: sai no relatório de execução (tela do app e log), nunca no HTML do cliente. */
+export interface QaWarning {
+  rule: "ancora_incompleta";
+  detail: string;
+}
+
 export interface QaReport {
   passed: boolean;
   checkedAt: string;
   violations: QaViolation[];
+  warnings: QaWarning[];
   rendered: { anchors: number; complementary: number; competitors: number };
   discardsByReason: Partial<Record<DiscardReason, number>>;
   discardsByLayer: Record<LayerKey, Partial<Record<DiscardReason, number>>>;

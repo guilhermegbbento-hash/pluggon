@@ -1,7 +1,7 @@
 {
-  "ranAt": "2026-09-23T00:00:15.882Z",
-  "generatorVersion": "3.2.1",
-  "sourceHash": "7e550f321891fb30",
+  "ranAt": "2026-10-09T22:44:42.857Z",
+  "generatorVersion": "3.2.2",
+  "sourceHash": "e20883793ffacf9c",
   "allPassed": true,
   "cases": [
     {
@@ -26,14 +26,14 @@
       "complementaryWithoutAnchor": 0,
       "renderViolations": 0,
       "counts": {
-        "anchors": 31,
-        "complementary": 155,
-        "competitors": 17,
+        "anchors": 30,
+        "complementary": 150,
+        "competitors": 19,
         "competitorsDC": 3,
         "competitorsAC": 9,
-        "competitorsUnknown": 5,
+        "competitorsUnknown": 7,
         "anchorsByType": {
-          "gas_station": 22,
+          "gas_station": 21,
           "shopping_mall": 3,
           "hospital": 6
         }
@@ -44,17 +44,18 @@
         "competitors": 2119
       },
       "discardsByReason": {
-        "fora_do_raio": 56,
+        "fora_do_raio": 57,
         "posto_sem_porte": 7,
-        "shopping_sem_porte": 4,
+        "shopping_sem_porte": 7,
         "tipo_principal_divergente": 3,
-        "hospital_sem_porte": 17,
-        "duplicata_nome_contido": 7,
-        "duplicata_proximidade_nome": 6,
+        "hospital_sem_porte": 12,
+        "duplicata_nome_contido": 10,
+        "duplicata_proximidade_nome": 7,
         "duplicata_entre_camadas": 6,
-        "complementar_excedente_por_ancora": 200
+        "complementar_excedente_por_ancora": 204
       },
       "truncatedSearches": 0,
+      "anchorWarnings": 0,
       "sources": [
         {
           "name": "Google Places",
@@ -63,36 +64,36 @@
       ],
       "fitBoundsIsScope": true,
       "qaPassed": true,
-      "googleQueries": 44,
+      "googleQueries": 43,
       "invariantViolations": [],
       "render": {
         "online": {
           "violations": 0,
-          "fcpMs": 304,
+          "fcpMs": 396,
           "externalRequests": 20,
           "externalBeforeFcp": 20
         },
         "sem_rede": {
           "violations": 0,
-          "fcpMs": 276,
+          "fcpMs": 268,
           "externalRequests": 40,
           "externalBeforeFcp": 26
         },
         "firewall_pendurado": {
           "violations": 0,
-          "fcpMs": 248,
+          "fcpMs": 296,
           "externalRequests": 20,
           "externalBeforeFcp": 20
         },
         "sem_leaflet": {
           "violations": 0,
-          "fcpMs": 136,
+          "fcpMs": 204,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         },
         "sem_js": {
           "violations": 0,
-          "fcpMs": 156,
+          "fcpMs": 192,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         }
@@ -113,21 +114,21 @@
         }
       ],
       "competitorSearch": {
-        "cells": 46,
+        "cells": 50,
         "maxDepth": 4,
         "cappedCells": 0
       },
       "complementaryWithoutAnchor": 0,
       "renderViolations": 0,
       "counts": {
-        "anchors": 43,
-        "complementary": 215,
+        "anchors": 44,
+        "complementary": 220,
         "competitors": 158,
-        "competitorsDC": 4,
-        "competitorsAC": 107,
-        "competitorsUnknown": 47,
+        "competitorsDC": 5,
+        "competitorsAC": 113,
+        "competitorsUnknown": 40,
         "anchorsByType": {
-          "gas_station": 28,
+          "gas_station": 29,
           "shopping_mall": 8,
           "hospital": 7
         }
@@ -138,19 +139,20 @@
         "competitors": 1664
       },
       "discardsByReason": {
-        "fora_do_raio": 74,
-        "posto_sem_porte": 10,
+        "fora_do_raio": 78,
+        "posto_sem_porte": 11,
         "shopping_sem_porte": 7,
         "ponto_de_onibus_sem_sinal_de_terminal": 3,
         "tipo_principal_divergente": 1,
-        "hospital_sem_porte": 8,
-        "duplicata_proximidade_nome": 13,
-        "duplicata_nome_contido": 10,
+        "hospital_sem_porte": 7,
+        "duplicata_proximidade_nome": 23,
+        "duplicata_nome_contido": 13,
         "duplicata_entre_camadas": 7,
         "ancora_abaixo_do_corte": 3,
-        "complementar_excedente_por_ancora": 321
+        "complementar_excedente_por_ancora": 326
       },
       "truncatedSearches": 0,
+      "anchorWarnings": 0,
       "sources": [
         {
           "name": "Google Places",
@@ -159,36 +161,36 @@
       ],
       "fitBoundsIsScope": true,
       "qaPassed": true,
-      "googleQueries": 99,
+      "googleQueries": 104,
       "invariantViolations": [],
       "render": {
         "online": {
           "violations": 0,
-          "fcpMs": 308,
+          "fcpMs": 336,
           "externalRequests": 20,
           "externalBeforeFcp": 20
         },
         "sem_rede": {
           "violations": 0,
-          "fcpMs": 300,
+          "fcpMs": 380,
           "externalRequests": 20,
           "externalBeforeFcp": 20
         },
         "firewall_pendurado": {
           "violations": 0,
-          "fcpMs": 288,
+          "fcpMs": 340,
           "externalRequests": 20,
           "externalBeforeFcp": 20
         },
         "sem_leaflet": {
           "violations": 0,
-          "fcpMs": 164,
+          "fcpMs": 188,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         },
         "sem_js": {
           "violations": 0,
-          "fcpMs": 172,
+          "fcpMs": 184,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         }
@@ -216,14 +218,14 @@
       "complementaryWithoutAnchor": 0,
       "renderViolations": 0,
       "counts": {
-        "anchors": 61,
-        "complementary": 305,
-        "competitors": 50,
-        "competitorsDC": 10,
+        "anchors": 63,
+        "complementary": 315,
+        "competitors": 51,
+        "competitorsDC": 11,
         "competitorsAC": 21,
         "competitorsUnknown": 19,
         "anchorsByType": {
-          "gas_station": 30,
+          "gas_station": 32,
           "shopping_mall": 16,
           "hospital": 15
         }
@@ -234,19 +236,20 @@
         "competitors": 1684
       },
       "discardsByReason": {
-        "fora_do_raio": 67,
-        "posto_sem_porte": 4,
-        "shopping_sem_porte": 23,
+        "fora_do_raio": 68,
+        "posto_sem_porte": 9,
+        "shopping_sem_porte": 22,
         "ponto_de_onibus_sem_sinal_de_terminal": 1,
         "tipo_principal_divergente": 2,
         "hospital_sem_porte": 12,
-        "duplicata_proximidade_nome": 20,
-        "duplicata_nome_contido": 16,
+        "duplicata_proximidade_nome": 25,
+        "duplicata_nome_contido": 21,
         "duplicata_entre_camadas": 11,
-        "ancora_abaixo_do_corte": 5,
-        "complementar_excedente_por_ancora": 523
+        "ancora_abaixo_do_corte": 4,
+        "complementar_excedente_por_ancora": 541
       },
       "truncatedSearches": 0,
+      "anchorWarnings": 0,
       "sources": [
         {
           "name": "Google Places",
@@ -255,36 +258,36 @@
       ],
       "fitBoundsIsScope": true,
       "qaPassed": true,
-      "googleQueries": 88,
+      "googleQueries": 94,
       "invariantViolations": [],
       "render": {
         "online": {
           "violations": 0,
-          "fcpMs": 292,
+          "fcpMs": 388,
           "externalRequests": 20,
           "externalBeforeFcp": 20
         },
         "sem_rede": {
           "violations": 0,
-          "fcpMs": 300,
+          "fcpMs": 352,
           "externalRequests": 20,
           "externalBeforeFcp": 20
         },
         "firewall_pendurado": {
           "violations": 0,
-          "fcpMs": 300,
+          "fcpMs": 340,
           "externalRequests": 20,
           "externalBeforeFcp": 20
         },
         "sem_leaflet": {
           "violations": 0,
-          "fcpMs": 144,
+          "fcpMs": 176,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         },
         "sem_js": {
           "violations": 0,
-          "fcpMs": 148,
+          "fcpMs": 184,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         }
@@ -312,14 +315,14 @@
       "complementaryWithoutAnchor": 0,
       "renderViolations": 0,
       "counts": {
-        "anchors": 179,
-        "complementary": 893,
-        "competitors": 113,
+        "anchors": 178,
+        "complementary": 888,
+        "competitors": 114,
         "competitorsDC": 23,
         "competitorsAC": 64,
-        "competitorsUnknown": 26,
+        "competitorsUnknown": 27,
         "anchorsByType": {
-          "gas_station": 132,
+          "gas_station": 131,
           "shopping_mall": 20,
           "bus_station": 3,
           "airport": 2,
@@ -332,19 +335,20 @@
         "competitors": 9713
       },
       "discardsByReason": {
-        "fora_do_raio": 49,
-        "posto_sem_porte": 68,
-        "shopping_sem_porte": 46,
+        "fora_do_raio": 47,
+        "posto_sem_porte": 70,
+        "shopping_sem_porte": 55,
         "aeroporto_sem_porte": 2,
         "tipo_principal_divergente": 1,
         "hospital_sem_porte": 35,
-        "duplicata_nome_contido": 52,
-        "duplicata_proximidade_nome": 102,
-        "duplicata_entre_camadas": 45,
-        "ancora_abaixo_do_corte": 29,
-        "complementar_excedente_por_ancora": 1415
+        "duplicata_nome_contido": 64,
+        "duplicata_proximidade_nome": 112,
+        "duplicata_entre_camadas": 44,
+        "ancora_abaixo_do_corte": 28,
+        "complementar_excedente_por_ancora": 1389
       },
       "truncatedSearches": 0,
+      "anchorWarnings": 0,
       "sources": [
         {
           "name": "Google Places",
@@ -353,36 +357,36 @@
       ],
       "fitBoundsIsScope": true,
       "qaPassed": true,
-      "googleQueries": 271,
+      "googleQueries": 269,
       "invariantViolations": [],
       "render": {
         "online": {
           "violations": 0,
-          "fcpMs": 208,
+          "fcpMs": 576,
           "externalRequests": 25,
-          "externalBeforeFcp": 0
+          "externalBeforeFcp": 25
         },
         "sem_rede": {
           "violations": 0,
-          "fcpMs": 444,
+          "fcpMs": 472,
           "externalRequests": 20,
           "externalBeforeFcp": 20
         },
         "firewall_pendurado": {
           "violations": 0,
-          "fcpMs": 180,
+          "fcpMs": 452,
           "externalRequests": 25,
-          "externalBeforeFcp": 0
+          "externalBeforeFcp": 25
         },
         "sem_leaflet": {
           "violations": 0,
-          "fcpMs": 188,
+          "fcpMs": 216,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         },
         "sem_js": {
           "violations": 0,
-          "fcpMs": 176,
+          "fcpMs": 208,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         }
@@ -431,12 +435,13 @@
         "fora_do_raio": 8,
         "posto_sem_porte": 1,
         "shopping_sem_porte": 4,
-        "hospital_sem_porte": 3,
+        "hospital_sem_porte": 4,
         "duplicata_nome_contido": 1,
         "ancora_abaixo_do_corte": 1,
         "complementar_excedente_por_ancora": 74
       },
       "truncatedSearches": 0,
+      "anchorWarnings": 0,
       "sources": [
         {
           "name": "Google Places",
@@ -450,31 +455,31 @@
       "render": {
         "online": {
           "violations": 0,
-          "fcpMs": 204,
+          "fcpMs": 276,
           "externalRequests": 24,
           "externalBeforeFcp": 24
         },
         "sem_rede": {
           "violations": 0,
-          "fcpMs": 208,
+          "fcpMs": 248,
           "externalRequests": 44,
           "externalBeforeFcp": 33
         },
         "firewall_pendurado": {
           "violations": 0,
-          "fcpMs": 228,
+          "fcpMs": 236,
           "externalRequests": 24,
           "externalBeforeFcp": 24
         },
         "sem_leaflet": {
           "violations": 0,
-          "fcpMs": 128,
+          "fcpMs": 200,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         },
         "sem_js": {
           "violations": 0,
-          "fcpMs": 152,
+          "fcpMs": 196,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         }
