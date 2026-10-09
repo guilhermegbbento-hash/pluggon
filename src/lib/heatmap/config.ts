@@ -223,6 +223,24 @@ export const PLACE_TYPE_SPECS: PlaceTypeSpec[] = [
   },
 ];
 
+/**
+ * O que o QA gate faz quando uma camada de completude obrigatória continua no
+ * teto da API depois de subdividir até o fim.
+ *
+ * - Concorrente: ABORTA. Camada cortada vira praça falsamente vazia — o mapa
+ *   mentiria para o cliente.
+ * - Âncora: GERA, com aviso no relatório de execução (camada, área, células no
+ *   teto). Âncora faltando é mapa com menos opção, não mapa mentiroso; e mapa
+ *   nenhum é pior que os dois.
+ *
+ * A subdivisão continua igual nas duas: o aviso só existe depois dela.
+ */
+export const TRUNCATION_POLICY: Record<LayerKey, "aborta" | "avisa"> = {
+  competitor: "aborta",
+  anchor: "avisa",
+  complementary: "avisa",
+};
+
 export function specsForLayer(layer: LayerKey): PlaceTypeSpec[] {
   return PLACE_TYPE_SPECS.filter((s) => s.layer === layer);
 }

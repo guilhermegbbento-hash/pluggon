@@ -43,6 +43,8 @@ export interface CaseMetrics {
   maxDistanceM: { anchors: number; complementary: number; competitors: number } | null;
   discardsByReason: Partial<Record<DiscardReason, number>>;
   truncatedSearches: number;
+  /** Âncora obrigatória que ficou no teto: gera o mapa, com aviso (ausente em registros antigos). */
+  anchorWarnings?: number;
   sources: { name: string; status: string }[];
   fitBoundsIsScope: boolean | null;
   qaPassed: boolean | null;
@@ -148,6 +150,7 @@ export async function runCase(c: RegressionCase, deps: GenerateDeps): Promise<Ca
     maxDistanceM: null,
     discardsByReason: {},
     truncatedSearches: 0,
+    anchorWarnings: 0,
     sources: [],
     fitBoundsIsScope: null,
     qaPassed: null,
@@ -196,6 +199,7 @@ export async function runCase(c: RegressionCase, deps: GenerateDeps): Promise<Ca
       maxDistanceM: qa!.maxDistanceM,
       discardsByReason: qa!.discardsByReason,
       truncatedSearches: payload.searches.filter((s) => s.truncated).length,
+      anchorWarnings: qa!.warnings.length,
       sources: payload.sources.map((s) => ({ name: s.name.replace(/ \(.*\)$/, ""), status: s.status })),
       fitBoundsIsScope: !violations.some((x) => x.includes("enquadra") || x.includes("scope.bounds")),
       qaPassed: qa!.passed,
@@ -249,8 +253,8 @@ const km = (m: number) => (m / 1000).toFixed(2).replace(".", ",");
 
 export function markdownTable(record: RunRecord): string {
   const head =
-    "| Caso | Modo | Raio (origem; cobertura) | Âncoras | Compl. | Conc. (DC/AC/NI) | Busca conc.: células / prof. / no teto | Dist. máx âncora / compl. / conc. | Fora do raio | Tipo inválido | Tipo principal divergente | Duplicata | Sem porte (ônibus/aero/hosp/shop/posto) | Abaixo do corte (régua/renda) | Compl. sem âncora ≤ 500 m | Buscas de apoio no teto | fitBounds = escopo | Render: online / sem rede / firewall pendurado / sem Leaflet / sem JS | 1ª pintura máx | QA |\n" +
-    "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|";
+    "| Caso | Modo | Raio (origem; cobertura) | Âncoras | Compl. | Conc. (DC/AC/NI) | Busca conc.: células / prof. / no teto | Dist. máx âncora / compl. / conc. | Fora do raio | Tipo inválido | Tipo principal divergente | Duplicata | Sem porte (ônibus/aero/hosp/shop/posto) | Abaixo do corte (régua/renda) | Compl. sem âncora ≤ 500 m | Âncoras no teto (aviso) | Buscas de apoio no teto | fitBounds = escopo | Render: online / sem rede / firewall pendurado / sem Leaflet / sem JS | 1ª pintura máx | QA |\n" +
+    "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|";
   const renderCell = (c: CaseMetrics) => {
     if (c.render) {
       return RENDER_SCENARIO_ORDER.map((s) => {
@@ -265,13 +269,13 @@ export function markdownTable(record: RunRecord): string {
     return values.length === 0 ? "—" : `${Math.max(...values)} ms`;
   };
   const rows = record.cases.map((c) => {
-    if (c.error || !c.counts || !c.maxDistanceM) return `| ${c.id}) ${c.label} | ERRO: ${c.error} ${"|".repeat(20)}`;
+    if (c.error || !c.counts || !c.maxDistanceM) return `| ${c.id}) ${c.label} | ERRO: ${c.error} ${"|".repeat(21)}`;
     const d = c.discardsByReason;
     const radius = c.areas
       .map((a) => `${km(a.radiusM)} km (${a.radiusSource}${a.radiusClamp ? `, ${a.radiusClamp}` : ""}; ${a.boundsCoveragePct === null ? "—" : `${a.boundsCoveragePct}%`})`)
       .join(" + ");
     const cs = c.competitorSearch;
-    return `| ${c.id}) ${c.label} | ${c.mode} | ${radius} | ${c.counts.anchors} | ${c.counts.complementary} | ${c.counts.competitors} (${c.counts.competitorsDC}/${c.counts.competitorsAC}/${c.counts.competitorsUnknown}) | ${cs ? `${cs.cells} / ${cs.maxDepth} / ${cs.cappedCells}` : "—"} | ${km(c.maxDistanceM.anchors)} / ${km(c.maxDistanceM.complementary)} / ${km(c.maxDistanceM.competitors)} km | ${d.fora_do_raio ?? 0} | ${d.tipo_invalido ?? 0} | ${d.tipo_principal_divergente ?? 0} | ${sumDup(d)} | ${d.ponto_de_onibus_sem_sinal_de_terminal ?? 0}/${d.aeroporto_sem_porte ?? 0}/${d.hospital_sem_porte ?? 0}/${d.shopping_sem_porte ?? 0}/${d.posto_sem_porte ?? 0} | ${d.ancora_abaixo_do_corte ?? 0}/${d.ancora_abaixo_do_corte_renda_baixa ?? 0} | ${c.complementaryWithoutAnchor} | ${c.truncatedSearches - (cs?.cappedCells ? 1 : 0)} | ${c.fitBoundsIsScope ? "sim" : "NÃO"} | ${renderCell(c)} | ${fcpCell(c)} | ${c.qaPassed && c.invariantViolations.length === 0 ? "ok" : "FALHOU"} |`;
+    return `| ${c.id}) ${c.label} | ${c.mode} | ${radius} | ${c.counts.anchors} | ${c.counts.complementary} | ${c.counts.competitors} (${c.counts.competitorsDC}/${c.counts.competitorsAC}/${c.counts.competitorsUnknown}) | ${cs ? `${cs.cells} / ${cs.maxDepth} / ${cs.cappedCells}` : "—"} | ${km(c.maxDistanceM.anchors)} / ${km(c.maxDistanceM.complementary)} / ${km(c.maxDistanceM.competitors)} km | ${d.fora_do_raio ?? 0} | ${d.tipo_invalido ?? 0} | ${d.tipo_principal_divergente ?? 0} | ${sumDup(d)} | ${d.ponto_de_onibus_sem_sinal_de_terminal ?? 0}/${d.aeroporto_sem_porte ?? 0}/${d.hospital_sem_porte ?? 0}/${d.shopping_sem_porte ?? 0}/${d.posto_sem_porte ?? 0} | ${d.ancora_abaixo_do_corte ?? 0}/${d.ancora_abaixo_do_corte_renda_baixa ?? 0} | ${c.complementaryWithoutAnchor} | ${c.anchorWarnings ?? 0} | ${c.truncatedSearches - (cs?.cappedCells ? 1 : 0) - (c.anchorWarnings ?? 0)} | ${c.fitBoundsIsScope ? "sim" : "NÃO"} | ${renderCell(c)} | ${fcpCell(c)} | ${c.qaPassed && c.invariantViolations.length === 0 ? "ok" : "FALHOU"} |`;
   });
   const aborts = record.abortCases.map((a) => `- ${a.id}) ${a.label}: ${a.aborted ? `abortou (${a.code})` : "NÃO abortou"}`);
   return [head, ...rows, "", "Desambiguação (têm que abortar):", ...aborts].join("\n");

@@ -4,7 +4,7 @@
  * nenhum número que o pipeline declarou.
  */
 
-import { COMPLEMENTARY_SELECTION, SCOPE_RULES, specByKey } from "./config";
+import { COMPLEMENTARY_SELECTION, SCOPE_RULES, specByKey, TRUNCATION_POLICY } from "./config";
 import { haversineM, matchArea, scopeBoundsFor } from "./geo";
 import { computeCounters, influenceInnerRadiusM, LAYER_LABELS } from "./pipeline";
 import { INFLUENCE_RULES } from "./config";
@@ -17,6 +17,9 @@ import type {
   LayerKey,
   QaReport,
   QaViolation,
+  QaWarning,
+  SearchSummary,
+  StudyScope,
 } from "./types";
 
 export class QaGateError extends Error {
@@ -31,12 +34,10 @@ export class QaGateError extends Error {
 
 const DIST_TOLERANCE_M = 1;
 
-export function runQaGate(p: Omit<HeatmapPayload, "qa"> & { qa?: QaReport | null }): QaReport {
+/** Escopo e enquadramento. Só depende do geocoding: roda antes de qualquer busca paga. */
+export function checkScope(scope: StudyScope): QaViolation[] {
   const violations: QaViolation[] = [];
   const v = (rule: QaViolation["rule"], detail: string) => violations.push({ rule, detail });
-  const { scope } = p;
-
-  // Escopo e enquadramento
   const expectedBounds = scopeBoundsFor(scope.areas);
   for (const k of ["south", "west", "north", "east"] as const) {
     if (Math.abs(expectedBounds[k] - scope.bounds[k]) > 1e-9) {
@@ -57,17 +58,60 @@ export function runQaGate(p: Omit<HeatmapPayload, "qa"> & { qa?: QaReport | null
       );
     }
   }
+  return violations;
+}
 
-  // Completude: camada obrigatória não pode ter célula no teto da API
-  for (const s of p.searches) {
-    if (s.truncated && specByKey(s.typeKey)?.completeness === "obrigatoria") {
-      v(
-        "camada_incompleta",
-        `${LAYER_LABELS[s.layer]}: ${s.method} "${s.query}" em ${s.areaName} continuou no teto da API em ` +
-          `${s.cappedCells} célula(s) após subdividir até a profundidade ${s.maxDepth}`
-      );
+/**
+ * Completude: camada obrigatória que continua no teto da API depois de
+ * subdividir. Concorrente reprova; âncora vira aviso (TRUNCATION_POLICY).
+ * Só depende das buscas: roda logo depois delas, antes de gastar com o resto.
+ */
+export function checkCompleteness(searches: SearchSummary[]): { violations: QaViolation[]; warnings: QaWarning[] } {
+  const violations: QaViolation[] = [];
+  const warnings: QaWarning[] = [];
+  for (const s of searches) {
+    if (!s.truncated || specByKey(s.typeKey)?.completeness !== "obrigatoria") continue;
+    const where =
+      `${LAYER_LABELS[s.layer]}: ${s.method} "${s.query}" em ${s.areaName} continuou no teto da API em ` +
+      `${s.cappedCells} célula(s) após subdividir até a profundidade ${s.maxDepth}`;
+    if (TRUNCATION_POLICY[s.layer] === "aborta") {
+      violations.push({ rule: "camada_incompleta", detail: where });
+    } else {
+      warnings.push({
+        rule: "ancora_incompleta",
+        detail: `${where} — o mapa saiu com as âncoras encontradas; pode faltar ponto dessa camada nessa área`,
+      });
     }
   }
+  return { violations, warnings };
+}
+
+/**
+ * Gate antecipado: reprova com o que já dá para checar, antes de pagar as
+ * etapas seguintes. O gate final (runQaGate) refaz tudo de novo.
+ */
+export function assertEarlyQaGate(violations: QaViolation[]): void {
+  if (violations.length === 0) return;
+  throw new QaGateError({
+    passed: false,
+    checkedAt: new Date().toISOString(),
+    violations,
+    warnings: [],
+    rendered: { anchors: 0, complementary: 0, competitors: 0 },
+    discardsByReason: {},
+    discardsByLayer: { anchor: {}, complementary: {}, competitor: {} },
+    maxDistanceM: { anchors: 0, complementary: 0, competitors: 0 },
+  });
+}
+
+export function runQaGate(p: Omit<HeatmapPayload, "qa"> & { qa?: QaReport | null }): QaReport {
+  const violations: QaViolation[] = [];
+  const v = (rule: QaViolation["rule"], detail: string) => violations.push({ rule, detail });
+  const { scope } = p;
+
+  violations.push(...checkScope(scope));
+  const completeness = checkCompleteness(p.searches);
+  violations.push(...completeness.violations);
 
   // Pontos: raio, tipo, place_id
   const layers: [LayerKey, (AnchorOut | ComplementaryOut | CompetitorOut)[]][] = [
@@ -164,6 +208,7 @@ export function runQaGate(p: Omit<HeatmapPayload, "qa"> & { qa?: QaReport | null
     passed: violations.length === 0,
     checkedAt: new Date().toISOString(),
     violations,
+    warnings: completeness.warnings,
     rendered: {
       anchors: p.anchors.length,
       complementary: p.complementary.length,
@@ -218,6 +263,11 @@ export function formatQaReport(r: QaReport): string {
     `Complementares sem âncora a ≤ ${COMPLEMENTARY_SELECTION.maxDistanceToAnchorM} m: ` +
       `${r.discardsByReason.complementar_sem_ancora_proxima ?? 0} (possível fluxo em área sem âncora mapeada)`,
   ];
+  // `?? []`: payload em cache de versão anterior não tem o campo.
+  const warnings = r.warnings ?? [];
+  if (warnings.length > 0) {
+    lines.push("Avisos (não reprovam):", ...warnings.map((x) => `  - [${x.rule}] ${x.detail}`));
+  }
   if (r.violations.length > 0) {
     lines.push("Violações:", ...r.violations.map((x) => `  - [${x.rule}] ${x.detail}`));
   }

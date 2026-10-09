@@ -142,6 +142,29 @@ test("camada obrigatória ainda no teto da API reprova; camada de apoio no teto 
   assert.ok(!rules({ ...base, searches: [support] }).includes("camada_incompleta"));
 });
 
+test("âncora obrigatória no teto da API NÃO reprova: vira aviso com camada, área e células", () => {
+  const base = basePayload();
+  const anchor = {
+    layer: "anchor" as const,
+    typeKey: "hospital",
+    areaName: "Cidade Teste",
+    method: "searchText" as const,
+    query: "hospital",
+    pages: 60,
+    returned: 900,
+    truncated: true,
+    error: null,
+    cells: 41,
+    maxDepth: 6,
+    cappedCells: 1,
+  };
+  const report = runQaGate({ ...base, searches: [anchor] });
+  assert.equal(report.passed, true);
+  assert.deepEqual(report.warnings.map((w) => w.rule), ["ancora_incompleta"]);
+  assert.match(report.warnings[0].detail, /âncoras: .*"hospital" em Cidade Teste.*1 célula\(s\).*profundidade 6/);
+  assert.equal(runQaGate(base).warnings.length, 0);
+});
+
 test("zero concorrentes aparece como resultado, não como erro", () => {
   const p = basePayload();
   const scope = p.scope;
