@@ -49,6 +49,8 @@ export interface CaseMetrics {
   fitBoundsIsScope: boolean | null;
   qaPassed: boolean | null;
   googleQueries: number | null;
+  /** Indicadores do IBGE (ausente em registros antigos). Vazio aprovou a rodada de 09/10 sem ninguém ver. */
+  municipal?: { population: number | null; gdpPerCapita: number | null } | null;
   invariantViolations: string[];
 }
 
@@ -155,6 +157,7 @@ export async function runCase(c: RegressionCase, deps: GenerateDeps): Promise<Ca
     fitBoundsIsScope: null,
     qaPassed: null,
     googleQueries: null,
+    municipal: null,
     invariantViolations: [],
   };
   let payload: HeatmapPayload;
@@ -204,6 +207,9 @@ export async function runCase(c: RegressionCase, deps: GenerateDeps): Promise<Ca
       fitBoundsIsScope: !violations.some((x) => x.includes("enquadra") || x.includes("scope.bounds")),
       qaPassed: qa!.passed,
       googleQueries: payload.googleQueries,
+      municipal: payload.municipal
+        ? { population: payload.municipal.population, gdpPerCapita: payload.municipal.gdpPerCapita }
+        : null,
       invariantViolations: violations,
     },
   };
