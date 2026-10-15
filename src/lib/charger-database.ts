@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { ScoreDataError } from "@/lib/score/errors";
 
 // ============================================================
 // Tipos
@@ -487,54 +488,47 @@ export async function getChargersNearPoint(
   city: string,
   supabase: SupabaseClient
 ): Promise<ChargersNearPoint> {
-  const empty: ChargersNearPoint = {
-    in200m: [],
-    in500m: [],
-    in1km: [],
-    in2km: [],
-    in5km: [],
-    dcIn200m: 0,
-    dcIn500m: 0,
-    dcIn1km: 0,
-    dcIn2km: 0,
-    dcInCity: 0,
-    totalInCity: 0,
-  };
-
-  try {
-    const { data: cityChargers } = await supabase
-      .from("ev_chargers")
-      .select("*")
-      .ilike("city", normalizeCity(city));
-
-    const chargers = (cityChargers || []) as ChargerRow[];
-
-    const withDistance = chargers.map((c) => ({
-      ...c,
-      distance: haversine(lat, lng, Number(c.lat), Number(c.lng)),
-    }));
-
-    const in200m = withDistance.filter((c) => c.distance <= 200);
-    const in500m = withDistance.filter((c) => c.distance <= 500);
-    const in1km = withDistance.filter((c) => c.distance <= 1000);
-    const in2km = withDistance.filter((c) => c.distance <= 2000);
-    const in5km = withDistance.filter((c) => c.distance <= 5000);
-
-    return {
-      in200m,
-      in500m,
-      in1km,
-      in2km,
-      in5km,
-      dcIn200m: in200m.filter((c) => c.charger_type === "DC").length,
-      dcIn500m: in500m.filter((c) => c.charger_type === "DC").length,
-      dcIn1km: in1km.filter((c) => c.charger_type === "DC").length,
-      dcIn2km: in2km.filter((c) => c.charger_type === "DC").length,
-      dcInCity: chargers.filter((c) => c.charger_type === "DC").length,
-      totalInCity: chargers.length,
-    };
-  } catch (e) {
-    console.error("getChargersNearPoint error:", e);
-    return empty;
+  // Falha na leitura vira erro, não "0 concorrentes": mercado falsamente vazio
+  // é o pior erro que o Score pode entregar. O count exato pega o teto de linhas
+  // do PostgREST (1.000 por resposta), que cortaria a cidade calado.
+  const { data: cityChargers, error, count } = await supabase
+    .from("ev_chargers")
+    .select("*", { count: "exact" })
+    .ilike("city", normalizeCity(city));
+  if (error) {
+    throw new ScoreDataError("concorrentes", `leitura de ev_chargers falhou (${error.message})`, 500);
   }
+  const chargers = (cityChargers || []) as ChargerRow[];
+  if (count !== null && count > chargers.length) {
+    throw new ScoreDataError(
+      "concorrentes",
+      `a leitura de ${city} veio cortada: ${chargers.length} de ${count} carregadores`,
+      500
+    );
+  }
+
+  const withDistance = chargers.map((c) => ({
+    ...c,
+    distance: haversine(lat, lng, Number(c.lat), Number(c.lng)),
+  }));
+
+  const in200m = withDistance.filter((c) => c.distance <= 200);
+  const in500m = withDistance.filter((c) => c.distance <= 500);
+  const in1km = withDistance.filter((c) => c.distance <= 1000);
+  const in2km = withDistance.filter((c) => c.distance <= 2000);
+  const in5km = withDistance.filter((c) => c.distance <= 5000);
+
+  return {
+    in200m,
+    in500m,
+    in1km,
+    in2km,
+    in5km,
+    dcIn200m: in200m.filter((c) => c.charger_type === "DC").length,
+    dcIn500m: in500m.filter((c) => c.charger_type === "DC").length,
+    dcIn1km: in1km.filter((c) => c.charger_type === "DC").length,
+    dcIn2km: in2km.filter((c) => c.charger_type === "DC").length,
+    dcInCity: chargers.filter((c) => c.charger_type === "DC").length,
+    totalInCity: chargers.length,
+  };
 }

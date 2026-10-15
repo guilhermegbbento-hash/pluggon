@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { createClient as createSupabaseClient } from "@/lib/supabase/server";
+import { CLAUDE_MODEL } from "@/lib/claude-model";
 import {
   getCachedOrFetch,
   classifyCompetitors,
@@ -480,8 +481,9 @@ Escreva EM PORTUGUÊS um relatório com exatamente estas seções (use ## para t
 Seja direto, use dados reais fornecidos, não invente números.`;
 
     const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 2000,
+      model: CLAUDE_MODEL,
+      max_tokens: 8000,
+      output_config: { effort: "medium" },
       messages: [{ role: "user", content: prompt }],
     });
 

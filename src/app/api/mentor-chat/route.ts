@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { MENTOR_SYSTEM_PROMPT } from "@/lib/mentor-knowledge";
 import { logUsage } from "@/lib/usage-logger";
+import { CLAUDE_MODEL } from "@/lib/claude-model";
 
 export const maxDuration = 300;
 
@@ -23,8 +24,9 @@ export async function POST(req: Request) {
     const anthropic = new Anthropic();
 
     const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 1000,
+      model: CLAUDE_MODEL,
+      max_tokens: 4000,
+      output_config: { effort: "low" },
       system: [
         {
           type: "text",
