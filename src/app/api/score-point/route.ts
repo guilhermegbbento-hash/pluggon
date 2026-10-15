@@ -12,7 +12,6 @@ import {
 import {
   populateChargersFromGoogle,
   populateChargersLocal,
-  enrichWithOpenChargeMap,
   enrichWithCarregados,
   enrichWithPlugShare,
   cityHasFreshChargers,
@@ -812,7 +811,6 @@ export async function POST(request: Request) {
         supabase
       );
       googleQueriesUsed += gQueries;
-      await enrichWithOpenChargeMap(geo.city, geo.lat, geo.lng, supabase);
       await enrichWithCarregados(geo.city, geo.state, supabase);
       await enrichWithPlugShare(geo.city, geo.lat, geo.lng, supabase);
     }
