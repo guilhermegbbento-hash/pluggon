@@ -1,7 +1,7 @@
 {
-  "ranAt": "2026-10-09T22:44:42.857Z",
-  "generatorVersion": "3.2.2",
-  "sourceHash": "e20883793ffacf9c",
+  "ranAt": "2026-10-15T22:46:54.278Z",
+  "generatorVersion": "3.2.3",
+  "sourceHash": "20ede1a5d9dde45c",
   "allPassed": true,
   "cases": [
     {
@@ -26,33 +26,33 @@
       "complementaryWithoutAnchor": 0,
       "renderViolations": 0,
       "counts": {
-        "anchors": 30,
-        "complementary": 150,
+        "anchors": 31,
+        "complementary": 155,
         "competitors": 19,
-        "competitorsDC": 3,
-        "competitorsAC": 9,
+        "competitorsDC": 2,
+        "competitorsAC": 10,
         "competitorsUnknown": 7,
         "anchorsByType": {
           "gas_station": 21,
           "shopping_mall": 3,
-          "hospital": 6
+          "hospital": 7
         }
       },
       "maxDistanceM": {
-        "anchors": 2124,
+        "anchors": 2158,
         "complementary": 2148,
         "competitors": 2119
       },
       "discardsByReason": {
-        "fora_do_raio": 57,
+        "fora_do_raio": 68,
         "posto_sem_porte": 7,
-        "shopping_sem_porte": 7,
-        "tipo_principal_divergente": 3,
-        "hospital_sem_porte": 12,
-        "duplicata_nome_contido": 10,
-        "duplicata_proximidade_nome": 7,
+        "shopping_sem_porte": 8,
+        "tipo_principal_divergente": 4,
+        "hospital_sem_porte": 17,
+        "duplicata_nome_contido": 9,
+        "duplicata_proximidade_nome": 8,
         "duplicata_entre_camadas": 6,
-        "complementar_excedente_por_ancora": 204
+        "complementar_excedente_por_ancora": 203
       },
       "truncatedSearches": 0,
       "anchorWarnings": 0,
@@ -64,36 +64,40 @@
       ],
       "fitBoundsIsScope": true,
       "qaPassed": true,
-      "googleQueries": 43,
+      "googleQueries": 44,
+      "municipal": {
+        "population": 11911337,
+        "gdpPerCapita": 89564
+      },
       "invariantViolations": [],
       "render": {
         "online": {
           "violations": 0,
-          "fcpMs": 396,
+          "fcpMs": 224,
           "externalRequests": 20,
           "externalBeforeFcp": 20
         },
         "sem_rede": {
           "violations": 0,
-          "fcpMs": 268,
+          "fcpMs": 200,
           "externalRequests": 40,
           "externalBeforeFcp": 26
         },
         "firewall_pendurado": {
           "violations": 0,
-          "fcpMs": 296,
+          "fcpMs": 196,
           "externalRequests": 20,
           "externalBeforeFcp": 20
         },
         "sem_leaflet": {
           "violations": 0,
-          "fcpMs": 204,
+          "fcpMs": 92,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         },
         "sem_js": {
           "violations": 0,
-          "fcpMs": 192,
+          "fcpMs": 116,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         }
@@ -114,22 +118,22 @@
         }
       ],
       "competitorSearch": {
-        "cells": 50,
+        "cells": 46,
         "maxDepth": 4,
         "cappedCells": 0
       },
       "complementaryWithoutAnchor": 0,
       "renderViolations": 0,
       "counts": {
-        "anchors": 44,
-        "complementary": 220,
-        "competitors": 158,
+        "anchors": 43,
+        "complementary": 215,
+        "competitors": 157,
         "competitorsDC": 5,
-        "competitorsAC": 113,
-        "competitorsUnknown": 40,
+        "competitorsAC": 109,
+        "competitorsUnknown": 43,
         "anchorsByType": {
           "gas_station": 29,
-          "shopping_mall": 8,
+          "shopping_mall": 7,
           "hospital": 7
         }
       },
@@ -139,17 +143,17 @@
         "competitors": 1664
       },
       "discardsByReason": {
-        "fora_do_raio": 78,
+        "fora_do_raio": 81,
         "posto_sem_porte": 11,
-        "shopping_sem_porte": 7,
+        "shopping_sem_porte": 8,
         "ponto_de_onibus_sem_sinal_de_terminal": 3,
-        "tipo_principal_divergente": 1,
-        "hospital_sem_porte": 7,
-        "duplicata_proximidade_nome": 23,
-        "duplicata_nome_contido": 13,
+        "tipo_principal_divergente": 7,
+        "hospital_sem_porte": 13,
+        "duplicata_proximidade_nome": 20,
+        "duplicata_nome_contido": 15,
         "duplicata_entre_camadas": 7,
         "ancora_abaixo_do_corte": 3,
-        "complementar_excedente_por_ancora": 326
+        "complementar_excedente_por_ancora": 312
       },
       "truncatedSearches": 0,
       "anchorWarnings": 0,
@@ -161,36 +165,40 @@
       ],
       "fitBoundsIsScope": true,
       "qaPassed": true,
-      "googleQueries": 104,
+      "googleQueries": 100,
+      "municipal": {
+        "population": 11911337,
+        "gdpPerCapita": 89564
+      },
       "invariantViolations": [],
       "render": {
         "online": {
           "violations": 0,
-          "fcpMs": 336,
+          "fcpMs": 192,
           "externalRequests": 20,
           "externalBeforeFcp": 20
         },
         "sem_rede": {
           "violations": 0,
-          "fcpMs": 380,
+          "fcpMs": 212,
           "externalRequests": 20,
           "externalBeforeFcp": 20
         },
         "firewall_pendurado": {
           "violations": 0,
-          "fcpMs": 340,
+          "fcpMs": 192,
           "externalRequests": 20,
           "externalBeforeFcp": 20
         },
         "sem_leaflet": {
           "violations": 0,
-          "fcpMs": 188,
+          "fcpMs": 104,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         },
         "sem_js": {
           "violations": 0,
-          "fcpMs": 184,
+          "fcpMs": 100,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         }
@@ -218,16 +226,16 @@
       "complementaryWithoutAnchor": 0,
       "renderViolations": 0,
       "counts": {
-        "anchors": 63,
-        "complementary": 315,
-        "competitors": 51,
-        "competitorsDC": 11,
+        "anchors": 67,
+        "complementary": 335,
+        "competitors": 52,
+        "competitorsDC": 12,
         "competitorsAC": 21,
         "competitorsUnknown": 19,
         "anchorsByType": {
-          "gas_station": 32,
-          "shopping_mall": 16,
-          "hospital": 15
+          "gas_station": 33,
+          "shopping_mall": 17,
+          "hospital": 17
         }
       },
       "maxDistanceM": {
@@ -236,17 +244,17 @@
         "competitors": 1684
       },
       "discardsByReason": {
-        "fora_do_raio": 68,
-        "posto_sem_porte": 9,
-        "shopping_sem_porte": 22,
+        "fora_do_raio": 74,
+        "posto_sem_porte": 8,
+        "shopping_sem_porte": 27,
         "ponto_de_onibus_sem_sinal_de_terminal": 1,
-        "tipo_principal_divergente": 2,
-        "hospital_sem_porte": 12,
-        "duplicata_proximidade_nome": 25,
-        "duplicata_nome_contido": 21,
+        "tipo_principal_divergente": 1,
+        "hospital_sem_porte": 13,
+        "duplicata_proximidade_nome": 27,
+        "duplicata_nome_contido": 16,
         "duplicata_entre_camadas": 11,
         "ancora_abaixo_do_corte": 4,
-        "complementar_excedente_por_ancora": 541
+        "complementar_excedente_por_ancora": 584
       },
       "truncatedSearches": 0,
       "anchorWarnings": 0,
@@ -258,36 +266,40 @@
       ],
       "fitBoundsIsScope": true,
       "qaPassed": true,
-      "googleQueries": 94,
+      "googleQueries": 104,
+      "municipal": {
+        "population": 1832183,
+        "gdpPerCapita": 65531
+      },
       "invariantViolations": [],
       "render": {
         "online": {
           "violations": 0,
-          "fcpMs": 388,
+          "fcpMs": 224,
           "externalRequests": 20,
           "externalBeforeFcp": 20
         },
         "sem_rede": {
           "violations": 0,
-          "fcpMs": 352,
+          "fcpMs": 212,
           "externalRequests": 20,
           "externalBeforeFcp": 20
         },
         "firewall_pendurado": {
           "violations": 0,
-          "fcpMs": 340,
+          "fcpMs": 212,
           "externalRequests": 20,
           "externalBeforeFcp": 20
         },
         "sem_leaflet": {
           "violations": 0,
-          "fcpMs": 176,
+          "fcpMs": 124,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         },
         "sem_js": {
           "violations": 0,
-          "fcpMs": 184,
+          "fcpMs": 104,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         }
@@ -315,15 +327,15 @@
       "complementaryWithoutAnchor": 0,
       "renderViolations": 0,
       "counts": {
-        "anchors": 178,
-        "complementary": 888,
-        "competitors": 114,
+        "anchors": 179,
+        "complementary": 894,
+        "competitors": 115,
         "competitorsDC": 23,
         "competitorsAC": 64,
-        "competitorsUnknown": 27,
+        "competitorsUnknown": 28,
         "anchorsByType": {
-          "gas_station": 131,
-          "shopping_mall": 20,
+          "gas_station": 130,
+          "shopping_mall": 22,
           "bus_station": 3,
           "airport": 2,
           "hospital": 22
@@ -335,17 +347,16 @@
         "competitors": 9713
       },
       "discardsByReason": {
-        "fora_do_raio": 47,
+        "fora_do_raio": 45,
         "posto_sem_porte": 70,
-        "shopping_sem_porte": 55,
-        "aeroporto_sem_porte": 2,
-        "tipo_principal_divergente": 1,
-        "hospital_sem_porte": 35,
-        "duplicata_nome_contido": 64,
-        "duplicata_proximidade_nome": 112,
+        "shopping_sem_porte": 47,
+        "aeroporto_sem_porte": 3,
+        "hospital_sem_porte": 33,
+        "duplicata_nome_contido": 62,
+        "duplicata_proximidade_nome": 128,
         "duplicata_entre_camadas": 44,
         "ancora_abaixo_do_corte": 28,
-        "complementar_excedente_por_ancora": 1389
+        "complementar_excedente_por_ancora": 1368
       },
       "truncatedSearches": 0,
       "anchorWarnings": 0,
@@ -357,36 +368,40 @@
       ],
       "fitBoundsIsScope": true,
       "qaPassed": true,
-      "googleQueries": 269,
+      "googleQueries": 271,
+      "municipal": {
+        "population": 598370,
+        "gdpPerCapita": 52125
+      },
       "invariantViolations": [],
       "render": {
         "online": {
           "violations": 0,
-          "fcpMs": 576,
+          "fcpMs": 320,
           "externalRequests": 25,
           "externalBeforeFcp": 25
         },
         "sem_rede": {
           "violations": 0,
-          "fcpMs": 472,
+          "fcpMs": 320,
           "externalRequests": 20,
           "externalBeforeFcp": 20
         },
         "firewall_pendurado": {
           "violations": 0,
-          "fcpMs": 452,
+          "fcpMs": 316,
           "externalRequests": 25,
           "externalBeforeFcp": 25
         },
         "sem_leaflet": {
           "violations": 0,
-          "fcpMs": 216,
+          "fcpMs": 144,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         },
         "sem_js": {
           "violations": 0,
-          "fcpMs": 208,
+          "fcpMs": 128,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         }
@@ -434,8 +449,8 @@
       "discardsByReason": {
         "fora_do_raio": 8,
         "posto_sem_porte": 1,
-        "shopping_sem_porte": 4,
-        "hospital_sem_porte": 4,
+        "shopping_sem_porte": 3,
+        "hospital_sem_porte": 3,
         "duplicata_nome_contido": 1,
         "ancora_abaixo_do_corte": 1,
         "complementar_excedente_por_ancora": 74
@@ -451,35 +466,39 @@
       "fitBoundsIsScope": true,
       "qaPassed": true,
       "googleQueries": 18,
+      "municipal": {
+        "population": 11911337,
+        "gdpPerCapita": 89564
+      },
       "invariantViolations": [],
       "render": {
         "online": {
           "violations": 0,
-          "fcpMs": 276,
+          "fcpMs": 168,
           "externalRequests": 24,
           "externalBeforeFcp": 24
         },
         "sem_rede": {
           "violations": 0,
-          "fcpMs": 248,
+          "fcpMs": 148,
           "externalRequests": 44,
           "externalBeforeFcp": 33
         },
         "firewall_pendurado": {
           "violations": 0,
-          "fcpMs": 236,
+          "fcpMs": 164,
           "externalRequests": 24,
           "externalBeforeFcp": 24
         },
         "sem_leaflet": {
           "violations": 0,
-          "fcpMs": 200,
+          "fcpMs": 108,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         },
         "sem_js": {
           "violations": 0,
-          "fcpMs": 196,
+          "fcpMs": 120,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         }
