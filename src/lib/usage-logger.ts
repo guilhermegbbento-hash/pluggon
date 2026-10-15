@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { CLAUDE_INPUT_COST_PER_TOKEN, CLAUDE_OUTPUT_COST_PER_TOKEN } from "@/lib/claude-model";
 
 interface UsageLogParams {
   module: "heatmap" | "score" | "bp" | "market" | "mentor";
@@ -8,9 +9,6 @@ interface UsageLogParams {
   googlePlacesQueries?: number;
 }
 
-// Sonnet pricing: $3/M input, $15/M output
-const CLAUDE_INPUT_COST_PER_TOKEN = 0.003 / 1000;
-const CLAUDE_OUTPUT_COST_PER_TOKEN = 0.015 / 1000;
 const GOOGLE_PLACES_COST_PER_QUERY = 0.032;
 
 export async function logUsage(params: UsageLogParams) {

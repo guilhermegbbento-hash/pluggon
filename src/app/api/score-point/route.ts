@@ -17,6 +17,15 @@ import {
   cityHasFreshChargers,
   getChargersNearPoint,
 } from "@/lib/charger-database";
+import {
+  CLAUDE_INPUT_COST_PER_TOKEN,
+  CLAUDE_MODEL,
+  CLAUDE_OUTPUT_COST_PER_TOKEN,
+} from "@/lib/claude-model";
+import { ScoreDataError } from "@/lib/score/errors";
+import { geocodeCityCenter, requireCityState } from "@/lib/score/geocode";
+import { fetchIBGEData } from "@/lib/score/ibge";
+import { parseStrengths } from "@/lib/score/strengths";
 
 export const maxDuration = 300;
 
@@ -25,8 +34,6 @@ const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY || "";
 const ADMIN_EMAIL = "guilhermegbbento@gmail.com";
 
 // Pricing
-const CLAUDE_INPUT_COST_PER_TOKEN = 0.003 / 1000;
-const CLAUDE_OUTPUT_COST_PER_TOKEN = 0.015 / 1000;
 const GOOGLE_PLACES_COST_PER_QUERY = 0.032;
 
 // ---------- Utilities ----------
@@ -156,92 +163,6 @@ function deduplicateByLocation(places: NearbyPlace[]): NearbyPlace[] {
   });
 }
 
-// ---------- IBGE ----------
-
-interface IBGEData {
-  population: number | null;
-  gdp_total: number | null;
-  gdp_per_capita: number | null;
-  idhm: number | null;
-}
-
-async function fetchIBGEData(city: string, state: string): Promise<IBGEData> {
-  const result: IBGEData = {
-    population: null,
-    gdp_total: null,
-    gdp_per_capita: null,
-    idhm: null,
-  };
-
-  try {
-    const searchUrl = `https://servicodados.ibge.gov.br/api/v1/localidades/estados/${state}/municipios`;
-    const res = await fetch(searchUrl);
-    if (!res.ok) return result;
-    const municipalities = await res.json();
-    const found = municipalities.find(
-      (m: { nome: string }) => m.nome.toLowerCase() === city.toLowerCase()
-    );
-    if (!found) return result;
-
-    try {
-      const popUrl = `https://servicodados.ibge.gov.br/api/v3/agregados/6579/periodos/-1/variaveis/9324?localidades=N6[${found.id}]`;
-      const popRes = await fetch(popUrl);
-      if (popRes.ok) {
-        const popData = await popRes.json();
-        const series = popData?.[0]?.resultados?.[0]?.series?.[0]?.serie;
-        if (series) {
-          const latestKey = Object.keys(series).sort().pop();
-          if (latestKey) result.population = parseInt(series[latestKey], 10);
-        }
-      }
-    } catch {
-      // continue
-    }
-
-    try {
-      const pibUrl = `https://servicodados.ibge.gov.br/api/v3/agregados/5938/periodos/-1/variaveis/37?localidades=N6[${found.id}]`;
-      const pibRes = await fetch(pibUrl);
-      if (pibRes.ok) {
-        const pibData = await pibRes.json();
-        const series = pibData?.[0]?.resultados?.[0]?.series?.[0]?.serie;
-        if (series) {
-          const latestKey = Object.keys(series).sort().pop();
-          if (latestKey) {
-            const pibEmMil = parseFloat(series[latestKey]);
-            result.gdp_total = pibEmMil * 1000;
-            if (result.population && result.population > 0) {
-              result.gdp_per_capita = Math.round(
-                result.gdp_total / result.population
-              );
-            }
-          }
-        }
-      }
-    } catch {
-      // continue
-    }
-
-    try {
-      const idhmUrl = `https://servicodados.ibge.gov.br/api/v3/agregados/1387/periodos/-1/variaveis/4359?localidades=N6[${found.id}]`;
-      const idhmRes = await fetch(idhmUrl);
-      if (idhmRes.ok) {
-        const idhmData = await idhmRes.json();
-        const series = idhmData?.[0]?.resultados?.[0]?.series?.[0]?.serie;
-        if (series) {
-          const latestKey = Object.keys(series).sort().pop();
-          if (latestKey) result.idhm = parseFloat(series[latestKey]);
-        }
-      }
-    } catch {
-      // continue
-    }
-  } catch {
-    // continue
-  }
-
-  return result;
-}
-
 // ---------- Claude text generator ----------
 
 interface ClaudeTextResult {
@@ -276,12 +197,6 @@ async function generateAnalysisText(args: {
   hasHubNearby: boolean;
   observations: string;
 }): Promise<ClaudeTextResult> {
-  const empty: ClaudeTextResult = {
-    strengths: [],
-    tokensIn: 0,
-    tokensOut: 0,
-  };
-
   const systemPrompt = `Você é analista de mercado da PLUGGON, plataforma de inteligência para eletromobilidade no Brasil. Gere relatórios executivos baseados APENAS nos dados fornecidos. Responda APENAS com JSON válido, sem markdown, sem texto extra.`;
 
   const userPrompt = `Score: ${args.overallScore}/100 (${args.classification}).
@@ -311,43 +226,28 @@ Retorne SOMENTE o JSON:
   "strengths": ["bullet 1", "bullet 2", "bullet 3"]
 }`;
 
+  // Sem pontos fortes o score final não é entregue (parseStrengths lança).
+  let message: Anthropic.Message;
   try {
-    const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 1500,
+    message = await anthropic.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 4000,
+      output_config: { effort: "low" },
       system: systemPrompt,
       messages: [{ role: "user", content: userPrompt }],
     });
-
-    const tokensIn = message.usage?.input_tokens || 0;
-    const tokensOut = message.usage?.output_tokens || 0;
-
-    const textBlock = message.content.find((b) => b.type === "text");
-    if (!textBlock || textBlock.type !== "text") {
-      return { ...empty, tokensIn, tokensOut };
-    }
-
-    let raw = textBlock.text
-      .replace(/```json\s*/gi, "")
-      .replace(/```\s*/gi, "")
-      .trim();
-    const start = raw.indexOf("{");
-    if (start > 0) raw = raw.substring(start);
-
-    try {
-      const parsed = JSON.parse(raw);
-      return {
-        strengths: Array.isArray(parsed.strengths) ? parsed.strengths : [],
-        tokensIn,
-        tokensOut,
-      };
-    } catch {
-      return { ...empty, tokensIn, tokensOut };
-    }
   } catch (err) {
-    console.error("score-point: erro Claude:", err instanceof Error ? err.message : err);
-    return empty;
+    throw new ScoreDataError(
+      "pontos_fortes",
+      `chamada ao Claude falhou (${err instanceof Error ? err.message : String(err)})`
+    );
   }
+
+  return {
+    strengths: parseStrengths(message),
+    tokensIn: message.usage?.input_tokens || 0,
+    tokensOut: message.usage?.output_tokens || 0,
+  };
 }
 
 // ---------- Final-mode handler (admin: dados já editados) ----------
@@ -396,6 +296,14 @@ async function handleFinalMode(body: Record<string, unknown>) {
       { error: "Modo 'final' exige campo 'collected' com dados revisados." },
       { status: 400 }
     );
+  }
+  // A coleta já bloqueia sem IBGE e sem centro da cidade; aqui garante que os
+  // dados revisados não chegam zerados ao cálculo.
+  if (!(collected.population > 0) || !(collected.gdpPerCapita > 0)) {
+    throw new ScoreDataError("ibge", "dados revisados sem população ou PIB per capita");
+  }
+  if (!Number.isFinite(collected.distanceToCenter)) {
+    throw new ScoreDataError("centro_da_cidade", "dados revisados sem distância ao centro");
   }
 
   const address = String(body.address || "");
@@ -654,7 +562,7 @@ async function handleFinalMode(body: Record<string, unknown>) {
 
   let score_id: number | null = null;
   if (user) {
-    const { data: inserted } = await supabase
+    const { data: inserted, error: insertError } = await supabase
       .from("point_scores")
       .insert({
         user_id: user.id,
@@ -676,7 +584,11 @@ async function handleFinalMode(body: Record<string, unknown>) {
       })
       .select("id")
       .single();
-    score_id = (inserted?.id as number) ?? null;
+    // Sem gravar, o PDF e o histórico não existem: erro visível, não score_id vazio.
+    if (insertError || !inserted) {
+      throw new ScoreDataError("historico", insertError?.message ?? "insert sem id devolvido", 500);
+    }
+    score_id = inserted.id as number;
   }
 
   return Response.json({ ...responseData, score_id });
@@ -758,6 +670,7 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+    requireCityState(geo);
 
     const supabase = await createClient();
 
@@ -774,30 +687,15 @@ export async function POST(request: Request) {
     // 2. Buscar dados ABVE da cidade
     const abve = getABVEData(geo.city, geo.state);
 
-    // 3. IBGE em paralelo com tudo abaixo
-    const ibgePromise = fetchIBGEData(geo.city, geo.state);
-
-    // 4. Geocode do centro da cidade (para distância)
-    let cityLat = geo.lat;
-    let cityLng = geo.lng;
-    if (GOOGLE_MAPS_API_KEY && geo.city) {
-      try {
-        const cityGeoUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(
-          `${geo.city}, ${geo.state}, Brasil`
-        )}&key=${GOOGLE_MAPS_API_KEY}&language=pt-BR&region=br`;
-        const cityGeoRes = await fetch(cityGeoUrl);
-        googleQueriesUsed += 1;
-        if (cityGeoRes.ok) {
-          const cityGeoData = await cityGeoRes.json();
-          if (cityGeoData.status === "OK" && cityGeoData.results?.length) {
-            cityLat = cityGeoData.results[0].geometry.location.lat;
-            cityLng = cityGeoData.results[0].geometry.location.lng;
-          }
-        }
-      } catch {
-        // continue
-      }
-    }
+    // 3–4. IBGE e centro da cidade ANTES das buscas pagas: se um dos dois
+    // falha, o Score é reprovado aqui, sem gastar as 14–19 consultas do Google.
+    googleQueriesUsed += 1;
+    const [ibgeData, cityCenter] = await Promise.all([
+      fetchIBGEData(geo.city, geo.state),
+      geocodeCityCenter(geo.city, geo.state, GOOGLE_MAPS_API_KEY),
+    ]);
+    const population = ibgeData.population;
+    const gdpPerCapita = ibgeData.gdp_per_capita;
 
     // 5. Verificar se a cidade já tem carregadores frescos no banco
     const hasFresh = await cityHasFreshChargers(geo.city, supabase, 7);
@@ -1009,9 +907,6 @@ export async function POST(request: Request) {
     console.log("DC 1km:", chargersNear.dcIn1km, dcNamesIn1km);
     console.log("DC 2km:", chargersNear.dcIn2km, dcNamesIn2km);
 
-    const ibgeData = await ibgePromise;
-    const population = ibgeData.population ?? 0;
-    const gdpPerCapita = ibgeData.gdp_per_capita ?? 0;
 
     // POIs deduplicados em 500m (para variável "Visibilidade e Fluxo")
     const allPOIs: NearbyPlace[] = [];
@@ -1037,7 +932,7 @@ export async function POST(request: Request) {
 
     // Distância ao centro
     const distanceKm =
-      haversineDistance(geo.lat, geo.lng, cityLat, cityLng) / 1000;
+      haversineDistance(geo.lat, geo.lng, cityCenter.lat, cityCenter.lng) / 1000;
 
     // Carregadores próximos para o mapa (5km) — usado tanto no modo collect
     // quanto no fluxo final, então calcula uma vez aqui.
@@ -1352,7 +1247,7 @@ export async function POST(request: Request) {
     // 15. Salvar histórico
     let score_id: number | null = null;
     if (user) {
-      const { data: inserted } = await supabase
+      const { data: inserted, error: insertError } = await supabase
         .from("point_scores")
         .insert({
           user_id: user.id,
@@ -1374,12 +1269,20 @@ export async function POST(request: Request) {
         })
         .select("id")
         .single();
-      score_id = (inserted?.id as number) ?? null;
+      // Sem gravar, o PDF e o histórico não existem: erro visível, não score_id vazio.
+      if (insertError || !inserted) {
+        throw new ScoreDataError("historico", insertError?.message ?? "insert sem id devolvido", 500);
+      }
+      score_id = inserted.id as number;
     }
 
     return Response.json({ ...responseData, score_id });
   } catch (err: unknown) {
     const errorMessage = err instanceof Error ? err.message : String(err);
+    if (err instanceof ScoreDataError) {
+      console.error("score-point: reprovado:", err.message);
+      return Response.json({ error: err.message, layer: err.layer }, { status: err.status });
+    }
     console.error("score-point: erro geral:", errorMessage);
     return Response.json({ error: errorMessage }, { status: 500 });
   }
