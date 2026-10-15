@@ -98,6 +98,9 @@ for (const c of casosParaRodar) {
       assert.deepEqual(run.metrics.invariantViolations, [], "nenhum ponto fora do raio, nenhum place_id repetido");
       assert.equal(run.metrics.qaPassed, true);
       assert.equal(run.metrics.fitBoundsIsScope, true);
+      // Indicador municipal vazio é mercado falsamente vazio: a rodada reprova.
+      assert.ok((run.metrics.municipal?.population ?? 0) > 0, "população do IBGE precisa vir maior que zero");
+      assert.ok((run.metrics.municipal?.gdpPerCapita ?? 0) > 0, "PIB per capita do IBGE precisa vir maior que zero");
     } catch (err) {
       failures++;
       throw err;

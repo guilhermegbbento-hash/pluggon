@@ -61,6 +61,9 @@ export async function generateHeatmap(input: ScopeInput, deps: GenerateDeps): Pr
   // refaz estas checagens sobre o payload pronto.
   // 0. Escopo: só geocoding até aqui, nenhuma busca paga.
   assertEarlyQaGate(checkScope(scope));
+  // 0b. Indicadores municipais (IBGE): falha aborta aqui, antes do Google.
+  //     Tentar de novo não custa nada; mapa com indicador vazio custa caro.
+  const municipal = deps.loadMunicipal ? await deps.loadMunicipal(scope) : null;
 
   const candidates: Candidate[] = [];
   const searches: SearchSummary[] = [];
@@ -200,8 +203,6 @@ export async function generateHeatmap(input: ScopeInput, deps: GenerateDeps): Pr
       })
       .sort((x, y) => y.rankScore - x.rankScore),
   };
-  const municipal = deps.loadMunicipal ? await deps.loadMunicipal(scope) : null;
-
   const draft: HeatmapPayload = {
     generatorVersion: APP_VERSION,
     generatedAt: (deps.now?.() ?? new Date()).toISOString(),
