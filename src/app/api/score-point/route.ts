@@ -12,8 +12,6 @@ import {
 import {
   populateChargersFromGoogle,
   populateChargersLocal,
-  enrichWithCarregados,
-  enrichWithPlugShare,
   cityHasFreshChargers,
   getChargersNearPoint,
 } from "@/lib/charger-database";
@@ -699,7 +697,8 @@ export async function POST(request: Request) {
     // 5. Verificar se a cidade já tem carregadores frescos no banco
     const hasFresh = await cityHasFreshChargers(geo.city, supabase, 7);
     if (!hasFresh) {
-      // Popular o banco. Cada fonte que funcionar enriquece; se falhar, ignora.
+      // Popular o banco. Falha do Google ou do banco bloqueia o Score (concorrente
+      // não gravado sumiria da contagem sem aviso).
       const gQueries = await populateChargersFromGoogle(
         geo.city,
         geo.state,
@@ -708,8 +707,6 @@ export async function POST(request: Request) {
         supabase
       );
       googleQueriesUsed += gQueries;
-      await enrichWithCarregados(geo.city, geo.state, supabase);
-      await enrichWithPlugShare(geo.city, geo.lat, geo.lng, supabase);
     }
 
     // Sempre faz uma busca local (2km do ponto) — o sweep amplo da cidade pode

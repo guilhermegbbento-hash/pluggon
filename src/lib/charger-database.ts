@@ -161,18 +161,108 @@ function normalizeCity(city: string): string {
     .join(" ");
 }
 
-async function upsertCharger(
+type FetchLike = (url: string) => Promise<Response>;
+
+type NearbyResult = {
+  name?: string;
+  vicinity?: string;
+  formatted_address?: string;
+  geometry?: { location?: { lat?: number; lng?: number } };
+};
+
+/**
+ * Grava os carregadores de uma busca num único upsert. Antes era um por um, e o
+ * erro do banco era ignorado: carregador não gravado sumia da contagem de
+ * concorrentes sem ninguém saber. Agora a falha bloqueia o Score.
+ */
+async function saveChargers(
   supabase: SupabaseClient,
-  charger: Omit<ChargerRow, "id">
-) {
-  try {
-    const normalized = { ...charger, city: normalizeCity(charger.city) };
-    await supabase
-      .from("ev_chargers")
-      .upsert(normalized, { onConflict: "lat,lng,name", ignoreDuplicates: false });
-  } catch (e) {
-    console.error("upsertCharger error:", e);
+  chargers: Omit<ChargerRow, "id">[],
+  fonte: string
+): Promise<void> {
+  // O upsert em lote reprova linha repetida na chave (lat, lng, name).
+  const byKey = new Map<string, Omit<ChargerRow, "id">>();
+  for (const c of chargers) {
+    const row = { ...c, city: normalizeCity(c.city) };
+    byKey.set(`${row.lat}|${row.lng}|${row.name}`, row);
   }
+  if (byKey.size === 0) return;
+  const { error } = await supabase
+    .from("ev_chargers")
+    .upsert([...byKey.values()], { onConflict: "lat,lng,name", ignoreDuplicates: false });
+  if (error) {
+    throw new ScoreDataError(
+      "concorrentes",
+      `gravação de ${byKey.size} carregadores (${fonte}) falhou (${error.message})`,
+      500
+    );
+  }
+}
+
+/**
+ * Nearby Search (legado). O Google devolve erro com HTTP 200 e o motivo em
+ * `status`: chave negada ou cota estourada vinham como "0 resultados". Só OK e
+ * ZERO_RESULTS são resposta; o resto bloqueia o Score.
+ */
+async function googleNearby(
+  params: string,
+  contexto: string,
+  apiKey: string | undefined,
+  fetchImpl: FetchLike
+): Promise<NearbyResult[]> {
+  if (!apiKey) {
+    throw new ScoreDataError("concorrentes", `GOOGLE_MAPS_API_KEY ausente (${contexto})`);
+  }
+  let data: { status?: string; error_message?: string; results?: NearbyResult[] };
+  try {
+    const res = await fetchImpl(
+      `https://maps.googleapis.com/maps/api/place/nearbysearch/json?${params}&key=${apiKey}`
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    data = await res.json();
+  } catch (e) {
+    throw new ScoreDataError("concorrentes", `busca no Google (${contexto}) falhou (${(e as Error).message})`);
+  }
+  if (data.status === "ZERO_RESULTS") return [];
+  if (data.status !== "OK") {
+    const why = [data.status, data.error_message].filter(Boolean).join(" — ") || "sem status";
+    throw new ScoreDataError("concorrentes", `busca no Google (${contexto}) recusada (${why})`);
+  }
+  return data.results ?? [];
+}
+
+/** Resultados da busca → linhas do ev_chargers, sem coordenada repetida. */
+function toChargerRows(
+  results: NearbyResult[],
+  city: string,
+  state: string,
+  source: string,
+  seen: Set<string>
+): Omit<ChargerRow, "id">[] {
+  const rows: Omit<ChargerRow, "id">[] = [];
+  for (const place of results) {
+    const plat = place.geometry?.location?.lat;
+    const plng = place.geometry?.location?.lng;
+    if (typeof plat !== "number" || typeof plng !== "number") continue;
+    const key = `${plat.toFixed(5)},${plng.toFixed(5)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const classification = classifyChargerType(place.name || "");
+    rows.push({
+      city,
+      state,
+      name: place.name || "",
+      address: place.vicinity || place.formatted_address || "",
+      lat: plat,
+      lng: plng,
+      power_kw: classification.estimatedPower,
+      charger_type: classification.type,
+      operator: "",
+      source,
+      verified: classification.confidence === "high",
+    });
+  }
+  return rows;
 }
 
 // ============================================================
@@ -184,11 +274,10 @@ export async function populateChargersFromGoogle(
   state: string,
   lat: number,
   lng: number,
-  supabase: SupabaseClient
+  supabase: SupabaseClient,
+  apiKey: string | undefined = process.env.GOOGLE_MAPS_API_KEY,
+  fetchImpl: FetchLike = fetch
 ): Promise<number> {
-  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
-  if (!apiKey) return 0;
-
   const queries = [
     "eletroposto",
     "carregador veículo elétrico",
@@ -198,51 +287,18 @@ export async function populateChargersFromGoogle(
   ];
 
   const seen = new Set<string>();
-  let googleQueries = 0;
-
+  const rows: Omit<ChargerRow, "id">[] = [];
   for (const query of queries) {
-    try {
-      const url =
-        `https://maps.googleapis.com/maps/api/place/nearbysearch/json` +
-        `?location=${lat},${lng}&radius=50000` +
-        `&keyword=${encodeURIComponent(query)}&key=${apiKey}`;
-      const res = await fetch(url);
-      googleQueries++;
-      if (!res.ok) continue;
-      const data = await res.json();
-      for (const place of (data.results || []) as Array<{
-        name?: string;
-        vicinity?: string;
-        formatted_address?: string;
-        geometry?: { location?: { lat?: number; lng?: number } };
-      }>) {
-        const plat = place.geometry?.location?.lat;
-        const plng = place.geometry?.location?.lng;
-        if (typeof plat !== "number" || typeof plng !== "number") continue;
-        const key = `${plat.toFixed(5)},${plng.toFixed(5)}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        const classification = classifyChargerType(place.name || "");
-        await upsertCharger(supabase, {
-          city,
-          state,
-          name: place.name || "",
-          address: place.vicinity || place.formatted_address || "",
-          lat: plat,
-          lng: plng,
-          power_kw: classification.estimatedPower,
-          charger_type: classification.type,
-          operator: "",
-          source: "google_places",
-          verified: classification.confidence === "high",
-        });
-      }
-    } catch (e) {
-      console.error("Google query error:", e);
-    }
+    const results = await googleNearby(
+      `location=${lat},${lng}&radius=50000&keyword=${encodeURIComponent(query)}`,
+      `"${query}" em ${city}`,
+      apiKey,
+      fetchImpl
+    );
+    rows.push(...toChargerRows(results, city, state, "google_places", seen));
   }
-
-  return googleQueries;
+  await saveChargers(supabase, rows, "Google, cidade");
+  return queries.length;
 }
 
 // Busca local (2km) ao redor de um ponto específico. Roda em toda análise
@@ -253,206 +309,24 @@ export async function populateChargersLocal(
   state: string,
   pointLat: number,
   pointLng: number,
-  supabase: SupabaseClient
+  supabase: SupabaseClient,
+  apiKey: string | undefined = process.env.GOOGLE_MAPS_API_KEY,
+  fetchImpl: FetchLike = fetch
 ): Promise<number> {
-  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
-  if (!apiKey) return 0;
-
-  try {
-    const url =
-      `https://maps.googleapis.com/maps/api/place/nearbysearch/json` +
-      `?location=${pointLat},${pointLng}&radius=2000` +
-      `&keyword=${encodeURIComponent("eletroposto carregador ev charging")}` +
-      `&key=${apiKey}`;
-    const res = await fetch(url);
-    if (!res.ok) return 1;
-    const data = await res.json();
-    const seen = new Set<string>();
-    for (const place of (data.results || []) as Array<{
-      name?: string;
-      vicinity?: string;
-      formatted_address?: string;
-      geometry?: { location?: { lat?: number; lng?: number } };
-    }>) {
-      const plat = place.geometry?.location?.lat;
-      const plng = place.geometry?.location?.lng;
-      if (typeof plat !== "number" || typeof plng !== "number") continue;
-      const key = `${plat.toFixed(5)},${plng.toFixed(5)}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const classification = classifyChargerType(place.name || "");
-      await upsertCharger(supabase, {
-        city,
-        state,
-        name: place.name || "",
-        address: place.vicinity || place.formatted_address || "",
-        lat: plat,
-        lng: plng,
-        power_kw: classification.estimatedPower,
-        charger_type: classification.type,
-        operator: "",
-        source: "google_places_local",
-        verified: classification.confidence === "high",
-      });
-    }
-    return 1;
-  } catch (e) {
-    console.error("populateChargersLocal error:", e);
-    return 1;
-  }
+  const results = await googleNearby(
+    `location=${pointLat},${pointLng}&radius=2000&keyword=${encodeURIComponent("eletroposto carregador ev charging")}`,
+    "2 km do ponto",
+    apiKey,
+    fetchImpl
+  );
+  await saveChargers(supabase, toChargerRows(results, city, state, "google_places_local", new Set()), "Google, 2 km");
+  return 1;
 }
 
-// ============================================================
-// FONTE 3: carregados.com.br (scrape, best effort)
-// ============================================================
-
-const STATE_SLUGS: Record<string, string> = {
-  PR: "paraná+(pr)",
-  SP: "são+paulo+(sp)",
-  RJ: "rio+de+janeiro+(rj)",
-  MG: "minas+gerais+(mg)",
-  RS: "rio+grande+do+sul+(rs)",
-  SC: "santa+catarina+(sc)",
-  BA: "bahia+(ba)",
-  PE: "pernambuco+(pe)",
-  CE: "ceará+(ce)",
-  GO: "goiás+(go)",
-  DF: "distrito+federal+(df)",
-  PA: "pará+(pa)",
-  AM: "amazonas+(am)",
-  MT: "mato+grosso+(mt)",
-  MS: "mato+grosso+do+sul+(ms)",
-  ES: "espírito+santo+(es)",
-  PB: "paraíba+(pb)",
-  RN: "rio+grande+do+norte+(rn)",
-  AL: "alagoas+(al)",
-  PI: "piauí+(pi)",
-  SE: "sergipe+(se)",
-  MA: "maranhão+(ma)",
-};
-
-export async function enrichWithCarregados(
-  city: string,
-  state: string,
-  supabase: SupabaseClient
-): Promise<void> {
-  try {
-    const stateSlug = STATE_SLUGS[state] || state.toLowerCase();
-    const citySlug = city
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[̀-ͯ]/g, "")
-      .replace(/\s+/g, "+");
-    const url = `https://carregados.com.br/estacoes?cidade=${citySlug}&estado=${stateSlug}`;
-
-    const res = await fetch(url, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-      },
-      signal: AbortSignal.timeout(15000),
-    });
-
-    if (!res.ok) return;
-    const html = await res.text();
-
-    const totalMatch = html.match(
-      /(\d+)\s*(?:eletropostos?|estações?|resultados?)/i
-    );
-    if (totalMatch) {
-      console.log("carregados.com.br total para", city, ":", totalMatch[1]);
-    }
-
-    // Extrai pares lat/lng do HTML (best effort) e tenta salvar
-    const coordsRegex =
-      /lat['":\s]+([-\d.]+)[\s,'"]+(?:lng|lon|longitude)['":\s]+([-\d.]+)/gi;
-    const seen = new Set<string>();
-    let saved = 0;
-    let match;
-    while ((match = coordsRegex.exec(html)) !== null) {
-      const lat = parseFloat(match[1]);
-      const lng = parseFloat(match[2]);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
-      const key = `${lat.toFixed(5)},${lng.toFixed(5)}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-
-      await upsertCharger(supabase, {
-        city,
-        state,
-        name: `Eletroposto carregados.com.br ${key}`,
-        address: "",
-        lat,
-        lng,
-        power_kw: 0,
-        charger_type: "unknown",
-        operator: "",
-        source: "carregados",
-        verified: false,
-      });
-      saved++;
-    }
-    if (saved > 0) {
-      console.log("carregados.com.br salvou", saved, "estações para", city);
-    }
-  } catch (e) {
-    console.log("carregados.com.br indisponível (ignorando):", e);
-  }
-}
-
-// ============================================================
-// FONTE 4: PlugShare (best effort via embed público)
-// ============================================================
-
-export async function enrichWithPlugShare(
-  city: string,
-  lat: number,
-  lng: number,
-  supabase: SupabaseClient
-): Promise<void> {
-  try {
-    const url =
-      `https://www.plugshare.com/api/locations/region` +
-      `?count=500&latitude=${lat}&longitude=${lng}&spanLat=0.5&spanLng=0.5` +
-      `&outlets=[{%22connector%22:7}]`;
-    const res = await fetch(url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0",
-        Accept: "application/json",
-      },
-      signal: AbortSignal.timeout(10000),
-    });
-    if (!res.ok) return;
-    const data = (await res.json()) as Array<{
-      latitude?: number;
-      longitude?: number;
-      name?: string;
-      address?: string;
-      kilowatts?: number;
-    }>;
-    console.log("PlugShare encontrou", data?.length || 0, "estações para", city);
-    for (const station of data || []) {
-      if (typeof station.latitude !== "number" || typeof station.longitude !== "number") {
-        continue;
-      }
-      const power = station.kilowatts || 0;
-      await upsertCharger(supabase, {
-        city,
-        state: "",
-        name: station.name || "PlugShare Station",
-        address: station.address || "",
-        lat: station.latitude,
-        lng: station.longitude,
-        power_kw: power,
-        charger_type: power >= 20 ? "DC" : power > 0 ? "AC" : "unknown",
-        source: "plugshare",
-        verified: true,
-      });
-    }
-  } catch (e) {
-    console.log("PlugShare indisponível (ignorando):", e);
-  }
-}
+// PlugShare e carregados.com.br saíram em 22/10/2026: o endpoint do PlugShare
+// devolvia a página do site em vez de dados, e o extrator do carregados achava
+// 0 coordenadas numa página que lista centenas. Nunca gravaram nada, e a falha
+// era engolida.
 
 // ============================================================
 // Verificar se a cidade já tem dados frescos no banco
@@ -463,19 +337,18 @@ export async function cityHasFreshChargers(
   supabase: SupabaseClient,
   maxAgeDays = 7
 ): Promise<boolean> {
-  try {
-    const cutoff = new Date(
-      Date.now() - maxAgeDays * 24 * 60 * 60 * 1000
-    ).toISOString();
-    const { count } = await supabase
-      .from("ev_chargers")
-      .select("id", { count: "exact", head: true })
-      .ilike("city", normalizeCity(city))
-      .gte("updated_at", cutoff);
-    return (count || 0) > 0;
-  } catch {
-    return false;
+  const cutoff = new Date(
+    Date.now() - maxAgeDays * 24 * 60 * 60 * 1000
+  ).toISOString();
+  const { count, error } = await supabase
+    .from("ev_chargers")
+    .select("id", { count: "exact", head: true })
+    .ilike("city", normalizeCity(city))
+    .gte("updated_at", cutoff);
+  if (error) {
+    throw new ScoreDataError("concorrentes", `leitura de ev_chargers falhou (${error.message})`, 500);
   }
+  return (count || 0) > 0;
 }
 
 // ============================================================
