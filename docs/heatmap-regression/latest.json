@@ -1,7 +1,7 @@
 {
-  "ranAt": "2026-10-15T22:46:54.278Z",
-  "generatorVersion": "3.2.3",
-  "sourceHash": "20ede1a5d9dde45c",
+  "ranAt": "2026-10-22T17:40:46.875Z",
+  "generatorVersion": "3.3.0",
+  "sourceHash": "6b0191255cbd0ec5",
   "allPassed": true,
   "cases": [
     {
@@ -44,15 +44,15 @@
         "competitors": 2119
       },
       "discardsByReason": {
-        "fora_do_raio": 68,
+        "fora_do_raio": 69,
         "posto_sem_porte": 7,
         "shopping_sem_porte": 8,
         "tipo_principal_divergente": 4,
         "hospital_sem_porte": 17,
         "duplicata_nome_contido": 9,
-        "duplicata_proximidade_nome": 8,
+        "duplicata_proximidade_nome": 10,
         "duplicata_entre_camadas": 6,
-        "complementar_excedente_por_ancora": 203
+        "complementar_excedente_por_ancora": 202
       },
       "truncatedSearches": 0,
       "anchorWarnings": 0,
@@ -67,37 +67,40 @@
       "googleQueries": 44,
       "municipal": {
         "population": 11911337,
-        "gdpPerCapita": 89564
+        "gdpPerCapita": 89564,
+        "ibgeOrigem": "banco",
+        "populationYear": 2026,
+        "gdpYear": 2023
       },
       "invariantViolations": [],
       "render": {
         "online": {
           "violations": 0,
-          "fcpMs": 224,
+          "fcpMs": 260,
           "externalRequests": 20,
           "externalBeforeFcp": 20
         },
         "sem_rede": {
           "violations": 0,
-          "fcpMs": 200,
+          "fcpMs": 172,
           "externalRequests": 40,
           "externalBeforeFcp": 26
         },
         "firewall_pendurado": {
           "violations": 0,
-          "fcpMs": 196,
+          "fcpMs": 208,
           "externalRequests": 20,
           "externalBeforeFcp": 20
         },
         "sem_leaflet": {
           "violations": 0,
-          "fcpMs": 92,
+          "fcpMs": 120,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         },
         "sem_js": {
           "violations": 0,
-          "fcpMs": 116,
+          "fcpMs": 112,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         }
@@ -143,15 +146,15 @@
         "competitors": 1664
       },
       "discardsByReason": {
-        "fora_do_raio": 81,
+        "fora_do_raio": 78,
         "posto_sem_porte": 11,
         "shopping_sem_porte": 8,
         "ponto_de_onibus_sem_sinal_de_terminal": 3,
-        "tipo_principal_divergente": 7,
+        "tipo_principal_divergente": 2,
         "hospital_sem_porte": 13,
-        "duplicata_proximidade_nome": 20,
-        "duplicata_nome_contido": 15,
-        "duplicata_entre_camadas": 7,
+        "duplicata_proximidade_nome": 22,
+        "duplicata_nome_contido": 13,
+        "duplicata_entre_camadas": 8,
         "ancora_abaixo_do_corte": 3,
         "complementar_excedente_por_ancora": 312
       },
@@ -168,13 +171,16 @@
       "googleQueries": 100,
       "municipal": {
         "population": 11911337,
-        "gdpPerCapita": 89564
+        "gdpPerCapita": 89564,
+        "ibgeOrigem": "banco",
+        "populationYear": 2026,
+        "gdpYear": 2023
       },
       "invariantViolations": [],
       "render": {
         "online": {
           "violations": 0,
-          "fcpMs": 192,
+          "fcpMs": 212,
           "externalRequests": 20,
           "externalBeforeFcp": 20
         },
@@ -186,19 +192,19 @@
         },
         "firewall_pendurado": {
           "violations": 0,
-          "fcpMs": 192,
+          "fcpMs": 228,
           "externalRequests": 20,
           "externalBeforeFcp": 20
         },
         "sem_leaflet": {
           "violations": 0,
-          "fcpMs": 104,
+          "fcpMs": 124,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         },
         "sem_js": {
           "violations": 0,
-          "fcpMs": 100,
+          "fcpMs": 120,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         }
@@ -226,35 +232,35 @@
       "complementaryWithoutAnchor": 0,
       "renderViolations": 0,
       "counts": {
-        "anchors": 67,
-        "complementary": 335,
-        "competitors": 52,
-        "competitorsDC": 12,
+        "anchors": 63,
+        "complementary": 315,
+        "competitors": 53,
+        "competitorsDC": 13,
         "competitorsAC": 21,
         "competitorsUnknown": 19,
         "anchorsByType": {
-          "gas_station": 33,
-          "shopping_mall": 17,
-          "hospital": 17
+          "gas_station": 32,
+          "shopping_mall": 16,
+          "hospital": 15
         }
       },
       "maxDistanceM": {
         "anchors": 1682,
-        "complementary": 1682,
-        "competitors": 1684
+        "complementary": 1662,
+        "competitors": 1687
       },
       "discardsByReason": {
-        "fora_do_raio": 74,
+        "fora_do_raio": 68,
         "posto_sem_porte": 8,
-        "shopping_sem_porte": 27,
+        "shopping_sem_porte": 26,
         "ponto_de_onibus_sem_sinal_de_terminal": 1,
         "tipo_principal_divergente": 1,
-        "hospital_sem_porte": 13,
-        "duplicata_proximidade_nome": 27,
-        "duplicata_nome_contido": 16,
+        "hospital_sem_porte": 11,
+        "duplicata_proximidade_nome": 25,
+        "duplicata_nome_contido": 15,
         "duplicata_entre_camadas": 11,
         "ancora_abaixo_do_corte": 4,
-        "complementar_excedente_por_ancora": 584
+        "complementar_excedente_por_ancora": 542
       },
       "truncatedSearches": 0,
       "anchorWarnings": 0,
@@ -266,28 +272,31 @@
       ],
       "fitBoundsIsScope": true,
       "qaPassed": true,
-      "googleQueries": 104,
+      "googleQueries": 94,
       "municipal": {
         "population": 1832183,
-        "gdpPerCapita": 65531
+        "gdpPerCapita": 65531,
+        "ibgeOrigem": "banco",
+        "populationYear": 2026,
+        "gdpYear": 2023
       },
       "invariantViolations": [],
       "render": {
         "online": {
           "violations": 0,
-          "fcpMs": 224,
+          "fcpMs": 212,
           "externalRequests": 20,
           "externalBeforeFcp": 20
         },
         "sem_rede": {
           "violations": 0,
-          "fcpMs": 212,
+          "fcpMs": 200,
           "externalRequests": 20,
           "externalBeforeFcp": 20
         },
         "firewall_pendurado": {
           "violations": 0,
-          "fcpMs": 212,
+          "fcpMs": 200,
           "externalRequests": 20,
           "externalBeforeFcp": 20
         },
@@ -299,7 +308,7 @@
         },
         "sem_js": {
           "violations": 0,
-          "fcpMs": 104,
+          "fcpMs": 124,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         }
@@ -327,18 +336,18 @@
       "complementaryWithoutAnchor": 0,
       "renderViolations": 0,
       "counts": {
-        "anchors": 179,
-        "complementary": 894,
-        "competitors": 115,
+        "anchors": 180,
+        "complementary": 899,
+        "competitors": 114,
         "competitorsDC": 23,
-        "competitorsAC": 64,
+        "competitorsAC": 63,
         "competitorsUnknown": 28,
         "anchorsByType": {
           "gas_station": 130,
           "shopping_mall": 22,
           "bus_station": 3,
           "airport": 2,
-          "hospital": 22
+          "hospital": 23
         }
       },
       "maxDistanceM": {
@@ -349,14 +358,14 @@
       "discardsByReason": {
         "fora_do_raio": 45,
         "posto_sem_porte": 70,
-        "shopping_sem_porte": 47,
-        "aeroporto_sem_porte": 3,
-        "hospital_sem_porte": 33,
-        "duplicata_nome_contido": 62,
-        "duplicata_proximidade_nome": 128,
-        "duplicata_entre_camadas": 44,
+        "shopping_sem_porte": 46,
+        "aeroporto_sem_porte": 2,
+        "hospital_sem_porte": 34,
+        "duplicata_nome_contido": 61,
+        "duplicata_proximidade_nome": 118,
+        "duplicata_entre_camadas": 45,
         "ancora_abaixo_do_corte": 28,
-        "complementar_excedente_por_ancora": 1368
+        "complementar_excedente_por_ancora": 1396
       },
       "truncatedSearches": 0,
       "anchorWarnings": 0,
@@ -368,40 +377,43 @@
       ],
       "fitBoundsIsScope": true,
       "qaPassed": true,
-      "googleQueries": 271,
+      "googleQueries": 272,
       "municipal": {
         "population": 598370,
-        "gdpPerCapita": 52125
+        "gdpPerCapita": 52125,
+        "ibgeOrigem": "banco",
+        "populationYear": 2026,
+        "gdpYear": 2023
       },
       "invariantViolations": [],
       "render": {
         "online": {
           "violations": 0,
-          "fcpMs": 320,
+          "fcpMs": 356,
           "externalRequests": 25,
           "externalBeforeFcp": 25
         },
         "sem_rede": {
           "violations": 0,
-          "fcpMs": 320,
+          "fcpMs": 288,
           "externalRequests": 20,
           "externalBeforeFcp": 20
         },
         "firewall_pendurado": {
           "violations": 0,
-          "fcpMs": 316,
+          "fcpMs": 320,
           "externalRequests": 25,
           "externalBeforeFcp": 25
         },
         "sem_leaflet": {
           "violations": 0,
-          "fcpMs": 144,
+          "fcpMs": 124,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         },
         "sem_js": {
           "violations": 0,
-          "fcpMs": 128,
+          "fcpMs": 152,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         }
@@ -449,7 +461,7 @@
       "discardsByReason": {
         "fora_do_raio": 8,
         "posto_sem_porte": 1,
-        "shopping_sem_porte": 3,
+        "shopping_sem_porte": 2,
         "hospital_sem_porte": 3,
         "duplicata_nome_contido": 1,
         "ancora_abaixo_do_corte": 1,
@@ -468,31 +480,34 @@
       "googleQueries": 18,
       "municipal": {
         "population": 11911337,
-        "gdpPerCapita": 89564
+        "gdpPerCapita": 89564,
+        "ibgeOrigem": "banco",
+        "populationYear": 2026,
+        "gdpYear": 2023
       },
       "invariantViolations": [],
       "render": {
         "online": {
           "violations": 0,
-          "fcpMs": 168,
+          "fcpMs": 164,
           "externalRequests": 24,
           "externalBeforeFcp": 24
         },
         "sem_rede": {
           "violations": 0,
-          "fcpMs": 148,
+          "fcpMs": 160,
           "externalRequests": 44,
           "externalBeforeFcp": 33
         },
         "firewall_pendurado": {
           "violations": 0,
-          "fcpMs": 164,
+          "fcpMs": 160,
           "externalRequests": 24,
           "externalBeforeFcp": 24
         },
         "sem_leaflet": {
           "violations": 0,
-          "fcpMs": 108,
+          "fcpMs": 112,
           "externalRequests": 0,
           "externalBeforeFcp": 0
         },

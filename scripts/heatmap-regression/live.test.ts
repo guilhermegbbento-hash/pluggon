@@ -11,6 +11,7 @@ import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { createClient } from "@supabase/supabase-js";
 import { HAS_CARTO_EXPORT_KEY } from "../../src/lib/basemap";
 import { APP_VERSION } from "../../src/lib/version";
 import { loadMunicipalIndicators } from "../../src/lib/heatmap/municipal";
@@ -36,9 +37,15 @@ if (!HAS_CARTO_EXPORT_KEY) {
 const chrome = findChrome();
 if (!chrome) throw new Error("Chrome/Edge não encontrado (defina CHROME_PATH) — a regressão abre cada HTML num navegador real.");
 
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+if (!supabaseUrl || !supabaseKey) throw new Error("NEXT_PUBLIC_SUPABASE_URL/ANON_KEY ausentes — a regressão lê a base de municípios.");
+// Chave pública, como o app: só lê. Sem sessão, para não gravar nada no navegador/disco.
+const supabase = createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false } });
+
 const deps: GenerateDeps = {
   googleApiKey,
-  loadMunicipal: (scope) => loadMunicipalIndicators(scope.city, scope.state),
+  loadMunicipal: (scope) => loadMunicipalIndicators(scope.city, scope.state, { supabase: supabase as never }),
 };
 
 const outDir = path.join(repoRoot, ".heatmap-regression-output");
@@ -101,6 +108,11 @@ for (const c of casosParaRodar) {
       // Indicador municipal vazio é mercado falsamente vazio: a rodada reprova.
       assert.ok((run.metrics.municipal?.population ?? 0) > 0, "população do IBGE precisa vir maior que zero");
       assert.ok((run.metrics.municipal?.gdpPerCapita ?? 0) > 0, "PIB per capita do IBGE precisa vir maior que zero");
+      // A regressão roda no Brasil, onde o IBGE responde: sem esta trava, ela
+      // passaria pelo IBGE ao vivo e não provaria nada sobre a base de municípios.
+      assert.equal(run.metrics.municipal?.ibgeOrigem, "banco", "população e PIB precisam vir da base de municípios");
+      assert.ok((run.metrics.municipal?.populationYear ?? 0) > 0, "ano da população precisa estar no relatório");
+      assert.ok((run.metrics.municipal?.gdpYear ?? 0) > 0, "ano do PIB precisa estar no relatório");
     } catch (err) {
       failures++;
       throw err;

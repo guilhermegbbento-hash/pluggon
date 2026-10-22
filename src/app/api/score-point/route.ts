@@ -525,7 +525,6 @@ async function handleFinalMode(body: Record<string, unknown>) {
         population: collected.population,
         gdp_per_capita: collected.gdpPerCapita,
         gdp_total: null,
-        idhm: null,
       },
     abve_data: (body.abve_data as Record<string, unknown>) || null,
     city_ev_data: {
@@ -687,11 +686,11 @@ export async function POST(request: Request) {
     // 2. Buscar dados ABVE da cidade
     const abve = getABVEData(geo.city, geo.state);
 
-    // 3–4. IBGE e centro da cidade ANTES das buscas pagas: se um dos dois
-    // falha, o Score é reprovado aqui, sem gastar as 14–19 consultas do Google.
+    // 3–4. IBGE (base de municípios) e centro da cidade ANTES das buscas pagas:
+    // se um dos dois falha, o Score é reprovado aqui, sem gastar as 14–19 consultas do Google.
     googleQueriesUsed += 1;
     const [ibgeData, cityCenter] = await Promise.all([
-      fetchIBGEData(geo.city, geo.state),
+      fetchIBGEData(geo.city, geo.state, { db: supabase as never }),
       geocodeCityCenter(geo.city, geo.state, GOOGLE_MAPS_API_KEY),
     ]);
     const population = ibgeData.population;

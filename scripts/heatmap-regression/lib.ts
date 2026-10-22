@@ -50,7 +50,14 @@ export interface CaseMetrics {
   qaPassed: boolean | null;
   googleQueries: number | null;
   /** Indicadores do IBGE (ausente em registros antigos). Vazio aprovou a rodada de 09/10 sem ninguém ver. */
-  municipal?: { population: number | null; gdpPerCapita: number | null } | null;
+  municipal?: {
+    population: number | null;
+    gdpPerCapita: number | null;
+    /** Desde a v3.3.0: de onde vieram (base de municípios ou IBGE ao vivo) e os anos. */
+    ibgeOrigem?: "banco" | "ibge_ao_vivo";
+    populationYear?: number | null;
+    gdpYear?: number | null;
+  } | null;
   invariantViolations: string[];
 }
 
@@ -208,7 +215,13 @@ export async function runCase(c: RegressionCase, deps: GenerateDeps): Promise<Ca
       qaPassed: qa!.passed,
       googleQueries: payload.googleQueries,
       municipal: payload.municipal
-        ? { population: payload.municipal.population, gdpPerCapita: payload.municipal.gdpPerCapita }
+        ? {
+            population: payload.municipal.population,
+            gdpPerCapita: payload.municipal.gdpPerCapita,
+            ibgeOrigem: payload.municipal.ibgeOrigem,
+            populationYear: payload.municipal.populationYear,
+            gdpYear: payload.municipal.gdpYear,
+          }
         : null,
       invariantViolations: violations,
     },
@@ -239,8 +252,9 @@ export function computeHeatmapSourceHash(repoRoot: string): string {
     hash.update(f);
     hash.update(readFileSync(path.join(dir, f), "utf8").replace(/\r\n/g, "\n"));
   }
-  // Fora da pasta, mas decide o que vai gravado no HTML exportado (URL e chave dos tiles).
-  for (const extra of ["src/lib/basemap.ts"]) {
+  // Fora da pasta, mas decidem o que vai gravado no HTML exportado: URL e chave
+  // dos tiles; população e PIB municipais (base de municípios / IBGE).
+  for (const extra of ["src/lib/basemap.ts", "src/lib/ibge-municipio.ts"]) {
     hash.update(extra);
     hash.update(readFileSync(path.join(repoRoot, extra), "utf8").replace(/\r\n/g, "\n"));
   }

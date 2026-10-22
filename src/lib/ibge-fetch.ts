@@ -56,15 +56,16 @@ const agent = new https.Agent({ ca: [...tls.rootCertificates, SECTIGO_DV_R36], k
 const TIMEOUT_MS = 15_000;
 
 /** GET no IBGE com a cadeia completa. Mesma forma do fetch (devolve Response). */
-export function ibgeFetch(url: string): Promise<Response> {
+export function ibgeFetch(url: string, opts: { timeoutMs?: number } = {}): Promise<Response> {
+  const timeoutMs = opts.timeoutMs ?? TIMEOUT_MS;
   return new Promise((resolve, reject) => {
-    const req = https.get(url, { agent, timeout: TIMEOUT_MS }, (res) => {
+    const req = https.get(url, { agent, timeout: timeoutMs }, (res) => {
       const chunks: Buffer[] = [];
       res.on("data", (c: Buffer) => chunks.push(c));
       res.on("end", () => resolve(new Response(Buffer.concat(chunks), { status: res.statusCode ?? 502 })));
       res.on("error", reject);
     });
-    req.on("timeout", () => req.destroy(new Error(`IBGE não respondeu em ${TIMEOUT_MS / 1000} s`)));
+    req.on("timeout", () => req.destroy(new Error(`IBGE não respondeu em ${timeoutMs / 1000} s`)));
     req.on("error", reject);
   });
 }

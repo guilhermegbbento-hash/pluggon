@@ -63,6 +63,9 @@ const chargerBadge = (c: CompetitorOut) =>
       ? `<span class="badge ac">AC${c.chargerMaxKw ? ` ${c.chargerMaxKw} kW` : ""}</span>`
       : '<span class="badge unk">n&atilde;o informado</span>';
 
+/** Ano do dado do IBGE embaixo do número (população e PIB municipais). */
+const ibgeYear = (year: number | null) => (year ? `<div class="source">IBGE ${year}</div>` : "");
+
 const itemAttrs = (p: { lat: number; lng: number }, zoom: number, layer: "anchor" | "competitor" | "complementary") =>
   `class="item" type="button" data-layer="${layer}" data-lat="${p.lat}" data-lng="${p.lng}" data-zoom="${zoom}"`;
 
@@ -138,8 +141,8 @@ export function renderHeatmapHtml(payload: HeatmapPayload, opts: { tileUrl?: str
   const municipalGrid = municipal
     ? `<div class="block-title">Indicadores municipais &mdash; ${escapeHtml(municipal.city)}/${escapeHtml(municipal.state)}</div>
     <div class="stats-grid">
-      <div class="stat-card"><div class="label">Pop. munic&iacute;pio</div><div class="value">${fmtInt(municipal.population)}</div></div>
-      <div class="stat-card"><div class="label">PIB/cap munic.</div><div class="value">${municipal.gdpPerCapita ? "R$ " + Math.round(municipal.gdpPerCapita / 1000) + "k" : "—"}</div></div>
+      <div class="stat-card"><div class="label">Pop. munic&iacute;pio</div><div class="value">${fmtInt(municipal.population)}</div>${ibgeYear(municipal.populationYear)}</div>
+      <div class="stat-card"><div class="label">PIB/cap munic.</div><div class="value">${municipal.gdpPerCapita ? "R$ " + Math.round(municipal.gdpPerCapita / 1000) + "k" : "—"}</div>${ibgeYear(municipal.gdpYear)}</div>
       <div class="stat-card"><div class="label">EVs munic.</div><div class="value">${fmtInt(municipal.bevPlusPHEV)}</div></div>
       <div class="stat-card"><div class="label">DC munic.</div><div class="value">${municipal.dcChargers > 0 ? fmtInt(municipal.dcChargers) : "sem dados"}</div></div>
       <div class="stat-card"><div class="label">EV/DC munic.</div><div class="value">${municipal.ratioEVperDC || "—"}</div></div>
@@ -178,6 +181,7 @@ export function renderHeatmapHtml(payload: HeatmapPayload, opts: { tileUrl?: str
   .stat-card { background: #0D1117; border: 1px solid #30363D; border-radius: 6px; padding: 6px; text-align: center; }
   .stat-card .label { font-size: 9px; color: #8B949E; text-transform: uppercase; }
   .stat-card .value { font-size: 14px; font-weight: 700; margin-top: 2px; color: #E6EDF3; }
+  .stat-card .source { font-size: 8px; color: #8B949E; margin-top: 1px; }
   .notice { margin: 8px 10px; padding: 8px 10px; border-radius: 6px; font-size: 11px; line-height: 1.4; }
   .notice.opportunity { background: #66BB6A1A; border: 1px solid #66BB6A; color: #A5D6A7; }
   .notice.warn { background: #FFC1071A; border: 1px solid #FFC107; color: #FFE082; }
