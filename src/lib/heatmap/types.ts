@@ -200,6 +200,11 @@ export interface MunicipalIndicators {
   state: string;
   population: number | null;
   gdpPerCapita: number | null;
+  /** Ano da estimativa de população e do PIB municipal do IBGE — exibidos no relatório. */
+  populationYear: number | null;
+  gdpYear: number | null;
+  /** De onde vieram população e PIB: base de municípios ou IBGE ao vivo. */
+  ibgeOrigem: "banco" | "ibge_ao_vivo";
   totalEVs: number;
   bev: number;
   phev: number;

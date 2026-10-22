@@ -56,7 +56,8 @@ interface ScoreData {
     population: number | null;
     gdp_total: number | null;
     gdp_per_capita: number | null;
-    idhm?: number | null;
+    population_year?: number | null;
+    gdp_year?: number | null;
     fleet_total?: number | null;
   };
   cost_breakdown?: {
@@ -780,6 +781,9 @@ export default function ScorePrintPage() {
               <div style={{ fontSize: 20, fontWeight: 800, color: "#1a1a1a" }}>
                 {data.ibge_data?.population?.toLocaleString("pt-BR") ?? "N/D"}
               </div>
+              {data.ibge_data?.population_year ? (
+                <div style={{ fontSize: 9, color: "#888", marginTop: 2 }}>IBGE · estimativa {data.ibge_data.population_year}</div>
+              ) : null}
             </div>
             <div style={{ border: "1px solid #e0e0e0", padding: 12, borderRadius: 6 }}>
               <div style={{ fontSize: 10, color: "#888" }}>PIB per Capita</div>
@@ -788,6 +792,9 @@ export default function ScorePrintPage() {
                   ? `R$ ${Math.round(data.ibge_data.gdp_per_capita).toLocaleString("pt-BR")}`
                   : "N/D"}
               </div>
+              {data.ibge_data?.gdp_year ? (
+                <div style={{ fontSize: 9, color: "#888", marginTop: 2 }}>IBGE · PIB {data.ibge_data.gdp_year}</div>
+              ) : null}
             </div>
           </div>
 

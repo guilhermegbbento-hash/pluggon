@@ -34,46 +34,70 @@ const IBGE_OK: Array<[string, () => Response]> = [
   ["/municipios", () => json([{ id: 4106902, nome: "Curitiba" }])],
   ["/6579/", () => json(serie("1773718"))],
   ["/5938/", () => json(serie("98000000"))],
-  ["/1387/", () => json(serie("0.823"))],
 ];
 
-// ---------- IBGE ----------
+/** Base de municípios falsa: sempre devolve `linhas`. */
+const baseCom = (linhas: unknown[]) =>
+  ({ from: () => ({ select: () => ({ eq: () => ({ eq: async () => ({ data: linhas, error: null }) }) }) }) }) as never;
 
-test("IBGE: população, PIB e PIB per capita calculados", async () => {
-  const d = await fetchIBGEData("Curitiba", "PR", fakeFetch(IBGE_OK));
+const CURITIBA = {
+  cd_mun: 4106902,
+  populacao: 1773718,
+  ano_populacao: 2026,
+  pib_mil: 98000000,
+  ano_pib: 2023,
+  carregado_em: "2026-10-22T17:00:00Z",
+};
+
+// ---------- IBGE (detalhes da base e das tentativas: src/lib/__tests__/ibge-municipio.test.ts) ----------
+
+test("IBGE: população, PIB, PIB per capita e anos vindos da base de municípios", async () => {
+  const d = await fetchIBGEData("Curitiba", "PR", { db: baseCom([CURITIBA]), fetchImpl: fakeFetch([]) });
   assert.equal(d.population, 1773718);
+  assert.equal(d.population_year, 2026);
   assert.equal(d.gdp_total, 98_000_000_000);
   assert.equal(d.gdp_per_capita, Math.round(98_000_000_000 / 1773718));
-  assert.equal(d.idhm, 0.823);
+  assert.equal(d.gdp_year, 2023);
 });
 
-test("IBGE: lista de municípios fora do ar bloqueia", async () => {
+test("IBGE: fora da base, busca ao vivo", async () => {
+  const d = await fetchIBGEData("Curitiba", "PR", { db: baseCom([]), fetchImpl: fakeFetch(IBGE_OK) });
+  assert.equal(d.population, 1773718);
+  assert.equal(d.population_year, 2022);
+});
+
+test("IBGE: fora da base e lista de municípios fora do ar bloqueia", async () => {
   await rejectsWith(
-    fetchIBGEData("Curitiba", "PR", fakeFetch([["/municipios", () => json({}, 503)]])),
+    fetchIBGEData("Curitiba", "PR", { db: baseCom([]), fetchImpl: fakeFetch([["/municipios", () => json({}, 503)]]) }),
     "ibge",
-    /lista de municípios de PR indisponível \(HTTP 503\)/
+    /Curitiba\/PR não está na base de municípios, e o IBGE ao vivo falhou — lista de municípios: HTTP 503 \(2 tentativas\)/
   );
 });
 
 test("IBGE: município fora da lista bloqueia em vez de virar população 0", async () => {
-  await rejectsWith(fetchIBGEData("Curitba", "PR", fakeFetch(IBGE_OK)), "ibge", /"Curitba" não encontrado/);
+  await rejectsWith(
+    fetchIBGEData("Curitba", "PR", { db: baseCom([]), fetchImpl: fakeFetch(IBGE_OK) }),
+    "ibge",
+    /"Curitba" não está na lista do IBGE/
+  );
+});
+
+test("IBGE: PIB ainda não publicado bloqueia", async () => {
+  await rejectsWith(
+    fetchIBGEData("Curitiba", "PR", { db: baseCom([{ ...CURITIBA, pib_mil: null, ano_pib: null }]), fetchImpl: fakeFetch([]) }),
+    "ibge",
+    /ainda não publicou o PIB de Curitiba\/PR/
+  );
 });
 
 test("IBGE: série de população vazia bloqueia", async () => {
   const f = fakeFetch([["/6579/", () => json([])], ...IBGE_OK]);
-  await rejectsWith(fetchIBGEData("Curitiba", "PR", f), "ibge", /população de Curitiba\/PR veio vazia/);
+  await rejectsWith(fetchIBGEData("Curitiba", "PR", { db: null, fetchImpl: f }), "ibge", /série de população veio vazia/);
 });
 
-test("IBGE: PIB com HTTP 500 bloqueia", async () => {
+test("IBGE: PIB com HTTP 500 nas duas tentativas bloqueia", async () => {
   const f = fakeFetch([["/5938/", () => json({}, 500)], ...IBGE_OK]);
-  await rejectsWith(fetchIBGEData("Curitiba", "PR", f), "ibge", /PIB de Curitiba\/PR indisponível \(HTTP 500 em .*5938/);
-});
-
-test("IBGE: IDHM fora do ar não bloqueia (não entra no score)", async () => {
-  const f = fakeFetch([["/1387/", () => json({}, 500)], ...IBGE_OK]);
-  const d = await fetchIBGEData("Curitiba", "PR", f);
-  assert.equal(d.idhm, null);
-  assert.equal(d.population, 1773718);
+  await rejectsWith(fetchIBGEData("Curitiba", "PR", { db: null, fetchImpl: f }), "ibge", /PIB: HTTP 500 \(2 tentativas\)/);
 });
 
 // ---------- centro da cidade ----------

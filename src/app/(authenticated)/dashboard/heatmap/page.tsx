@@ -385,8 +385,18 @@ export default function HeatmapPage() {
 
   const municipalCards = municipal
     ? [
-        { label: "População (município)", value: formatNumber(municipal.population), available: municipal.population !== null },
-        { label: "PIB per capita (município)", value: formatCurrency(municipal.gdpPerCapita), available: municipal.gdpPerCapita !== null },
+        {
+          label: "População (município)",
+          value: formatNumber(municipal.population),
+          available: municipal.population !== null,
+          subtitle: municipal.populationYear ? `(IBGE, estimativa ${municipal.populationYear})` : undefined,
+        },
+        {
+          label: "PIB per capita (município)",
+          value: formatCurrency(municipal.gdpPerCapita),
+          available: municipal.gdpPerCapita !== null,
+          subtitle: municipal.gdpYear ? `(IBGE, PIB ${municipal.gdpYear})` : undefined,
+        },
         {
           label: "EVs BEV+PHEV (município)",
           value: formatNumber(municipal.bevPlusPHEV),

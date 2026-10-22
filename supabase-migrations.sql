@@ -170,3 +170,41 @@ CREATE OR REPLACE VIEW censo_uso_do_banco AS
     pg_size_pretty(pg_total_relation_size('censo_setores'))           AS tamanho,
     pg_database_size(current_database())                              AS bytes_banco,
     pg_size_pretty(pg_database_size(current_database()))              AS tamanho_banco;
+
+-- ============================================================
+-- 7. ibge_municipios — população e PIB de TODOS os municípios (IBGE)
+--
+-- O Score do Ponto e o Mapa de Calor leem daqui, sem depender do IBGE estar no
+-- ar na hora da geração. Desde 22/10/2026 o IBGE não responde às funções da
+-- Vercel (EUA), embora responda normalmente de dentro do Brasil.
+--
+-- Carregada pelo comando de operação
+--   node --import tsx scripts/ibge/carga-municipios.ts
+-- que gera arquivos SQL para colar AQUI, no editor do painel (uma vez por ano:
+-- população sai ~agosto, PIB municipal ~dezembro, com 2 anos de defasagem).
+--
+-- SÓ LEITURA para o app: segurança de linha ligada e uma única regra, de
+-- leitura. Nem a chave pública nem usuário logado gravam aqui — população e PIB
+-- alimentam relatórios, e tabela aberta para escrita deixaria qualquer um trocar
+-- a população de uma cidade. O editor do painel grava (roda como dono).
+--
+-- 5.571 linhas, ~1 MB com índice.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS ibge_municipios (
+  cd_mun         integer PRIMARY KEY,          -- código IBGE de 7 dígitos
+  nome           text NOT NULL,
+  nome_busca     text NOT NULL,                -- nome em minúsculas (mesma regra da busca no app)
+  uf             text NOT NULL,
+  populacao      integer NOT NULL CHECK (populacao > 0),
+  ano_populacao  integer NOT NULL,
+  pib_mil        numeric CHECK (pib_mil > 0),  -- PIB total em R$ mil; NULL = IBGE ainda não publicou
+  ano_pib        integer,
+  carregado_em   timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (uf, nome_busca)
+);
+
+ALTER TABLE ibge_municipios ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS ibge_municipios_leitura ON ibge_municipios;
+CREATE POLICY ibge_municipios_leitura ON ibge_municipios FOR SELECT TO anon, authenticated USING (true);
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON ibge_municipios FROM anon, authenticated;

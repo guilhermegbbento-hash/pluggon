@@ -73,7 +73,9 @@ interface ScoreResult {
     population: number | null;
     gdp_total: number | null;
     gdp_per_capita: number | null;
-    idhm: number | null;
+    /** Anos do dado do IBGE. Ausentes em Scores salvos antes da v3.3.0. */
+    population_year?: number | null;
+    gdp_year?: number | null;
   };
   abve_data?: {
     city: string;
@@ -286,6 +288,11 @@ function formatSavedDate(iso?: string | null): string {
   } catch {
     return "";
   }
+}
+
+/** "População (IBGE, estimativa 2026)"; sem ano (Score antigo), só o rótulo. */
+function ibgeLabel(label: string, kind: string, year?: number | null): string {
+  return year ? `${label} (IBGE, ${kind} ${year})` : label;
 }
 
 // Recompute observation variable client-side (zero API cost) — espelha scoring-engine.ts
@@ -736,13 +743,13 @@ function ReviewPanel({
         <h3 className="mb-3 text-sm font-semibold text-white">🏙️ Cidade e Demografia</h3>
         <div className="grid gap-4 md:grid-cols-2">
           <EditableNumber
-            label="População"
+            label={ibgeLabel("População", "estimativa", collectedRaw.ibge_data?.population_year)}
             value={editedData.population}
             original={original.population}
             onChange={(n) => onUpdateField("population", n)}
           />
           <EditableNumber
-            label="PIB per capita (R$)"
+            label={ibgeLabel("PIB per capita (R$)", "PIB", collectedRaw.ibge_data?.gdp_year)}
             value={editedData.gdpPerCapita}
             original={original.gdpPerCapita}
             onChange={(n) => onUpdateField("gdpPerCapita", n)}
@@ -1844,6 +1851,9 @@ function ScorePageInner() {
                   <p className="mt-1 text-xl font-bold text-white">
                     {result.ibge_data.population?.toLocaleString("pt-BR") ?? "N/D"}
                   </p>
+                  {result.ibge_data.population_year ? (
+                    <p className="mt-1 text-[10px] text-[#8B949E]">IBGE · estimativa {result.ibge_data.population_year}</p>
+                  ) : null}
                 </div>
                 <div className="rounded-lg border border-[#30363D] bg-[#161B22] p-4">
                   <p className="text-xs text-[#8B949E]">PIB per capita</p>
@@ -1852,6 +1862,9 @@ function ScorePageInner() {
                       ? `R$ ${Math.round(result.ibge_data.gdp_per_capita).toLocaleString("pt-BR")}`
                       : "N/D"}
                   </p>
+                  {result.ibge_data.gdp_year ? (
+                    <p className="mt-1 text-[10px] text-[#8B949E]">IBGE · PIB {result.ibge_data.gdp_year}</p>
+                  ) : null}
                 </div>
                 <div className="rounded-lg border border-[#30363D] bg-[#161B22] p-4">
                   <p className="text-xs text-[#8B949E]">Carregadores DC na cidade</p>

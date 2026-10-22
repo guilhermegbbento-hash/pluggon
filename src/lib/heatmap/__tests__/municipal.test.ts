@@ -8,7 +8,10 @@ import { CENTER, offset } from "./helpers";
 /**
  * Desde 06/10/2026 o IBGE falhava em todo fetch do Node (cadeia de certificado
  * incompleta) e os indicadores municipais vinham vazios, calados. Sem
- * população, a estimativa de EVs saía 0 no mapa como se fosse dado.
+ * população, a estimativa de EVs saía 0 no mapa como se fosse dado. Desde
+ * 22/10/2026 população e PIB vêm da base de municípios (o IBGE não responde à
+ * Vercel); o IBGE ao vivo só para quem não está nela — os testes sem
+ * `supabase` abaixo exercitam esse caminho.
  */
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
@@ -31,16 +34,37 @@ function fakeIbge(overrides: Array<[string, () => Response]> = []) {
 async function rejectsIbge(p: Promise<unknown>, detail: RegExp) {
   await assert.rejects(p, (err: unknown) => {
     assert.ok(err instanceof HeatmapGenerationError, `esperava HeatmapGenerationError, veio ${String(err)}`);
-    assert.match(err.message, /IBGE indisponível para Florianópolis\/SC/);
+    assert.match(err.message, /Dados do IBGE indisponíveis para Florianópolis\/SC/);
     assert.match(err.details.join("\n"), detail);
     return true;
   });
 }
 
-test("IBGE ok: população e PIB per capita entram nos indicadores", async () => {
+test("base de municípios: população, PIB e anos entram nos indicadores sem chamar o IBGE", async () => {
+  const linha = { cd_mun: 4205407, populacao: 537211, ano_populacao: 2026, pib_mil: 25000000, ano_pib: 2023, carregado_em: "2026-10-22T17:00:00Z" };
+  const supabase = {
+    from: (table: string) => {
+      if (table !== "ibge_municipios") throw new Error(`tabela fora do teste: ${table}`);
+      return { select: () => ({ eq: () => ({ eq: async () => ({ data: [linha], error: null }) }) }) };
+    },
+  } as never;
+  const semIbge = async (url: string): Promise<Response> => {
+    throw new Error(`o IBGE não devia ser chamado: ${url}`);
+  };
+  const m = await loadMunicipalIndicators("Florianópolis", "SC", { supabase, fetchImpl: semIbge });
+  assert.equal(m.population, 537211);
+  assert.equal(m.gdpPerCapita, Math.round(25_000_000_000 / 537211));
+  assert.equal(m.populationYear, 2026);
+  assert.equal(m.gdpYear, 2023);
+  assert.equal(m.ibgeOrigem, "banco");
+});
+
+test("IBGE ao vivo ok: população, PIB per capita e anos entram nos indicadores", async () => {
   const m = await loadMunicipalIndicators("Florianópolis", "SC", { fetchImpl: fakeIbge() });
   assert.equal(m.population, 537211);
   assert.equal(m.gdpPerCapita, Math.round(25_000_000_000 / 537211));
+  assert.equal(m.populationYear, 2022);
+  assert.equal(m.ibgeOrigem, "ibge_ao_vivo");
 });
 
 test("IBGE: falha de TLS/rede aborta em vez de devolver vazio", async () => {
@@ -48,9 +72,9 @@ test("IBGE: falha de TLS/rede aborta em vez de devolver vazio", async () => {
   await rejectsIbge(loadMunicipalIndicators("Florianópolis", "SC", { fetchImpl: f }), /lista de municípios: UNABLE_TO_VERIFY_LEAF_SIGNATURE/);
 });
 
-test("IBGE: HTTP 503 aborta", async () => {
+test("IBGE: HTTP 503 nas duas tentativas aborta", async () => {
   const f = fakeIbge([["/municipios", () => json({}, 503)]]);
-  await rejectsIbge(loadMunicipalIndicators("Florianópolis", "SC", { fetchImpl: f }), /HTTP 503/);
+  await rejectsIbge(loadMunicipalIndicators("Florianópolis", "SC", { fetchImpl: f }), /HTTP 503 \(2 tentativas\)/);
 });
 
 test("IBGE: município fora da lista aborta", async () => {
