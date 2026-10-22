@@ -16,7 +16,7 @@ const LAYER_LABELS: Record<ScoreLayer, string> = {
   localizacao: "localização do ponto",
   centro_da_cidade: "centro da cidade",
   ibge: "dados do IBGE",
-  concorrentes: "concorrentes no banco",
+  concorrentes: "concorrentes",
   pontos_fortes: "pontos fortes (Claude)",
   historico: "gravação no histórico",
 };
