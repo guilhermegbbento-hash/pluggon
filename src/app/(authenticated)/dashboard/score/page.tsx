@@ -124,13 +124,20 @@ interface CollectedData {
   bev: number;
   phev: number;
   chargersAC: number;
-  chargersDC: number;
-  dcInCity: number;
-  totalInCity: number;
+  /** DC da cidade (ABVE). null = sem dado: obrigatório antes de gerar o Score. 0 = cidade sem DC. */
+  chargersDC: number | null;
+  /** Concorrência DC por raio (busca completa de 2 km): DC + potência não informada. */
   dcIn200m: number;
   dcIn500m: number;
   dcIn1km: number;
   dcIn2km: number;
+  /** Quantos dos dcIn* têm potência não informada. */
+  semPotenciaIn200m?: number;
+  semPotenciaIn500m?: number;
+  semPotenciaIn1km?: number;
+  semPotenciaIn2km?: number;
+  /** Todos os eletropostos a até 2 km (DC, AC e sem potência). */
+  eletropostosIn2km?: number;
   dcNamesIn200m: string[];
   dcNamesIn500m: string[];
   dcNamesIn1km: string[];
@@ -331,9 +338,10 @@ function buildScoreInput(
   const bev = c.bev ?? 0;
   const phev = c.phev ?? 0;
   const ac = c.chargersAC ?? 0;
-  const dc = c.chargersDC ?? 0;
-  const dcInCity = dc > 0 ? dc : (c.dcInCity || 0);
-  const totalInCity = dc > 0 || ac > 0 ? dc + ac : (c.totalInCity || 0);
+  // DC da cidade: só o da ABVE. Vazio entra como 0 na prévia, mas o botão de
+  // gerar fica bloqueado até o admin informar o número.
+  const dcInCity = c.chargersDC ?? 0;
+  const totalInCity = dcInCity + ac;
   const evs = bev + phev;
   return {
     population: c.population || 0,
@@ -348,6 +356,10 @@ function buildScoreInput(
     dcIn500m: c.dcIn500m || 0,
     dcIn1km: c.dcIn1km || 0,
     dcIn2km: c.dcIn2km || 0,
+    semPotenciaIn200m: c.semPotenciaIn200m || 0,
+    semPotenciaIn500m: c.semPotenciaIn500m || 0,
+    semPotenciaIn1km: c.semPotenciaIn1km || 0,
+    semPotenciaIn2km: c.semPotenciaIn2km || 0,
     dcInCity,
     totalInCity,
     dcNamesIn200m: c.dcNamesIn200m || [],
@@ -566,7 +578,7 @@ function MiniMap({
       });
       L.marker([c.lat, c.lng], { icon: chargerIcon } as Record<string, unknown>)
         .addTo(map)
-        .bindPopup(`<b>⚡ ${c.name}</b><br>${c.distance_m}m`);
+        .bindPopup(`<b>⚡ ${c.name}</b><br>${c.type === "unknown" ? "potência não informada" : c.type} · ${c.distance_m}m`);
     });
 
     mapInstanceRef.current = map;
@@ -631,6 +643,61 @@ function EditableNumber({
           isEdited ? "border-[#C9A84C]" : "border-[#30363D]"
         }`}
       />
+    </div>
+  );
+}
+
+/** "dos quais 2 com potência não informada" sob a contagem DC de um raio. */
+function SemPotenciaHint({ n }: { n?: number }) {
+  if (!n) return null;
+  return (
+    <p className="mt-1 text-[10px] text-[#FFC107]">
+      dos quais {n} com potência não informada (contados como DC)
+    </p>
+  );
+}
+
+/** Como EditableNumber, mas vazio é "sem dado" (null) e 0 é um número digitado. */
+function RequiredNumber({
+  label,
+  value,
+  original,
+  onChange,
+  missingHint,
+}: {
+  label: string;
+  value: number | null;
+  original: number | null;
+  onChange: (n: number | null) => void;
+  missingHint: string;
+}) {
+  const isEdited = value !== original;
+  const missing = value === null;
+  return (
+    <div>
+      <div className="mb-1 flex items-baseline justify-between gap-2">
+        <label className="text-xs text-[#C9D1D9]">{label} *</label>
+        <span className="text-[10px] text-[#484F58]">
+          (original: {original === null ? "sem dado" : original.toLocaleString("pt-BR")})
+          {isEdited && <span className="ml-1 text-[#C9A84C]">(editado)</span>}
+        </span>
+      </div>
+      <input
+        type="number"
+        value={value ?? ""}
+        min={0}
+        step={1}
+        placeholder="obrigatório"
+        onChange={(e) => {
+          const raw = e.target.value.trim();
+          const n = Number(raw);
+          onChange(raw === "" || !Number.isFinite(n) || n < 0 ? null : Math.round(n));
+        }}
+        className={`w-full rounded-md border bg-[#0D1117] px-3 py-2 text-sm text-white outline-none transition-colors focus:border-[#C9A84C] ${
+          missing ? "border-[#F44336]" : isEdited ? "border-[#C9A84C]" : "border-[#30363D]"
+        }`}
+      />
+      {missing && <p className="mt-1 text-[11px] text-[#F44336]">{missingHint}</p>}
     </div>
   );
 }
@@ -819,34 +886,34 @@ function ReviewPanel({
             original={original.chargersAC}
             onChange={(n) => onUpdateField("chargersAC", n)}
           />
-          <EditableNumber
+          <RequiredNumber
             label="Carregadores DC"
             value={editedData.chargersDC}
             original={original.chargersDC}
             onChange={(n) => onUpdateField("chargersDC", n)}
+            missingHint="Cidade sem DC da ABVE cadastrado. Informe o número do painel da ABVE (0 se a cidade não tem carregador DC) para gerar o Score."
           />
         </div>
         <p className="mt-2 text-[11px] text-[#8B949E]">
           Estes campos sobrescrevem ABVE/cache. Deixe igual ao original se não houver dado novo.
+          O DC da cidade vem só da ABVE: o Score não usa contagem do Google para a cidade.
         </p>
       </div>
 
       {/* Card: Concorrentes */}
       <div
         className={cardClass(
-          anyEditedInCard("dcInCity", "dcIn200m", "dcIn500m", "dcIn1km", "dcIn2km")
+          anyEditedInCard("dcIn200m", "dcIn500m", "dcIn1km", "dcIn2km")
         )}
       >
-        <h3 className="mb-3 text-sm font-semibold text-white">
-          🏁 Concorrentes (banco PLUGGON)
+        <h3 className="mb-1 text-sm font-semibold text-white">
+          🏁 Concorrentes a até 2 km (Google, busca completa)
         </h3>
-        <div className="grid gap-4 md:grid-cols-3">
-          <EditableNumber
-            label="DC na cidade (total)"
-            value={editedData.dcInCity}
-            original={original.dcInCity}
-            onChange={(n) => onUpdateField("dcInCity", n)}
-          />
+        <p className="mb-3 text-[11px] text-[#8B949E]">
+          {original.eletropostosIn2km ?? 0} eletroposto(s) em 2 km. A contagem DC inclui os que estão sem
+          potência informada no Google (contados como DC, por segurança); AC fica de fora.
+        </p>
+        <div className="grid gap-4 md:grid-cols-4">
           <div>
             <EditableNumber
               label="DC em 200m"
@@ -854,6 +921,7 @@ function ReviewPanel({
               original={original.dcIn200m}
               onChange={(n) => onUpdateField("dcIn200m", n)}
             />
+            <SemPotenciaHint n={original.semPotenciaIn200m} />
             {original.dcNamesIn200m.length > 0 && (
               <p className="mt-1 text-[10px] text-[#8B949E]">
                 {original.dcNamesIn200m.join(" · ")}
@@ -867,6 +935,7 @@ function ReviewPanel({
               original={original.dcIn500m}
               onChange={(n) => onUpdateField("dcIn500m", n)}
             />
+            <SemPotenciaHint n={original.semPotenciaIn500m} />
             {original.dcNamesIn500m.length > 0 && (
               <p className="mt-1 text-[10px] text-[#8B949E]">
                 {original.dcNamesIn500m.join(" · ")}
@@ -880,6 +949,7 @@ function ReviewPanel({
               original={original.dcIn1km}
               onChange={(n) => onUpdateField("dcIn1km", n)}
             />
+            <SemPotenciaHint n={original.semPotenciaIn1km} />
             {original.dcNamesIn1km.length > 0 && (
               <p className="mt-1 text-[10px] text-[#8B949E]">
                 {original.dcNamesIn1km.length} concorrente(s) listado(s)
@@ -893,6 +963,7 @@ function ReviewPanel({
               original={original.dcIn2km}
               onChange={(n) => onUpdateField("dcIn2km", n)}
             />
+            <SemPotenciaHint n={original.semPotenciaIn2km} />
             {original.dcNamesIn2km.length > 0 && (
               <p className="mt-1 text-[10px] text-[#8B949E]">
                 {original.dcNamesIn2km.length} concorrente(s) listado(s)
@@ -1156,7 +1227,8 @@ function ReviewPanel({
         <button
           type="button"
           onClick={onGenerateFinal}
-          disabled={generatingFinal}
+          disabled={generatingFinal || editedData.chargersDC === null}
+          title={editedData.chargersDC === null ? "Informe os carregadores DC da cidade (ABVE) antes de gerar" : undefined}
           className="flex items-center gap-2 rounded-lg bg-[#C9A84C] px-6 py-3 font-semibold text-[#0D1117] transition-colors hover:bg-[#B89443] disabled:cursor-not-allowed disabled:opacity-50"
         >
           {generatingFinal ? (
@@ -1395,9 +1467,6 @@ function ScorePageInner() {
     value: CollectedData[K]
   ) {
     if (!editedData) return;
-    if (field === "dcInCity") {
-      console.log("[dc-debug] admin editou dcInCity (DC na cidade total):", value);
-    }
     const next = { ...editedData, [field]: value } as CollectedData;
     // totalPOIs500m é derivado dos POIs em raio de 500m
     next.totalPOIs500m =
@@ -1468,7 +1537,8 @@ function ScorePageInner() {
           bev: editedData.bev || null,
           phev: editedData.phev || null,
           chargersAC: editedData.chargersAC || null,
-          chargersDC: editedData.chargersDC || null,
+          // ?? e não ||: DC = 0 digitado é dado (cidade sem DC), não campo vazio.
+          chargersDC: editedData.chargersDC ?? null,
         },
         ibge_data: collectedRaw.ibge_data,
         abve_data: collectedRaw.abve_data,
@@ -1476,8 +1546,7 @@ function ScorePageInner() {
         nearby_chargers: collectedRaw.nearby_chargers,
       };
       console.log(
-        "[dc-debug] payload FINAL — collected.dcInCity=", editedData.dcInCity,
-        "| chargersDC=", editedData.chargersDC,
+        "[dc-debug] payload FINAL — chargersDC=", editedData.chargersDC,
         "| collected enviado=", JSON.stringify(payload.collected)
       );
       const res = await fetch("/api/score-point", {

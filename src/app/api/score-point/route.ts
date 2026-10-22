@@ -10,16 +10,12 @@ import {
   type ManualCityEVInput,
 } from "@/lib/abve-real-data";
 import {
-  populateChargersFromGoogle,
-  populateChargersLocal,
-  cityHasFreshChargers,
-  getChargersNearPoint,
-} from "@/lib/charger-database";
-import {
   CLAUDE_INPUT_COST_PER_TOKEN,
   CLAUDE_MODEL,
   CLAUDE_OUTPUT_COST_PER_TOKEN,
 } from "@/lib/claude-model";
+import { buscarConcorrentes, RAIO_CONCORRENTES_M } from "@/lib/score/concorrentes";
+import { exigirDcCidade } from "@/lib/score/dc-cidade";
 import { ScoreDataError } from "@/lib/score/errors";
 import { geocodeCityCenter, requireCityState } from "@/lib/score/geocode";
 import { fetchIBGEData } from "@/lib/score/ibge";
@@ -33,6 +29,8 @@ const ADMIN_EMAIL = "guilhermegbbento@gmail.com";
 
 // Pricing
 const GOOGLE_PLACES_COST_PER_QUERY = 0.032;
+// Places API (New) com evChargeOptions: SKU Enterprise + Atmosphere, US$ 40/1000 (tabela do Google, 21/10/2026).
+const PLACES_NEW_COST_PER_REQUEST = 0.04;
 
 // ---------- Utilities ----------
 
@@ -260,12 +258,16 @@ interface CollectedData {
   phev?: number | null;
   chargersAC?: number | null;
   chargersDC?: number | null;
-  dcInCity: number;
-  totalInCity: number;
+  /** Concorrência DC por raio: DC + potência não informada. */
   dcIn200m: number;
   dcIn500m: number;
   dcIn1km: number;
   dcIn2km: number;
+  /** Quantos dos dcIn* têm potência não informada. Ausentes antes da v3.4.0. */
+  semPotenciaIn200m?: number;
+  semPotenciaIn500m?: number;
+  semPotenciaIn1km?: number;
+  semPotenciaIn2km?: number;
   dcNamesIn200m: string[];
   dcNamesIn500m: string[];
   dcNamesIn1km: string[];
@@ -324,22 +326,21 @@ async function handleFinalMode(body: Record<string, unknown>) {
         }
       : null);
 
+  // DC da cidade é obrigatório na revisão: sem ele, nada é gravado nem calculado.
+  const editedDC = exigirDcCidade(collected.chargersDC, city, state);
+
   // Persiste o que o admin editou (ou os campos manuais originais) no cache.
-  // "DC na cidade (total)" também é escopo cidade — vai junto. Os DC por raio
-  // (200m/500m/1km/2km) NÃO são persistidos (dependem do endereço exato).
-  console.log(
-    '[dc-debug] handleFinalMode ANTES upsert — collected.dcInCity=', collected.dcInCity,
-    '| manualData=', JSON.stringify(manualData)
-  );
+  // Os DC por raio (200m/500m/1km/2km) NÃO são persistidos (dependem do
+  // endereço exato). "DC na cidade (total)" (dc_in_city) não é mais gravado:
+  // era a contagem do Google congelada como se fosse dado do dono.
+  console.log('[dc-debug] handleFinalMode ANTES upsert — manualData=', JSON.stringify(manualData));
   if (manualData) {
     let userEmail: string | null = null;
     try {
       const { data: { user } } = await supabase.auth.getUser();
       userEmail = user?.email ?? null;
     } catch {}
-    const toPersist = { ...manualData, dcInCity: collected.dcInCity ?? null };
-    console.log('[dc-debug] handleFinalMode chamando upsert com=', JSON.stringify(toPersist));
-    await upsertCityEVCache(supabase as never, city, state, toPersist, userEmail);
+    await upsertCityEVCache(supabase as never, city, state, manualData, userEmail);
   } else {
     console.log('[dc-debug] handleFinalMode SEM manualData — upsert não chamado');
   }
@@ -362,14 +363,12 @@ async function handleFinalMode(body: Record<string, unknown>) {
    // revisão, não dos valores originais coletados. Os campos editáveis são
    // chargersDC, chargersAC, bev e phev — derivamos abveDC/abveTotal/abveEVs
    // a partir deles para que as justificativas (V8, V21, etc.) reflitam o que
-   // o admin acabou de informar. dcInCity também passa a refletir chargersDC.
+   // o admin acabou de informar. O DC da cidade é sempre o da ABVE (chargersDC).
   const editedBev = collected.bev ?? 0;
   const editedPhev = collected.phev ?? 0;
   const editedAC = collected.chargersAC ?? 0;
-  const editedDC = collected.chargersDC ?? 0;
-  const editedDcInCity = editedDC > 0 ? editedDC : (collected.dcInCity || 0);
-  const editedTotalInCity =
-    editedDC > 0 || editedAC > 0 ? editedDC + editedAC : (collected.totalInCity || 0);
+  const editedDcInCity = editedDC;
+  const editedTotalInCity = editedDC + editedAC;
   const editedEvs = editedBev + editedPhev;
 
   const scoreInput: ScoreInput = {
@@ -386,6 +385,10 @@ async function handleFinalMode(body: Record<string, unknown>) {
     dcIn500m: collected.dcIn500m || 0,
     dcIn1km: collected.dcIn1km || 0,
     dcIn2km: collected.dcIn2km || 0,
+    semPotenciaIn200m: collected.semPotenciaIn200m || 0,
+    semPotenciaIn500m: collected.semPotenciaIn500m || 0,
+    semPotenciaIn1km: collected.semPotenciaIn1km || 0,
+    semPotenciaIn2km: collected.semPotenciaIn2km || 0,
     dcInCity: editedDcInCity,
     totalInCity: editedTotalInCity,
     dcNamesIn200m: collected.dcNamesIn200m || [],
@@ -445,7 +448,7 @@ async function handleFinalMode(body: Record<string, unknown>) {
   const bevForPrompt = collected.bev ?? 0;
   const phevForPrompt = collected.phev ?? 0;
   const evsForPrompt = bevForPrompt + phevForPrompt;
-  const dcCityForPrompt = collected.chargersDC ?? collected.dcInCity ?? 0;
+  const dcCityForPrompt = editedDcInCity;
 
   const claudeResult = await generateAnalysisText({
     overallScore: scoreResult.overallScore,
@@ -531,8 +534,9 @@ async function handleFinalMode(body: Record<string, unknown>) {
       bevPlusPHEV: evDataFinal.bevPlusPHEV,
       totalEVs: evDataFinal.totalEVs,
       chargersAC: evDataFinal.acChargers,
-      chargersDC: evDataFinal.dcChargers,
-      totalChargers: evDataFinal.totalChargers,
+      // O DC que entrou no cálculo (0 digitado incluso), não o resolvido do cache.
+      chargersDC: editedDcInCity,
+      totalChargers: editedTotalInCity,
       evsSource: evDataFinal.source,
       evsSourceTag: evDataFinal.evsSourceTag,
       chargersSource: evDataFinal.chargersSource,
@@ -540,8 +544,8 @@ async function handleFinalMode(body: Record<string, unknown>) {
       cacheUpdatedAt: evDataFinal.cacheUpdatedAt,
     },
     charger_summary: {
-      total_in_city: collected.totalInCity || 0,
-      dc_in_city: collected.dcInCity || 0,
+      total_in_city: editedTotalInCity,
+      dc_in_city: editedDcInCity,
       in_200m: 0,
       in_500m: 0,
       in_1km: 0,
@@ -550,6 +554,10 @@ async function handleFinalMode(body: Record<string, unknown>) {
       dc_in_500m: collected.dcIn500m || 0,
       dc_in_1km: collected.dcIn1km || 0,
       dc_in_2km: collected.dcIn2km || 0,
+      sem_potencia_in_200m: collected.semPotenciaIn200m || 0,
+      sem_potencia_in_500m: collected.semPotenciaIn500m || 0,
+      sem_potencia_in_1km: collected.semPotenciaIn1km || 0,
+      sem_potencia_in_2km: collected.semPotenciaIn2km || 0,
     },
   };
 
@@ -694,30 +702,22 @@ export async function POST(request: Request) {
     const population = ibgeData.population;
     const gdpPerCapita = ibgeData.gdp_per_capita;
 
-    // 5. Verificar se a cidade já tem carregadores frescos no banco
-    const hasFresh = await cityHasFreshChargers(geo.city, supabase, 7);
-    if (!hasFresh) {
-      // Popular o banco. Falha do Google ou do banco bloqueia o Score (concorrente
-      // não gravado sumiria da contagem sem aviso).
-      const gQueries = await populateChargersFromGoogle(
-        geo.city,
-        geo.state,
-        geo.lat,
-        geo.lng,
-        supabase
-      );
-      googleQueriesUsed += gQueries;
-    }
-
-    // Sempre faz uma busca local (2km do ponto) — o sweep amplo da cidade pode
-    // perder carregadores discretos próximos ao endereço sendo analisado.
-    googleQueriesUsed += await populateChargersLocal(
+    // 5. Frota e carregadores da cidade (digitado > salvo > ABVE). Fora da
+    // revisão do admin, cidade sem DC da ABVE bloqueia aqui, antes das buscas pagas.
+    const evDataCidade = await getCityEVDataAsync(
       geo.city,
       geo.state,
-      geo.lat,
-      geo.lng,
-      supabase
+      population,
+      gdpPerCapita,
+      manualData,
+      supabase as never
     );
+    const dcCidade = mode === "collect" ? null : exigirDcCidade(evDataCidade.dcInformado, geo.city, geo.state);
+
+    // 6. Concorrentes a até 2 km: busca subdividida do Mapa de Calor, completa
+    // ou o Score não sai. O total da cidade vem da ABVE, não do Google.
+    const concorrentes = await buscarConcorrentes(geo.lat, geo.lng, geo, { apiKey: GOOGLE_MAPS_API_KEY });
+    const placesNewRequests = concorrentes.requests;
 
     // 6. POIs — primeiro tenta o cache (point_pois_cache em ~100m, < 30 dias)
     interface PoiBundle {
@@ -846,62 +846,26 @@ export async function POST(request: Request) {
     console.log("Universidades 2km:", universities.length);
     console.log("Hospitais 2km:", hospitals.length);
 
-    // 7. Buscar carregadores próximos do banco
-    const chargersNear = await getChargersNearPoint(
-      geo.lat,
-      geo.lng,
-      geo.city,
-      supabase
-    );
-
-    // Debug — concorrentes por raio
-    const formatChargerLabel = (c: { name: string; address: string }) => {
-      const name = (c.name || "").trim() || "Sem nome";
-      const addr = (c.address || "").trim();
-      return addr ? `${name} - ${addr}` : name;
-    };
-    const dcNamesIn200m = chargersNear.in200m
-      .filter((c) => c.charger_type === "DC")
-      .map(formatChargerLabel);
-    const dcNamesIn500m = chargersNear.in500m
-      .filter((c) => c.charger_type === "DC")
-      .map(formatChargerLabel);
-    const dcNamesIn1km = chargersNear.in1km
-      .filter((c) => c.charger_type === "DC")
-      .map(formatChargerLabel);
-    const dcNamesIn2km = chargersNear.in2km
-      .filter((c) => c.charger_type === "DC")
-      .map(formatChargerLabel);
+    // 7. Concorrentes por raio (DC + potência não informada) e nomes com o tipo
+    const dcNamesIn200m = concorrentes.nomes[200];
+    const dcNamesIn500m = concorrentes.nomes[500];
+    const dcNamesIn1km = concorrentes.nomes[1000];
+    const dcNamesIn2km = concorrentes.nomes[2000];
 
     console.log("=== CARREGADORES ===");
     console.log(
-      "ABVE:",
-      abve?.dc ?? 0,
-      "DC,",
-      abve?.ac ?? 0,
-      "AC,",
-      abve?.total ?? 0,
-      "total"
+      "DC da cidade (ABVE):", evDataCidade.dcInformado ?? "sem dado",
+      "| fonte:", evDataCidade.chargersSource
     );
+    console.log("=== CONCORRENTES POR RAIO (DC + potência não informada) ===");
     console.log(
-      "Google/Banco:",
-      chargersNear.dcInCity,
-      "DC classificados,",
-      chargersNear.totalInCity,
-      "total localizados"
+      `Eletropostos em ${RAIO_CONCORRENTES_M} m:`, concorrentes.lista.length,
+      "| consultas Places (New):", placesNewRequests
     );
-    console.log("Usando ABVE pra contagem, Google pra localização");
-    if (!abve) {
-      console.log(
-        "Cidade não encontrada na ABVE - usando apenas Google Places"
-      );
-    }
-
-    console.log("=== CONCORRENTES POR RAIO ===");
-    console.log("DC 200m:", chargersNear.dcIn200m, dcNamesIn200m);
-    console.log("DC 500m:", chargersNear.dcIn500m, dcNamesIn500m);
-    console.log("DC 1km:", chargersNear.dcIn1km, dcNamesIn1km);
-    console.log("DC 2km:", chargersNear.dcIn2km, dcNamesIn2km);
+    console.log("DC 200m:", concorrentes.dc[200], `(${concorrentes.semPotencia[200]} s/ potência)`, dcNamesIn200m);
+    console.log("DC 500m:", concorrentes.dc[500], `(${concorrentes.semPotencia[500]} s/ potência)`, dcNamesIn500m);
+    console.log("DC 1km:", concorrentes.dc[1000], `(${concorrentes.semPotencia[1000]} s/ potência)`);
+    console.log("DC 2km:", concorrentes.dc[2000], `(${concorrentes.semPotencia[2000]} s/ potência)`);
 
 
     // POIs deduplicados em 500m (para variável "Visibilidade e Fluxo")
@@ -930,40 +894,30 @@ export async function POST(request: Request) {
     const distanceKm =
       haversineDistance(geo.lat, geo.lng, cityCenter.lat, cityCenter.lng) / 1000;
 
-    // Carregadores próximos para o mapa (5km) — usado tanto no modo collect
-    // quanto no fluxo final, então calcula uma vez aqui.
-    const nearbyChargersForMap = chargersNear.in5km.map((c) => ({
-      name: c.name || "",
-      lat: Number(c.lat),
-      lng: Number(c.lng),
-      address: c.address || "",
-      operator: c.operator || "",
-      powerKW: Number(c.power_kw) || 0,
+    // Carregadores para o mapa: todos os eletropostos a até 2 km (busca completa).
+    const nearbyChargersForMap = concorrentes.lista.map((c) => ({
+      name: c.name,
+      lat: c.lat,
+      lng: c.lng,
+      address: c.address,
+      operator: "",
+      powerKW: c.powerKw ?? 0,
       type: c.charger_type,
       isFastCharge: c.charger_type === "DC",
       isOperational: true,
       rating: 0,
       reviews: 0,
-      distance_m: Math.round(
-        haversineDistance(geo.lat, geo.lng, Number(c.lat), Number(c.lng))
-      ),
+      distance_m: c.distance_m,
     }));
+
+    // Consultas legadas (geocoding, POIs) + Places API (New) dos concorrentes.
+    const googleQueriesTotal = googleQueriesUsed + placesNewRequests;
+    const googleCost =
+      googleQueriesUsed * GOOGLE_PLACES_COST_PER_QUERY + placesNewRequests * PLACES_NEW_COST_PER_REQUEST;
 
     // === MODO COLLECT — admin: retorna dados sem calcular score nem chamar Claude ===
     if (mode === "collect") {
-      const evDataCollect = await getCityEVDataAsync(
-        geo.city,
-        geo.state,
-        population,
-        gdpPerCapita,
-        manualData,
-        supabase as never
-      );
-      console.log(
-        '[dc-debug] MODO COLLECT — cachedDcInCity=', evDataCollect.cachedDcInCity,
-        '| chargersNear.dcInCity=', chargersNear.dcInCity,
-        '=> dcInCity exibido=', evDataCollect.cachedDcInCity ?? chargersNear.dcInCity
-      );
+      const evDataCollect = evDataCidade;
       const evsCityEstimate = evDataCollect.totalEVs || abve?.evsSold || 0;
       const abveSource =
         evDataCollect.evsSourceTag === "manual"
@@ -980,10 +934,10 @@ export async function POST(request: Request) {
         city: `${geo.city}/${geo.state}`,
         claudeTokensIn: 0,
         claudeTokensOut: 0,
-        googlePlacesQueries: googleQueriesUsed,
+        googlePlacesQueries: googleQueriesTotal,
+        googleCostUsd: googleCost,
       });
 
-      const googleCost = googleQueriesUsed * GOOGLE_PLACES_COST_PER_QUERY;
       const collectResponse: Record<string, unknown> = {
         mode: "collect",
         address: address || "",
@@ -1014,22 +968,24 @@ export async function POST(request: Request) {
         collected: {
           population,
           gdpPerCapita,
-          abveDC: evDataCollect.dcChargers > 0 ? evDataCollect.dcChargers : (abve?.dc ?? 0),
-          abveTotal: evDataCollect.totalChargers > 0 ? evDataCollect.totalChargers : (abve?.total ?? 0),
+          abveDC: evDataCollect.dcInformado ?? 0,
+          abveTotal: (evDataCollect.dcInformado ?? 0) + evDataCollect.acChargers,
           abveEVs: evsCityEstimate,
           abveSource,
           bev: evDataCollect.bev,
           phev: evDataCollect.phev,
           chargersAC: evDataCollect.acChargers,
-          chargersDC: evDataCollect.dcChargers,
-          // DC na cidade (total): usa o valor revisado/salvo por cidade se existir;
-          // senão, a contagem fresca por proximidade do ev_chargers.
-          dcInCity: evDataCollect.cachedDcInCity ?? chargersNear.dcInCity,
-          totalInCity: chargersNear.totalInCity,
-          dcIn200m: chargersNear.dcIn200m,
-          dcIn500m: chargersNear.dcIn500m,
-          dcIn1km: chargersNear.dcIn1km,
-          dcIn2km: chargersNear.dcIn2km,
+          // null = cidade sem DC da ABVE: a revisão exige o número antes de gerar.
+          chargersDC: evDataCollect.dcInformado,
+          dcIn200m: concorrentes.dc[200],
+          dcIn500m: concorrentes.dc[500],
+          dcIn1km: concorrentes.dc[1000],
+          dcIn2km: concorrentes.dc[2000],
+          semPotenciaIn200m: concorrentes.semPotencia[200],
+          semPotenciaIn500m: concorrentes.semPotencia[500],
+          semPotenciaIn1km: concorrentes.semPotencia[1000],
+          semPotenciaIn2km: concorrentes.semPotencia[2000],
+          eletropostosIn2km: concorrentes.lista.length,
           dcNamesIn200m,
           dcNamesIn500m,
           dcNamesIn1km,
@@ -1056,7 +1012,7 @@ export async function POST(request: Request) {
       } = await supabase.auth.getUser();
       if (collectUser?.email === ADMIN_EMAIL) {
         collectResponse.cost_breakdown = {
-          googleQueries: googleQueriesUsed,
+          googleQueries: googleQueriesTotal,
           googleCostUsd: Math.round(googleCost * 10000) / 10000,
           claudeTokensIn: 0,
           claudeTokensOut: 0,
@@ -1069,14 +1025,9 @@ export async function POST(request: Request) {
     }
 
     // 8. Calcular score
-    const evData = await getCityEVDataAsync(
-      geo.city,
-      geo.state,
-      population,
-      gdpPerCapita,
-      manualData,
-      supabase as never
-    );
+    const evData = evDataCidade;
+    // Fora do modo collect, exigirDcCidade já bloqueou cidade sem DC da ABVE.
+    const dcCidadeScore = dcCidade ?? exigirDcCidade(null, geo.city, geo.state);
 
     console.log("=== EV DATA ===", geo.city, geo.state);
     console.log("Total EVs:", evData.totalEVs, "| BEV:", evData.bev, "| PHEV:", evData.phev);
@@ -1086,19 +1037,23 @@ export async function POST(request: Request) {
     const scoreInput: ScoreInput = {
       population,
       gdpPerCapita,
-      abveDC: evData.dcChargers > 0 ? evData.dcChargers : (abve?.dc ?? 0),
-      abveTotal: evData.totalChargers > 0 ? evData.totalChargers : (abve?.total ?? 0),
+      abveDC: dcCidadeScore,
+      abveTotal: dcCidadeScore + evData.acChargers,
       abveEVs: evData.totalEVs || (abve?.evsSold ?? 0),
       bev: evData.bev,
       phev: evData.phev,
       bevPlusPHEV: evData.bevPlusPHEV,
       evsSource: evData.source,
-      dcIn200m: chargersNear.dcIn200m,
-      dcIn500m: chargersNear.dcIn500m,
-      dcIn1km: chargersNear.dcIn1km,
-      dcIn2km: chargersNear.dcIn2km,
-      dcInCity: chargersNear.dcInCity,
-      totalInCity: chargersNear.totalInCity,
+      dcIn200m: concorrentes.dc[200],
+      dcIn500m: concorrentes.dc[500],
+      dcIn1km: concorrentes.dc[1000],
+      dcIn2km: concorrentes.dc[2000],
+      semPotenciaIn200m: concorrentes.semPotencia[200],
+      semPotenciaIn500m: concorrentes.semPotencia[500],
+      semPotenciaIn1km: concorrentes.semPotencia[1000],
+      semPotenciaIn2km: concorrentes.semPotencia[2000],
+      dcInCity: dcCidadeScore,
+      totalInCity: dcCidadeScore + evData.acChargers,
       dcNamesIn200m,
       dcNamesIn500m,
       dcNamesIn1km,
@@ -1122,9 +1077,8 @@ export async function POST(request: Request) {
     const scoreResult = calculateScore(scoreInput);
 
     // 9. Claude (1x, max 1500 tokens) — apenas pontos fortes/atenção/recomendação
-    // ABVE manda; Google só preenche cidades fora da base ABVE.
-    const dcCityForPrompt =
-      (abve?.dc ?? 0) > 0 ? abve!.dc : chargersNear.dcInCity || 0;
+    // DC da cidade: sempre o da ABVE (digitado, salvo ou lista).
+    const dcCityForPrompt = dcCidadeScore;
 
     const claudeResult = await generateAnalysisText({
       overallScore: scoreResult.overallScore,
@@ -1140,10 +1094,10 @@ export async function POST(request: Request) {
       evsSource: evData.source,
       establishmentType: establishment_type || "outro",
       distanceKm,
-      dcIn200m: chargersNear.dcIn200m,
-      dcIn500m: chargersNear.dcIn500m,
-      dcIn1km: chargersNear.dcIn1km,
-      dcIn2km: chargersNear.dcIn2km,
+      dcIn200m: concorrentes.dc[200],
+      dcIn500m: concorrentes.dc[500],
+      dcIn1km: concorrentes.dc[1000],
+      dcIn2km: concorrentes.dc[2000],
       restaurants: restaurants.length,
       supermarkets: supermarkets.length,
       gasStations: gasStations.length,
@@ -1157,11 +1111,10 @@ export async function POST(request: Request) {
     const claudeCost =
       claudeResult.tokensIn * CLAUDE_INPUT_COST_PER_TOKEN +
       claudeResult.tokensOut * CLAUDE_OUTPUT_COST_PER_TOKEN;
-    const googleCost = googleQueriesUsed * GOOGLE_PLACES_COST_PER_QUERY;
     const totalCost = claudeCost + googleCost;
 
     const costBreakdown = {
-      googleQueries: googleQueriesUsed,
+      googleQueries: googleQueriesTotal,
       googleCostUsd: Math.round(googleCost * 10000) / 10000,
       claudeTokensIn: claudeResult.tokensIn,
       claudeTokensOut: claudeResult.tokensOut,
@@ -1175,7 +1128,8 @@ export async function POST(request: Request) {
       city: `${geo.city}/${geo.state}`,
       claudeTokensIn: claudeResult.tokensIn,
       claudeTokensOut: claudeResult.tokensOut,
-      googlePlacesQueries: googleQueriesUsed,
+      googlePlacesQueries: googleQueriesTotal,
+      googleCostUsd: googleCost,
     });
 
     // 12. Carregadores próximos para o mapa (5km) — já calculado acima
@@ -1214,8 +1168,8 @@ export async function POST(request: Request) {
         bevPlusPHEV: evData.bevPlusPHEV,
         totalEVs: evData.totalEVs,
         chargersAC: evData.acChargers,
-        chargersDC: evData.dcChargers,
-        totalChargers: evData.totalChargers,
+        chargersDC: dcCidadeScore,
+        totalChargers: dcCidadeScore + evData.acChargers,
         evsSource: evData.source,
         evsSourceTag: evData.evsSourceTag,
         chargersSource: evData.chargersSource,
@@ -1223,16 +1177,20 @@ export async function POST(request: Request) {
         cacheUpdatedAt: evData.cacheUpdatedAt,
       },
       charger_summary: {
-        total_in_city: chargersNear.totalInCity,
-        dc_in_city: chargersNear.dcInCity,
-        in_200m: chargersNear.in200m.length,
-        in_500m: chargersNear.in500m.length,
-        in_1km: chargersNear.in1km.length,
-        in_2km: chargersNear.in2km.length,
-        dc_in_200m: chargersNear.dcIn200m,
-        dc_in_500m: chargersNear.dcIn500m,
-        dc_in_1km: chargersNear.dcIn1km,
-        dc_in_2km: chargersNear.dcIn2km,
+        total_in_city: dcCidadeScore + evData.acChargers,
+        dc_in_city: dcCidadeScore,
+        in_200m: concorrentes.lista.filter((c) => c.distance_m <= 200).length,
+        in_500m: concorrentes.lista.filter((c) => c.distance_m <= 500).length,
+        in_1km: concorrentes.lista.filter((c) => c.distance_m <= 1000).length,
+        in_2km: concorrentes.lista.length,
+        dc_in_200m: concorrentes.dc[200],
+        dc_in_500m: concorrentes.dc[500],
+        dc_in_1km: concorrentes.dc[1000],
+        dc_in_2km: concorrentes.dc[2000],
+        sem_potencia_in_200m: concorrentes.semPotencia[200],
+        sem_potencia_in_500m: concorrentes.semPotencia[500],
+        sem_potencia_in_1km: concorrentes.semPotencia[1000],
+        sem_potencia_in_2km: concorrentes.semPotencia[2000],
       },
     };
 

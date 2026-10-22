@@ -1,7 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type Anthropic from "@anthropic-ai/sdk";
-import { getChargersNearPoint } from "../../charger-database";
 import { ScoreDataError, type ScoreLayer } from "../errors";
 import { geocodeCityCenter, requireCityState } from "../geocode";
 import { fetchIBGEData } from "../ibge";
@@ -131,47 +130,6 @@ test("centro da cidade: sem chave do Google bloqueia", async () => {
 test("localização: ponto sem cidade ou UF bloqueia", () => {
   assert.throws(() => requireCityState({ city: "", state: "PR" }), (e: unknown) => e instanceof ScoreDataError && e.layer === "localizacao");
   assert.doesNotThrow(() => requireCityState({ city: "Curitiba", state: "PR" }));
-});
-
-// ---------- concorrentes no banco ----------
-
-function fakeSupabase(result: { data: unknown[] | null; error: { message: string } | null; count: number | null }) {
-  return { from: () => ({ select: () => ({ ilike: async () => result }) }) } as never;
-}
-
-const charger = (name: string, lat: number, lng: number, type: string) => ({ name, lat, lng, charger_type: type, city: "Curitiba" });
-
-test("concorrentes: erro de leitura bloqueia em vez de virar 0 concorrentes", async () => {
-  const sb = fakeSupabase({ data: null, error: { message: "relation does not exist" }, count: null });
-  await rejectsWith(getChargersNearPoint(-25.43, -49.27, "Curitiba", sb), "concorrentes", /relation does not exist/);
-});
-
-test("concorrentes: leitura cortada pelo teto do PostgREST bloqueia", async () => {
-  const sb = fakeSupabase({ data: [charger("A", -25.43, -49.27, "DC")], error: null, count: 1500 });
-  await rejectsWith(getChargersNearPoint(-25.43, -49.27, "Curitiba", sb), "concorrentes", /veio cortada: 1 de 1500/);
-});
-
-test("concorrentes: zero legítimo (cidade sem carregador) passa como zero", async () => {
-  const r = await getChargersNearPoint(-25.43, -49.27, "Curitiba", fakeSupabase({ data: [], error: null, count: 0 }));
-  assert.equal(r.totalInCity, 0);
-  assert.equal(r.dcIn2km, 0);
-});
-
-test("concorrentes: conta DC por raio", async () => {
-  const sb = fakeSupabase({
-    data: [
-      charger("perto DC", -25.4300, -49.2700, "DC"),
-      charger("1,5 km DC", -25.4435, -49.2700, "DC"),
-      charger("perto AC", -25.4301, -49.2700, "AC"),
-    ],
-    error: null,
-    count: 3,
-  });
-  const r = await getChargersNearPoint(-25.43, -49.27, "Curitiba", sb);
-  assert.equal(r.dcIn200m, 1);
-  assert.equal(r.dcIn2km, 2);
-  assert.equal(r.dcInCity, 2);
-  assert.equal(r.totalInCity, 3);
 });
 
 // ---------- pontos fortes (Claude) ----------

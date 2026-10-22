@@ -204,6 +204,10 @@ export interface CityEVData {
   // "DC na cidade (total)" salvo por cidade (revisão admin). null se nunca salvo —
   // nesse caso o chamador usa a contagem fresca por proximidade do ev_chargers.
   cachedDcInCity?: number | null;
+  // DC da cidade para o Score: digitado > salvo > lista ABVE. null = sem dado
+  // (o Score bloqueia ou exige o número na revisão); 0 = cidade sem DC, dado real.
+  // Sem a contagem do Google desde 22/10/2026: ela nascia cortada no teto da API.
+  dcInformado: number | null;
 }
 
 export interface ManualCityEVInput {
@@ -383,6 +387,7 @@ function resolveCityEVData(
     chargersSourceTag,
     cacheUpdatedAt: cache?.updated_at ?? null,
     cachedDcInCity: cache?.dc_in_city ?? null,
+    dcInformado: manualDC ?? cache?.chargers_dc ?? (abve ? abve.dc : null),
   };
 }
 
@@ -401,7 +406,8 @@ export async function upsertCityEVCache(
     (manualData.bev !== null && manualData.bev !== undefined && manualData.bev > 0) ||
     (manualData.phev !== null && manualData.phev !== undefined && manualData.phev > 0) ||
     (manualData.chargersAC !== null && manualData.chargersAC !== undefined && manualData.chargersAC > 0) ||
-    (manualData.chargersDC !== null && manualData.chargersDC !== undefined && manualData.chargersDC > 0) ||
+    // DC = 0 digitado é dado (cidade sem DC), não campo vazio.
+    (manualData.chargersDC !== null && manualData.chargersDC !== undefined && manualData.chargersDC >= 0) ||
     (manualData.dcInCity !== null && manualData.dcInCity !== undefined && manualData.dcInCity > 0);
   if (!hasAny) {
     console.log('[dc-debug] upsertCityEVCache SKIP — hasAny=false (nenhum campo > 0)');

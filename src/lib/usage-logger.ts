@@ -7,6 +7,8 @@ interface UsageLogParams {
   claudeTokensIn?: number;
   claudeTokensOut?: number;
   googlePlacesQueries?: number;
+  /** Custo real do Google quando as consultas não têm todas o mesmo preço. */
+  googleCostUsd?: number;
 }
 
 const GOOGLE_PLACES_COST_PER_QUERY = 0.032;
@@ -22,7 +24,7 @@ export async function logUsage(params: UsageLogParams) {
       (params.claudeTokensIn || 0) * CLAUDE_INPUT_COST_PER_TOKEN +
       (params.claudeTokensOut || 0) * CLAUDE_OUTPUT_COST_PER_TOKEN;
     const googleCost =
-      (params.googlePlacesQueries || 0) * GOOGLE_PLACES_COST_PER_QUERY;
+      params.googleCostUsd ?? (params.googlePlacesQueries || 0) * GOOGLE_PLACES_COST_PER_QUERY;
 
     await supabase.from("usage_logs").insert({
       user_id: user?.id || null,
