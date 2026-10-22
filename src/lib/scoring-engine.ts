@@ -30,6 +30,12 @@ export interface ScoreInput {
   dcIn500m: number;
   dcIn1km: number;
   dcIn2km: number;
+  // Quantos dos dcIn* são eletropostos sem potência informada (contados como DC
+  // por regra conservadora). Ausentes = texto antigo, sem a ressalva.
+  semPotenciaIn200m?: number;
+  semPotenciaIn500m?: number;
+  semPotenciaIn1km?: number;
+  semPotenciaIn2km?: number;
   dcInCity: number;
   totalInCity: number;
 
@@ -123,6 +129,14 @@ function clamp(n: number, lo: number, hi: number): number {
 
 function fmtInt(n: number): string {
   return Math.round(n).toLocaleString("pt-BR");
+}
+
+/** " (2 com potência não informada, contados como DC)" — vazio quando não há. */
+function semPot(n?: number): string {
+  if (!n) return "";
+  return n === 1
+    ? " (1 com potência não informada, contado como DC)"
+    : ` (${n} com potência não informada, contados como DC)`;
 }
 
 function fmtNames(names?: string[], max = 2): string {
@@ -592,10 +606,10 @@ export function calculateScore(input: ScoreInput): ScoreResult {
       input.dcIn200m === 0
         ? "Nenhum concorrente direto em 200m — oportunidade aberta em ponto de alto fluxo"
         : input.dcIn200m <= 2
-        ? `${input.dcIn200m} carregador(es) rápido(s) em 200m — valida demanda do local${fmtNames(
+        ? `${input.dcIn200m} carregador(es) rápido(s) em 200m${semPot(input.semPotenciaIn200m)} — valida demanda do local${fmtNames(
             input.dcNamesIn200m
           )}`
-        : `${input.dcIn200m} carregadores rápidos em 200m — mercado disputado${fmtNames(
+        : `${input.dcIn200m} carregadores rápidos em 200m${semPot(input.semPotenciaIn200m)} — mercado disputado${fmtNames(
             input.dcNamesIn200m
           )}`;
   } else {
@@ -606,7 +620,7 @@ export function calculateScore(input: ScoreInput): ScoreResult {
     v23Just =
       input.dcIn200m === 0
         ? "Sem concorrência direta em 200m"
-        : `${input.dcIn200m} carregadores rápidos em 200m — concorrência direta identificada${fmtNames(
+        : `${input.dcIn200m} carregadores rápidos em 200m${semPot(input.semPotenciaIn200m)} — concorrência direta identificada${fmtNames(
             input.dcNamesIn200m
           )}`;
   }
@@ -630,10 +644,10 @@ export function calculateScore(input: ScoreInput): ScoreResult {
       input.dcIn500m === 0
         ? "Sem concorrentes em 500m — oportunidade aberta em ponto de alto fluxo"
         : input.dcIn500m <= 3
-        ? `${input.dcIn500m} carregador(es) rápido(s) em 500m — valida demanda regional${fmtNames(
+        ? `${input.dcIn500m} carregador(es) rápido(s) em 500m${semPot(input.semPotenciaIn500m)} — valida demanda regional${fmtNames(
             input.dcNamesIn500m
           )}`
-        : `${input.dcIn500m} carregadores rápidos em 500m — região disputada${fmtNames(
+        : `${input.dcIn500m} carregadores rápidos em 500m${semPot(input.semPotenciaIn500m)} — região disputada${fmtNames(
             input.dcNamesIn500m
           )}`;
   } else {
@@ -641,7 +655,7 @@ export function calculateScore(input: ScoreInput): ScoreResult {
       input.dcIn500m === 0 ? 10 :
       input.dcIn500m <= 2 ? 7 :
       input.dcIn500m <= 5 ? 5 : 3;
-    v24Just = `${input.dcIn500m} carregadores rápidos em 500m${fmtNames(
+    v24Just = `${input.dcIn500m} carregadores rápidos em 500m${semPot(input.semPotenciaIn500m)}${fmtNames(
       input.dcNamesIn500m
     )}`;
   }
@@ -663,7 +677,7 @@ export function calculateScore(input: ScoreInput): ScoreResult {
     "Concorrência",
     v25,
     2,
-    `${input.dcIn1km} carregadores rápidos em 1km${fmtNames(input.dcNamesIn1km)}`
+    `${input.dcIn1km} carregadores rápidos em 1km${semPot(input.semPotenciaIn1km)}${fmtNames(input.dcNamesIn1km)}`
   );
 
   // V25 — Concorrentes DC em 2km (peso 2)
@@ -676,7 +690,7 @@ export function calculateScore(input: ScoreInput): ScoreResult {
     "Concorrência",
     v26,
     2,
-    `${input.dcIn2km} carregadores rápidos em 2km${fmtNames(input.dcNamesIn2km)}`
+    `${input.dcIn2km} carregadores rápidos em 2km${semPot(input.semPotenciaIn2km)}${fmtNames(input.dcNamesIn2km)}`
   );
 
   // V26 — Ratio EVs por carregador DC (peso 3)

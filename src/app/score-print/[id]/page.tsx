@@ -52,6 +52,8 @@ interface ScoreData {
   strengths: string[];
   nearby_pois: NearbyPlace[];
   nearby_chargers: NearbyPlace[];
+  /** sem_potencia_in_2km existe a partir da v3.4.0 (busca completa de 2 km, tipo pela potência). */
+  charger_summary?: { sem_potencia_in_2km?: number };
   ibge_data: {
     population: number | null;
     gdp_total: number | null;
@@ -771,10 +773,21 @@ export default function ScorePrintPage() {
               </div>
             </div>
             <div style={{ border: "1px solid #e0e0e0", padding: 12, borderRadius: 6 }}>
-              <div style={{ fontSize: 10, color: "#888" }}>Carregadores</div>
+              <div style={{ fontSize: 10, color: "#888" }}>
+                {data.charger_summary?.sem_potencia_in_2km !== undefined ? "Eletropostos em 2 km" : "Carregadores"}
+              </div>
               <div style={{ fontSize: 20, fontWeight: 800, color: "#1a1a1a" }}>
                 {(data.nearby_chargers || []).length}
               </div>
+              {data.charger_summary?.sem_potencia_in_2km !== undefined ? (
+                <div style={{ fontSize: 9, color: "#888", marginTop: 2 }}>
+                  {(() => {
+                    const cs = data.nearby_chargers || [];
+                    const n = (t: string) => cs.filter((c) => c.type === t).length;
+                    return `DC ${n("DC")} · AC ${n("AC")} · potência não informada ${n("unknown")}`;
+                  })()}
+                </div>
+              ) : null}
             </div>
             <div style={{ border: "1px solid #e0e0e0", padding: 12, borderRadius: 6 }}>
               <div style={{ fontSize: 10, color: "#888" }}>População</div>
